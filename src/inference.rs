@@ -124,7 +124,9 @@ pub async fn f80_code_gen_structured(
         .with_constraints(Arc::new(CodeGenOutput::new_parser()));
 
     let stream = task.run(user_input);
-    let output: CodeGenOutput = stream.await.map_err(|e| anyhow::anyhow!("structured code gen: {}", e))?;
+    let output: CodeGenOutput = stream
+        .await
+        .map_err(|e| anyhow::anyhow!("structured code gen: {}", e))?;
 
     Ok(output.rust_block)
 }

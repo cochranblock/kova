@@ -15,27 +15,36 @@ pub enum ErrorKind {
 /// f118=categorize. Categorize stderr from cargo check. Feeds specific context to the Mechanic.
 pub fn categorize(stderr: &str) -> ErrorKind {
     let lower = stderr.to_lowercase();
-    if lower.contains("expected one of") || lower.contains("unexpected end of")
-        || lower.contains("expected `;`") || lower.contains("expected `,`")
-        || lower.contains("expected `)`") || lower.contains("expected `{`")
-        || lower.contains("missing semicolon") || lower.contains("unclosed delimiter")
+    if lower.contains("expected one of")
+        || lower.contains("unexpected end of")
+        || lower.contains("expected `;`")
+        || lower.contains("expected `,`")
+        || lower.contains("expected `)`")
+        || lower.contains("expected `{`")
+        || lower.contains("missing semicolon")
+        || lower.contains("unclosed delimiter")
         || lower.contains("expected expression")
     {
         return ErrorKind::Syntax;
     }
-    if lower.contains("borrow") || lower.contains("cannot borrow")
-        || lower.contains("borrowed value") || lower.contains("move")
+    if lower.contains("borrow")
+        || lower.contains("cannot borrow")
+        || lower.contains("borrowed value")
+        || lower.contains("move")
         || lower.contains("use of moved value")
     {
         return ErrorKind::BorrowChecker;
     }
-    if lower.contains("lifetime") || lower.contains("outlives")
-        || lower.contains("does not live long enough") || lower.contains("'static")
+    if lower.contains("lifetime")
+        || lower.contains("outlives")
+        || lower.contains("does not live long enough")
+        || lower.contains("'static")
     {
         return ErrorKind::Lifetime;
     }
     if lower.contains("expected") && (lower.contains("type") || lower.contains("found"))
-        || lower.contains("mismatched types") || lower.contains("cannot infer")
+        || lower.contains("mismatched types")
+        || lower.contains("cannot infer")
     {
         return ErrorKind::Type;
     }

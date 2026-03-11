@@ -40,8 +40,7 @@ impl t12 {
     /// Why: Internal format is compact; zstd reduces disk I/O for large payloads.
     pub fn f40<K: AsRef<[u8]>, V: Serialize>(&self, key: K, value: &V) -> Result<(), E0> {
         let encoded = bincode::serde::encode_to_vec(value, bincode::config::standard())?;
-        let compressed = zstd::encode_all(encoded.as_slice(), 3)
-            .map_err(E0::ZstdCompress)?;
+        let compressed = zstd::encode_all(encoded.as_slice(), 3).map_err(E0::ZstdCompress)?;
         self.db.insert(key, compressed)?;
         Ok(())
     }
@@ -56,7 +55,8 @@ impl t12 {
             return Ok(None);
         };
         let decompressed = zstd::decode_all(v.as_ref()).map_err(E0::ZstdDecompress)?;
-        let (decoded, _) = bincode::serde::decode_from_slice(&decompressed, bincode::config::standard())?;
+        let (decoded, _) =
+            bincode::serde::decode_from_slice(&decompressed, bincode::config::standard())?;
         Ok(Some(decoded))
     }
 

@@ -201,7 +201,10 @@ mod tests {
         assert!(!out.is_empty(), "baked prompts must be non-empty");
 
         // Blocking (P20)
-        assert!(out.contains("Blocking Only") || out.contains("P20"), "blocking rule");
+        assert!(
+            out.contains("Blocking Only") || out.contains("P20"),
+            "blocking rule"
+        );
         assert!(out.contains("Never background"), "blocking rule");
 
         // Augment not intent
@@ -209,12 +212,24 @@ mod tests {
         assert!(out.contains("intent"), "augment rule");
 
         // Tokenization
-        assert!(out.contains("fN") || out.contains("tN"), "tokenization rule");
-        assert!(out.contains("compression_map") || out.contains("traceability"), "tokenization");
+        assert!(
+            out.contains("fN") || out.contains("tN"),
+            "tokenization rule"
+        );
+        assert!(
+            out.contains("compression_map") || out.contains("traceability"),
+            "tokenization"
+        );
 
         // Compression map (Kova f/t mappings)
-        assert!(out.contains("f81") && out.contains("run_code_gen_pipeline"), "compression_map");
-        assert!(out.contains("f78") && out.contains("model_path_for_role"), "compression_map");
+        assert!(
+            out.contains("f81") && out.contains("run_code_gen_pipeline"),
+            "compression_map"
+        );
+        assert!(
+            out.contains("f78") && out.contains("model_path_for_role"),
+            "compression_map"
+        );
     }
 
     /// Prove load_cursor_prompts injects baked content when enabled. Skips if config disables.
@@ -226,7 +241,10 @@ mod tests {
         let out = load_cursor_prompts(tmp.path());
         std::env::remove_var("KOVA_PROJECTS_ROOT");
         if crate::cursor_prompts_enabled() {
-            assert!(!out.is_empty(), "when enabled, output must include baked content");
+            assert!(
+                !out.is_empty(),
+                "when enabled, output must include baked content"
+            );
             assert!(out.contains("Blocking Only") || out.contains("P20"));
         }
     }
@@ -236,7 +254,13 @@ mod tests {
     fn system_prompt_format_includes_baked() {
         let cursor = baked_prompts();
         let system_prompt = format!("System\n\nPersona\n\n--- Cursor rules ---\n{}", cursor);
-        assert!(system_prompt.contains("Blocking Only"), "serve format must include blocking");
-        assert!(system_prompt.contains("f81"), "serve format must include compression_map");
+        assert!(
+            system_prompt.contains("Blocking Only"),
+            "serve format must include blocking"
+        );
+        assert!(
+            system_prompt.contains("f81"),
+            "serve format must include compression_map"
+        );
     }
 }

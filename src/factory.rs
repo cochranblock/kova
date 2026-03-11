@@ -71,7 +71,6 @@ impl Factory {
             config,
         }
     }
-
 }
 
 impl Default for Factory {
@@ -216,24 +215,23 @@ impl Factory {
         let start = std::time::Instant::now();
         eprintln!("[factory] generating...");
 
-        let (node, response) = match self.cluster.dispatch(
-            task_kind,
-            system,
-            prompt,
-            Some(self.config.num_ctx),
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                result.stages.push(StageResult {
-                    stage: "generate".into(),
-                    node: "?".into(),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    success: false,
-                    output: format!("generation failed: {}", e),
-                });
-                return None;
-            }
-        };
+        let (node, response) =
+            match self
+                .cluster
+                .dispatch(task_kind, system, prompt, Some(self.config.num_ctx))
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    result.stages.push(StageResult {
+                        stage: "generate".into(),
+                        node: "?".into(),
+                        duration_ms: start.elapsed().as_millis() as u64,
+                        success: false,
+                        output: format!("generation failed: {}", e),
+                    });
+                    return None;
+                }
+            };
 
         let code = extract_rust_block(&response).unwrap_or_else(|| response.clone());
 
@@ -468,7 +466,11 @@ impl Factory {
             node: node.clone(),
             duration_ms: start.elapsed().as_millis() as u64,
             success: true,
-            output: format!("fixed on {}{}", node, if stuck { " (escalated)" } else { "" }),
+            output: format!(
+                "fixed on {}{}",
+                node,
+                if stuck { " (escalated)" } else { "" }
+            ),
         });
 
         eprintln!(

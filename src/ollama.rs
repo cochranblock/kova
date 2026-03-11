@@ -76,9 +76,9 @@ pub fn version(base_url: &str) -> Option<String> {
 /// List models on a remote ollama instance.
 pub fn list_models(base_url: &str) -> Result<Vec<ModelInfo>, String> {
     let url = format!("{}/api/tags", base_url);
-    let resp = reqwest::blocking::get(&url)
-        .map_err(|e| format!("ollama list: {}", e))?;
-    let tags: TagsResponse = resp.json()
+    let resp = reqwest::blocking::get(&url).map_err(|e| format!("ollama list: {}", e))?;
+    let tags: TagsResponse = resp
+        .json()
         .map_err(|e| format!("ollama list parse: {}", e))?;
     Ok(tags.models)
 }
@@ -108,16 +108,22 @@ pub fn generate(
         .build()
         .map_err(|e| format!("http client: {}", e))?;
 
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .json(&body)
         .send()
         .map_err(|e| format!("ollama generate: {}", e))?;
 
     if !resp.status().is_success() {
-        return Err(format!("ollama http {}: {}", resp.status(), resp.text().unwrap_or_default()));
+        return Err(format!(
+            "ollama http {}: {}",
+            resp.status(),
+            resp.text().unwrap_or_default()
+        ));
     }
 
-    let gen: GenerateResponse = resp.json()
+    let gen: GenerateResponse = resp
+        .json()
         .map_err(|e| format!("ollama response parse: {}", e))?;
 
     // Log performance if available
@@ -155,13 +161,14 @@ pub fn generate_stream(
     std::thread::spawn(move || {
         let client = match reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
-            .build() {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = tx.send(Arc::from(format!("Error: {}", e)));
-                    return;
-                }
-            };
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tx.send(Arc::from(format!("Error: {}", e)));
+                return;
+            }
+        };
 
         let resp = match client.post(&url).json(&body).send() {
             Ok(r) => r,
@@ -179,7 +186,9 @@ pub fn generate_stream(
                 Ok(l) => l,
                 Err(_) => break,
             };
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
 
             if let Ok(chunk) = serde_json::from_str::<GenerateResponse>(&line) {
                 if !chunk.response.is_empty()
@@ -187,7 +196,9 @@ pub fn generate_stream(
                 {
                     break; // receiver dropped
                 }
-                if chunk.done { break; }
+                if chunk.done {
+                    break;
+                }
             }
         }
     });
@@ -229,13 +240,18 @@ pub fn chat(
         .build()
         .map_err(|e| format!("http client: {}", e))?;
 
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .json(&body)
         .send()
         .map_err(|e| format!("ollama chat: {}", e))?;
 
     if !resp.status().is_success() {
-        return Err(format!("ollama http {}: {}", resp.status(), resp.text().unwrap_or_default()));
+        return Err(format!(
+            "ollama http {}: {}",
+            resp.status(),
+            resp.text().unwrap_or_default()
+        ));
     }
 
     #[derive(serde::Deserialize)]
@@ -247,7 +263,8 @@ pub fn chat(
         content: String,
     }
 
-    let chat_resp: ChatResponse = resp.json()
+    let chat_resp: ChatResponse = resp
+        .json()
         .map_err(|e| format!("ollama chat parse: {}", e))?;
 
     Ok(chat_resp.message.content)

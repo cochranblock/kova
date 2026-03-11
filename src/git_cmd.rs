@@ -114,7 +114,10 @@ fn f158(raw: &str) -> String {
         if line.starts_with("--- ") || line.starts_with("+++ ") || line.starts_with("diff --git") {
             continue;
         }
-        if line.starts_with("index ") || line.starts_with("new file") || line.starts_with("deleted file") {
+        if line.starts_with("index ")
+            || line.starts_with("new file")
+            || line.starts_with("deleted file")
+        {
             continue;
         }
         // Hunk header: @@ -old,count +new,count @@
@@ -279,7 +282,8 @@ pub fn f160(
                     // Push output goes to stderr
                     let combined = format!("{}{}", stdout.trim(), stderr.trim());
                     // Compress: just keep the ref line
-                    combined.lines()
+                    combined
+                        .lines()
                         .find(|l| l.contains("->"))
                         .unwrap_or("pushed")
                         .trim()
@@ -298,9 +302,7 @@ pub fn f160(
                     "current".to_string()
                 } else {
                     // Count files changed
-                    let changed = stdout.lines()
-                        .filter(|l| l.contains('|'))
-                        .count();
+                    let changed = stdout.lines().filter(|l| l.contains('|')).count();
                     format!("pulled +{} files", changed)
                 }
             } else {
@@ -314,9 +316,15 @@ pub fn f160(
             let (ok, stdout, stderr) = f156(&["commit", "-m", &msg], &wd);
             let out = if ok {
                 // Extract short hash + summary
-                stdout.lines().next().unwrap_or("committed").trim().to_string()
+                stdout
+                    .lines()
+                    .next()
+                    .unwrap_or("committed")
+                    .trim()
+                    .to_string()
             } else {
-                stderr.lines()
+                stderr
+                    .lines()
                     .find(|l| !l.trim().is_empty())
                     .unwrap_or("commit failed")
                     .trim()
@@ -326,9 +334,16 @@ pub fn f160(
         }
         t107::G6 => {
             // git branch
-            let (ok, stdout, stderr) = f156(&["branch", "--format=%(if)%(HEAD)%(then)* %(end)%(refname:short)"], &wd);
+            let (ok, stdout, stderr) = f156(
+                &[
+                    "branch",
+                    "--format=%(if)%(HEAD)%(then)* %(end)%(refname:short)",
+                ],
+                &wd,
+            );
             let out = if ok {
-                stdout.lines()
+                stdout
+                    .lines()
                     .filter(|l| !l.trim().is_empty())
                     .map(|l| l.trim().to_string())
                     .collect::<Vec<_>>()
@@ -342,7 +357,12 @@ pub fn f160(
             // git stash
             let (ok, stdout, stderr) = f156(&["stash"], &wd);
             let out = if ok {
-                stdout.lines().next().unwrap_or("stashed").trim().to_string()
+                stdout
+                    .lines()
+                    .next()
+                    .unwrap_or("stashed")
+                    .trim()
+                    .to_string()
             } else {
                 stderr
             };

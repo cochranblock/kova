@@ -9,8 +9,8 @@ use axum::{
         Query, State,
     },
     http::StatusCode,
-    response::IntoResponse,
     response::Html,
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -107,17 +107,23 @@ struct TestRunResponse {
     output: String,
 }
 
-
 async fn api_webhook_github() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({"received": true}))).into_response()
 }
 
 async fn api_test_run(Query(q): Query<TestRunQuery>) -> impl IntoResponse {
-    let project = if q.project.is_empty() { "cochranblock" } else { q.project.as_str() };
+    let project = if q.project.is_empty() {
+        "cochranblock"
+    } else {
+        q.project.as_str()
+    };
     let nodes: Vec<String> = if let Some(ref n) = q.node {
         vec![n.clone()]
     } else {
-        let all: Vec<String> = crate::c2::default_nodes().into_iter().map(String::from).collect();
+        let all: Vec<String> = crate::c2::default_nodes()
+            .into_iter()
+            .map(String::from)
+            .collect();
         match crate::node_cmd::pick_idlest(&all) {
             Some(host) => vec![host],
             None => {
@@ -136,11 +142,17 @@ async fn api_test_run(Query(q): Query<TestRunQuery>) -> impl IntoResponse {
     let results = crate::node_cmd::f133_sync(&nodes, project);
     let (ok, node, output) = results
         .first()
-        .map(|r| (
-            r.s15,
-            r.s14.clone(),
-            r.s16.iter().find(|(k, _)| *k == "o11").map(|(_, v)| v.clone()).unwrap_or_default(),
-        ))
+        .map(|r| {
+            (
+                r.s15,
+                r.s14.clone(),
+                r.s16
+                    .iter()
+                    .find(|(k, _)| *k == "o11")
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default(),
+            )
+        })
         .unwrap_or((false, String::new(), "no results".into()));
     (StatusCode::OK, Json(TestRunResponse { ok, node, output })).into_response()
 }
@@ -169,17 +181,19 @@ async fn api_projects() -> Json<Vec<String>> {
 async fn api_prompts() -> impl IntoResponse {
     let system = crate::load_prompt("system");
     let persona = crate::load_prompt("persona");
-    (StatusCode::OK, Json(serde_json::json!({"system": system, "persona": persona}))).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"system": system, "persona": persona})),
+    )
+        .into_response()
 }
 
 async fn recent_changes(Query(q): Query<RecentQuery>) -> String {
     let project = q
         .project
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    let changes = crate::recent_changes::f86(
-        &project,
-        std::time::Duration::from_secs(q.minutes * 60),
-    );
+    let changes =
+        crate::recent_changes::f86(&project, std::time::Duration::from_secs(q.minutes * 60));
     crate::recent_changes::f87(&changes)
 }
 
@@ -240,45 +254,45 @@ async fn api_route(Json(req): Json<RouteRequest>) -> impl IntoResponse {
         )
             .into_response();
     };
-    let (classification, needs_clarification, suggested_question, choices, _) =
-        match &result {
-            crate::RouterResult::CodeGen => ("code_gen".into(), None, None, None, None::<String>),
-            crate::RouterResult::Refactor => ("refactor".into(), None, None, None, None::<String>),
-            crate::RouterResult::Explain => ("explain".into(), None, None, None, None::<String>),
-            crate::RouterResult::Fix => ("fix".into(), None, None, None, None::<String>),
-            crate::RouterResult::Run => ("run".into(), None, None, None, None::<String>),
-            crate::RouterResult::Custom => ("custom".into(), None, None, None, None::<String>),
-            crate::RouterResult::NeedsClarification { .. } => {
-                let q = result.clarification_question(&req.message);
-                let ch = result.clarification_choices().map(|s| s.to_vec());
-                (
-                    "needs_clarification".into(),
-                    Some(true),
-                    Some(q),
-                    ch,
-                    None::<String>,
-                )
-            }
-            crate::RouterResult::Error(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(RouteResponse {
-                        classification: "error".into(),
-                        needs_clarification: None,
-                        suggested_question: None,
-                        choices: None,
-                        enriched_message: None,
-                        error: Some(e.clone()),
-                    }),
-                )
-                    .into_response();
-            }
-        };
-    let enriched = if prior.is_some() && !matches!(&result, crate::RouterResult::NeedsClarification { .. }) {
-        Some(to_route)
-    } else {
-        None
+    let (classification, needs_clarification, suggested_question, choices, _) = match &result {
+        crate::RouterResult::CodeGen => ("code_gen".into(), None, None, None, None::<String>),
+        crate::RouterResult::Refactor => ("refactor".into(), None, None, None, None::<String>),
+        crate::RouterResult::Explain => ("explain".into(), None, None, None, None::<String>),
+        crate::RouterResult::Fix => ("fix".into(), None, None, None, None::<String>),
+        crate::RouterResult::Run => ("run".into(), None, None, None, None::<String>),
+        crate::RouterResult::Custom => ("custom".into(), None, None, None, None::<String>),
+        crate::RouterResult::NeedsClarification { .. } => {
+            let q = result.clarification_question(&req.message);
+            let ch = result.clarification_choices().map(|s| s.to_vec());
+            (
+                "needs_clarification".into(),
+                Some(true),
+                Some(q),
+                ch,
+                None::<String>,
+            )
+        }
+        crate::RouterResult::Error(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(RouteResponse {
+                    classification: "error".into(),
+                    needs_clarification: None,
+                    suggested_question: None,
+                    choices: None,
+                    enriched_message: None,
+                    error: Some(e.clone()),
+                }),
+            )
+                .into_response();
+        }
     };
+    let enriched =
+        if prior.is_some() && !matches!(&result, crate::RouterResult::NeedsClarification { .. }) {
+            Some(to_route)
+        } else {
+            None
+        };
     (
         StatusCode::OK,
         Json(RouteResponse {
@@ -360,7 +374,10 @@ async fn api_intent(
                 let system_prompt = if cursor.is_empty() {
                     format!("{}\n\n{}", system, persona)
                 } else {
-                    format!("{}\n\n{}\n\n--- Cursor rules ---\n{}", system, persona, cursor)
+                    format!(
+                        "{}\n\n{}\n\n--- Cursor rules ---\n{}",
+                        system, persona, cursor
+                    )
                 };
                 let user_msg = intent.s1.as_deref().unwrap_or("Generate code.");
                 let rx = crate::pipeline::f81(
@@ -425,7 +442,11 @@ async fn ws_handler(state: AppState, mut socket: WebSocket) {
             loop {
                 match rx.recv().await {
                     Ok(msg) => {
-                        if socket.send(Message::Text((*msg).to_string())).await.is_err() {
+                        if socket
+                            .send(Message::Text((*msg).to_string()))
+                            .await
+                            .is_err()
+                        {
                             return;
                         }
                     }
@@ -563,7 +584,11 @@ async fn api_backlog_run(
         .approuter_dir
         .as_ref()
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join("approuter")));
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| std::path::PathBuf::from(h).join("approuter"))
+        });
 
     if matches!(intent.s0, kova_core::t1::FullPipeline) {
         #[cfg(feature = "inference")]
@@ -578,7 +603,10 @@ async fn api_backlog_run(
                 let system_prompt = if cursor.is_empty() {
                     format!("{}\n\n{}", system, persona)
                 } else {
-                    format!("{}\n\n{}\n\n--- Cursor rules ---\n{}", system, persona, cursor)
+                    format!(
+                        "{}\n\n{}\n\n--- Cursor rules ---\n{}",
+                        system, persona, cursor
+                    )
                 };
                 let user_msg = intent.s1.as_deref().unwrap_or("Generate code.");
                 let rx = crate::pipeline::f81(
@@ -595,7 +623,11 @@ async fn api_backlog_run(
                     let mut guard = state.pipeline_rx.lock().await;
                     *guard = Some(rx);
                 }
-                return (StatusCode::OK, Json(serde_json::json!({"message": "Pipeline started.", "stream": true}))).into_response();
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"message": "Pipeline started.", "stream": true})),
+                )
+                    .into_response();
             }
         }
         // Fallback: no inference — run plan path (cargo check, cargo test)
@@ -607,7 +639,11 @@ async fn api_backlog_run(
                     .iter()
                     .map(|r| format!("{} {} {}", if r.s11 { "✓" } else { "✗" }, r.s10, r.s13))
                     .collect();
-                return (StatusCode::OK, Json(serde_json::json!({"message": "Done.", "summary": summary}))).into_response();
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"message": "Done.", "summary": summary})),
+                )
+                    .into_response();
             }
             Err(e) => {
                 return (
@@ -626,7 +662,11 @@ async fn api_backlog_run(
                 .iter()
                 .map(|r| format!("{} {} {}", if r.s11 { "✓" } else { "✗" }, r.s10, r.s13))
                 .collect();
-            (StatusCode::OK, Json(serde_json::json!({"message": "Done.", "summary": summary}))).into_response()
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"message": "Done.", "summary": summary})),
+            )
+                .into_response()
         }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -742,9 +782,20 @@ async fn api_demo_record(Json(payload): Json<serde_json::Value>) -> impl IntoRes
 
 fn app_router() -> Router<AppState> {
     let r = Router::new()
-        .route("/", get(|| async { Html(include_str!("../assets/app.html")) }))
-        .route("/api/status", get(|| async { Json(Status { status: "ok" }) }))
-        .route("/api/project", get(|| async { Json(serde_json::json!({"project": crate::default_project().display().to_string()})) }))
+        .route(
+            "/",
+            get(|| async { Html(include_str!("../assets/app.html")) }),
+        )
+        .route(
+            "/api/status",
+            get(|| async { Json(Status { status: "ok" }) }),
+        )
+        .route(
+            "/api/project",
+            get(|| async {
+                Json(serde_json::json!({"project": crate::default_project().display().to_string()}))
+            }),
+        )
         .route("/api/projects", get(api_projects))
         .route("/api/prompts", get(api_prompts))
         .route("/api/intent", post(api_intent))
@@ -785,28 +836,22 @@ async fn build_command(Query(q): Query<BuildCommandQuery>) -> Json<BuildCommandR
             args.push("--features");
             args.push(f);
         }
-        format!(
-            "cd {} && {}",
-            root.display(),
-            args.join(" ")
-        )
+        format!("cd {} && {}", root.display(), args.join(" "))
     } else {
         let mut args = vec!["cargo", "build"];
         if q.release {
             args.push("--release");
         }
-        format!(
-            "cd {} && {}",
-            project_path.display(),
-            args.join(" ")
-        )
+        format!("cd {} && {}", project_path.display(), args.join(" "))
     };
     Json(BuildCommandResponse { command })
 }
 
 pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
     let state = AppState::default();
-    let app = app_router().layer(CorsLayer::permissive()).with_state(state);
+    let app = app_router()
+        .layer(CorsLayer::permissive())
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("Kova API at http://{}", addr);
@@ -824,13 +869,18 @@ mod tests {
 
     fn test_app() -> Router {
         crate::bootstrap().unwrap();
-        app_router().layer(CorsLayer::permissive()).with_state(AppState::default())
+        app_router()
+            .layer(CorsLayer::permissive())
+            .with_state(AppState::default())
     }
 
     #[tokio::test]
     async fn api_status_returns_ok() {
         let app = test_app();
-        let req = Request::builder().uri("/api/status").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/api/status")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
@@ -841,7 +891,10 @@ mod tests {
     #[tokio::test]
     async fn api_project_returns_path() {
         let app = test_app();
-        let req = Request::builder().uri("/api/project").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/api/project")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
@@ -852,7 +905,10 @@ mod tests {
     #[tokio::test]
     async fn api_projects_returns_array() {
         let app = test_app();
-        let req = Request::builder().uri("/api/projects").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/api/projects")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
@@ -863,7 +919,10 @@ mod tests {
     #[tokio::test]
     async fn api_prompts_returns_system_and_persona() {
         let app = test_app();
-        let req = Request::builder().uri("/api/prompts").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/api/prompts")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 8192).await.unwrap();
@@ -875,7 +934,10 @@ mod tests {
     #[tokio::test]
     async fn api_build_presets_returns_map() {
         let app = test_app();
-        let req = Request::builder().uri("/build/presets").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/build/presets")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 8192).await.unwrap();
@@ -886,7 +948,10 @@ mod tests {
     #[tokio::test]
     async fn api_file_404_for_missing() {
         let app = test_app();
-        let req = Request::builder().uri("/api/file?hint=nonexistent_xyz.rs").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/api/file?hint=nonexistent_xyz.rs")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
@@ -899,7 +964,11 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
         let html = String::from_utf8_lossy(&body);
-        assert!(html.contains("<html") || html.contains("<!DOCTYPE"), "got: {}...", &html[..100.min(html.len())]);
+        assert!(
+            html.contains("<html") || html.contains("<!DOCTYPE"),
+            "got: {}...",
+            &html[..100.min(html.len())]
+        );
     }
 
     #[test]
@@ -915,7 +984,10 @@ mod tests {
     #[tokio::test]
     async fn context_recent_returns_string() {
         let app = test_app();
-        let req = Request::builder().uri("/context/recent?minutes=1").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/context/recent?minutes=1")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
@@ -923,7 +995,9 @@ mod tests {
 
 pub async fn run_with_open(addr: SocketAddr, url: &str) -> anyhow::Result<()> {
     let state = AppState::default();
-    let app = app_router().layer(CorsLayer::permissive()).with_state(state);
+    let app = app_router()
+        .layer(CorsLayer::permissive())
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("Kova API at {}", url);

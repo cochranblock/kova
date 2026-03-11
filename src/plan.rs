@@ -35,53 +35,56 @@ pub enum t5 {
 impl t3 {
     /// f14 = plan_from_intent. Map intent to action DAG.
     pub fn f14(intent: &t0, project: PathBuf, approuter_dir: Option<PathBuf>) -> Self {
-    let approuter_dir = approuter_dir.or_else(|| {
-        std::env::var("HOME")
-            .ok()
-            .map(|h| PathBuf::from(h).join("approuter"))
-    });
-    let mut s3 = Vec::new();
-    match &intent.s0 {
-        t1::FullPipeline => {
-            s3.push(t4 { s6: t5::CargoCheck });
-            s3.push(t4 { s6: t5::CargoTest });
-        }
-        t1::Test => {
-            s3.push(t4 { s6: t5::CargoTest });
-        }
-        t1::Compile { release, check_only } => {
-            if *check_only {
+        let approuter_dir = approuter_dir.or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| PathBuf::from(h).join("approuter"))
+        });
+        let mut s3 = Vec::new();
+        match &intent.s0 {
+            t1::FullPipeline => {
                 s3.push(t4 { s6: t5::CargoCheck });
-            } else {
+                s3.push(t4 { s6: t5::CargoTest });
+            }
+            t1::Test => {
+                s3.push(t4 { s6: t5::CargoTest });
+            }
+            t1::Compile {
+                release,
+                check_only,
+            } => {
+                if *check_only {
+                    s3.push(t4 { s6: t5::CargoCheck });
+                } else {
+                    s3.push(t4 {
+                        s6: t5::CargoBuild { release: *release },
+                    });
+                }
+            }
+            t1::TunnelUpdate => {
+                if approuter_dir.is_some() {
+                    s3.push(t4 {
+                        s6: t5::ApprouterUpdateTunnel,
+                    });
+                }
+            }
+            t1::SetupRoguerepo => {
+                if approuter_dir.is_some() {
+                    s3.push(t4 {
+                        s6: t5::ApprouterSetupRoguerepo,
+                    });
+                }
+            }
+            t1::Custom { cmd, args } => {
                 s3.push(t4 {
-                    s6: t5::CargoBuild { release: *release },
+                    s6: t5::Custom {
+                        cmd: cmd.clone(),
+                        args: args.clone(),
+                    },
                 });
             }
+            t1::CloudflarePurge | t1::FixWarnings => {}
         }
-        t1::TunnelUpdate => {
-            if approuter_dir.is_some() {
-                s3.push(t4 {
-                    s6: t5::ApprouterUpdateTunnel,
-                });
-            }
-        }
-        t1::SetupRoguerepo => {
-            if approuter_dir.is_some() {
-                s3.push(t4 {
-                    s6: t5::ApprouterSetupRoguerepo,
-                });
-            }
-        }
-        t1::Custom { cmd, args } => {
-            s3.push(t4 {
-                s6: t5::Custom {
-                    cmd: cmd.clone(),
-                    args: args.clone(),
-                },
-            });
-        }
-        t1::CloudflarePurge | t1::FixWarnings => {}
-    }
         t3 {
             s3,
             s4: project,

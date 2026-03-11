@@ -321,10 +321,19 @@ fn gather_context(project_dir: &Path) -> ProjectContext {
                 if trimmed.starts_with("///") || trimmed.starts_with("#[") {
                     continue;
                 }
-                if let Some(name) = trimmed.split('(').next().or_else(|| trimmed.strip_suffix(','))
+                if let Some(name) = trimmed
+                    .split('(')
+                    .next()
+                    .or_else(|| trimmed.strip_suffix(','))
                 {
                     let name = name.trim().trim_end_matches(',');
-                    if !name.is_empty() && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    if !name.is_empty()
+                        && name
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
+                    {
                         ctx.commands.push(name.to_string());
                     }
                 }
@@ -474,7 +483,11 @@ fn parse_plan(response: &str) -> Vec<Step> {
         let id = steps.len();
 
         if let Some(args) = content.strip_prefix("READ:") {
-            let files: Vec<String> = args.trim().split(',').map(|s| s.trim().to_string()).collect();
+            let files: Vec<String> = args
+                .trim()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect();
             steps.push(Step {
                 id,
                 description: format!("read {}", args.trim()),
@@ -563,9 +576,7 @@ fn execute_step(
             generate_file(cluster, config, path, prompt, context)
         }
 
-        StepAction::EditFile { path, prompt } => {
-            edit_file(cluster, config, path, prompt, context)
-        }
+        StepAction::EditFile { path, prompt } => edit_file(cluster, config, path, prompt, context),
 
         StepAction::RunCommand(cmd) => {
             let output = Command::new("sh")
@@ -785,7 +796,8 @@ fn single_generate(
     prompt: &str,
     config: &AcademyConfig,
 ) -> Result<String, String> {
-    let (_, response) = cluster.dispatch(TaskKind::CodeGen, system, prompt, Some(config.num_ctx))?;
+    let (_, response) =
+        cluster.dispatch(TaskKind::CodeGen, system, prompt, Some(config.num_ctx))?;
     Ok(extract_rust_block(&response).unwrap_or(response))
 }
 
@@ -801,7 +813,10 @@ fn fix_step(
         StepAction::RunCommand(cmd) => {
             // If cargo check/clippy/test failed, we can't fix a command itself
             // But we can try to fix the code that caused the failure
-            if cmd.contains("cargo check") || cmd.contains("cargo clippy") || cmd.contains("cargo test") {
+            if cmd.contains("cargo check")
+                || cmd.contains("cargo clippy")
+                || cmd.contains("cargo test")
+            {
                 let fix_prompt = format!(
                     "The command `{}` failed with:\n```\n{}\n```\n\n\
                     What file needs to be fixed? Identify the file path and the fix needed.\n\
@@ -886,10 +901,7 @@ fn verify_project(project_dir: &Path) -> bool {
         }
         Ok(o) => {
             let stderr = String::from_utf8_lossy(&o.stderr);
-            eprintln!(
-                "[academy] cargo check failed:\n{}",
-                truncate(&stderr, 500)
-            );
+            eprintln!("[academy] cargo check failed:\n{}", truncate(&stderr, 500));
             false
         }
         Err(e) => {
@@ -901,12 +913,7 @@ fn verify_project(project_dir: &Path) -> bool {
 
 // ── Git ──
 
-fn generate_commit_msg(
-    cluster: &Cluster,
-    task: &str,
-    files: &[String],
-    num_ctx: u32,
-) -> String {
+fn generate_commit_msg(cluster: &Cluster, task: &str, files: &[String], num_ctx: u32) -> String {
     let prompt = format!(
         "Write a git commit message for this change.\n\
         Task: {}\n\
@@ -999,7 +1006,11 @@ fn write_temp_crate(dir: &Path, code: &str) {
     )
     .ok();
     std::fs::create_dir_all(dir.join("src")).ok();
-    std::fs::write(dir.join("src/lib.rs"), format!("#![allow(dead_code)]\n{}", code)).ok();
+    std::fs::write(
+        dir.join("src/lib.rs"),
+        format!("#![allow(dead_code)]\n{}", code),
+    )
+    .ok();
 }
 
 fn write_validation_project(dir: &Path, code: &str, rel_path: &str) {

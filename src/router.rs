@@ -233,8 +233,8 @@ fn router_output_to_result(out: &RouterOutput) -> RouterResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_matches::assert_matches;
     use crate::kova_test;
+    use assert_matches::assert_matches;
 
     kova_test!(f79, parse_needs_clarification_with_question, {
         let r = RouterResult::parse("needs_clarification|Which file?");
@@ -245,7 +245,13 @@ mod tests {
 
     kova_test!(f79, parse_needs_clarification_without_question, {
         let r = RouterResult::parse("needs_clarification");
-        assert_matches!(r, RouterResult::NeedsClarification { question: None, choices: None });
+        assert_matches!(
+            r,
+            RouterResult::NeedsClarification {
+                question: None,
+                choices: None
+            }
+        );
     });
 
     kova_test!(f79, clarification_question_canned, {

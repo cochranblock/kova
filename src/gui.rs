@@ -145,9 +145,21 @@ impl KovaApp {
             .unwrap_or_default();
         let demo_recording = if demo {
             Some(DemoRecording {
-                name: format!("egui-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()),
+                name: format!(
+                    "egui-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                ),
                 actions: Vec::new(),
-                started_at: format!("{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()),
+                started_at: format!(
+                    "{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                ),
             })
         } else {
             None
@@ -194,11 +206,14 @@ impl KovaApp {
         approuter_dir: Option<std::path::PathBuf>,
     ) {
         if let Some(ref mut rec) = self.demo_recording {
-            rec.push("api_call", serde_json::json!({
-                "method": "run_intent",
-                "path": crate::intent_name(&intent.s0),
-                "project": project.display().to_string()
-            }));
+            rec.push(
+                "api_call",
+                serde_json::json!({
+                    "method": "run_intent",
+                    "path": crate::intent_name(&intent.s0),
+                    "project": project.display().to_string()
+                }),
+            );
         }
         let plan = crate::t3::f14(&intent, project, approuter_dir);
         let exec = crate::t6;
@@ -254,7 +269,8 @@ impl eframe::App for KovaApp {
                         let to_persist = if let Some(m) = self.messages.last_mut() {
                             match &result {
                                 crate::RouterResult::NeedsClarification { .. } => {
-                                    let orig = self.router_pending_user_msg.as_deref().unwrap_or("");
+                                    let orig =
+                                        self.router_pending_user_msg.as_deref().unwrap_or("");
                                     let q = result.clarification_question(orig);
                                     m.content = q.clone();
                                     self.clarification_pending = true;
@@ -267,35 +283,36 @@ impl eframe::App for KovaApp {
                                     Some(m.content.clone())
                                 }
                                 crate::RouterResult::CodeGen => {
-                                    let user_msg = self.router_pending_user_msg.take().unwrap_or_default();
-                                    let (action, target) = if let Some(in_pos) = user_msg.find(" in ") {
-                                        let (a, t) = user_msg.split_at(in_pos);
-                                        (a.trim(), t[" in ".len()..].trim())
-                                    } else if let Some(to_pos) = user_msg.find(" to ") {
-                                        let (a, t) = user_msg.split_at(to_pos);
-                                        (a.trim(), t[" to ".len()..].trim())
-                                    } else {
-                                        (user_msg.as_str(), "")
-                                    };
-                                    let restatement = crate::elicitor::build_restatement(action, target);
+                                    let user_msg =
+                                        self.router_pending_user_msg.take().unwrap_or_default();
+                                    let (action, target) =
+                                        if let Some(in_pos) = user_msg.find(" in ") {
+                                            let (a, t) = user_msg.split_at(in_pos);
+                                            (a.trim(), t[" in ".len()..].trim())
+                                        } else if let Some(to_pos) = user_msg.find(" to ") {
+                                            let (a, t) = user_msg.split_at(to_pos);
+                                            (a.trim(), t[" to ".len()..].trim())
+                                        } else {
+                                            (user_msg.as_str(), "")
+                                        };
+                                    let restatement =
+                                        crate::elicitor::build_restatement(action, target);
                                     m.content = restatement.clone();
                                     self.restatement_pending = true;
                                     self.restatement_pending_msg = Some(user_msg);
                                     Some(restatement)
                                 }
-                                _ if result.use_coder() || matches!(result, crate::RouterResult::Run) =>
+                                _ if result.use_coder()
+                                    || matches!(result, crate::RouterResult::Run) =>
                                 {
                                     m.content.clear();
-                                    let user_msg = self.router_pending_user_msg.take().unwrap_or_default();
+                                    let user_msg =
+                                        self.router_pending_user_msg.take().unwrap_or_default();
                                     if let Some(path) = crate::f78(crate::ModelRole::Coder) {
                                         let system = self.build_system_prompt();
                                         let hist: Vec<(String, String)> = Vec::new();
-                                        let rx = crate::inference::f76(
-                                            &path,
-                                            &system,
-                                            &hist,
-                                            &user_msg,
-                                        );
+                                        let rx =
+                                            crate::inference::f76(&path, &system, &hist, &user_msg);
                                         self.llm_receiver = Some(rx);
                                         None
                                     } else {

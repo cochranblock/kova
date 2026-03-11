@@ -108,12 +108,8 @@ async fn run_pipeline(
     );
 
     let (mut response, mut initial_code) = if crate::config::code_gen_structured() {
-        match crate::inference::f80_code_gen_structured(
-            coder_path,
-            &code_gen_prompt,
-            user_input,
-        )
-        .await
+        match crate::inference::f80_code_gen_structured(coder_path, &code_gen_prompt, user_input)
+            .await
         {
             Ok(rust_block) => (format!("```rust\n{}\n```", rust_block), Some(rust_block)),
             Err(_) => {
@@ -147,7 +143,9 @@ async fn run_pipeline(
     let mut chain: Vec<String> = Vec::new();
 
     loop {
-        let code = initial_code.take().or_else(|| extract_rust_block(&response));
+        let code = initial_code
+            .take()
+            .or_else(|| extract_rust_block(&response));
         let Some(ref code) = code else {
             trace.outcome = "success".to_string();
             write_last_trace(&last_trace, &trace).await;
@@ -189,7 +187,10 @@ edition = "2021"
                 write_last_trace(&last_trace, &trace).await;
                 return format_with_chain(&response, &chain, "compile", &stderr);
             }
-            let _ = tx.send(Arc::from(format!("Compile failed (attempt {}), fixing…", attempt)));
+            let _ = tx.send(Arc::from(format!(
+                "Compile failed (attempt {}), fixing…",
+                attempt
+            )));
             response = match fix_and_retry(fix_path, project_dir, "compile", &stderr, code).await {
                 Ok(s) => s,
                 Err(e) => {
@@ -216,8 +217,12 @@ edition = "2021"
                     write_last_trace(&last_trace, &trace).await;
                     return format_with_chain(&response, &chain, "clippy", &stderr);
                 }
-                let _ = tx.send(Arc::from(format!("Clippy failed (attempt {}), fixing…", attempt)));
-                response = match fix_and_retry(fix_path, project_dir, "clippy", &stderr, code).await {
+                let _ = tx.send(Arc::from(format!(
+                    "Clippy failed (attempt {}), fixing…",
+                    attempt
+                )));
+                response = match fix_and_retry(fix_path, project_dir, "clippy", &stderr, code).await
+                {
                     Ok(s) => s,
                     Err(e) => {
                         trace.outcome = "failed".to_string();
@@ -243,7 +248,10 @@ edition = "2021"
                 write_last_trace(&last_trace, &trace).await;
                 return format_with_chain(&response, &chain, "tests", &stderr);
             }
-            let _ = tx.send(Arc::from(format!("Tests failed (attempt {}), fixing…", attempt)));
+            let _ = tx.send(Arc::from(format!(
+                "Tests failed (attempt {}), fixing…",
+                attempt
+            )));
             response = match fix_and_retry(fix_path, project_dir, "tests", &stderr, code).await {
                 Ok(s) => s,
                 Err(e) => {
@@ -314,22 +322,14 @@ edition = "2021"
         .unwrap();
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
         // Deliberate syntax error: missing semicolon
-        std::fs::write(
-            tmp.path().join("src/lib.rs"),
-            "pub fn foo() { let x = 1 }",
-        )
-        .unwrap();
+        std::fs::write(tmp.path().join("src/lib.rs"), "pub fn foo() { let x = 1 }").unwrap();
         let (ok, stderr) = cargo_check(tmp.path());
         assert!(!ok, "cargo check must fail with syntax error");
         assert!(stderr.contains("expected") || stderr.contains(";"));
         assert_eq!(categorize(&stderr), ErrorKind::Syntax);
 
         // Fix: add semicolon
-        std::fs::write(
-            tmp.path().join("src/lib.rs"),
-            "pub fn foo() { let x = 1; }",
-        )
-        .unwrap();
+        std::fs::write(tmp.path().join("src/lib.rs"), "pub fn foo() { let x = 1; }").unwrap();
         let (ok, _) = cargo_check(tmp.path());
         assert!(ok, "fixed code must pass cargo check");
     }

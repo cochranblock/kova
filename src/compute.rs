@@ -30,12 +30,7 @@ impl t6 {
         Ok(out)
     }
 
-    fn f16(
-        &self,
-        action: &t5,
-        plan: &t3,
-        approuter_dir: &Option<std::path::PathBuf>,
-    ) -> t7 {
+    fn f16(&self, action: &t5, plan: &t3, approuter_dir: &Option<std::path::PathBuf>) -> t7 {
         let project = &plan.s4;
         match action {
             t5::CargoCheck => self.run_cargo_check(plan),
@@ -47,7 +42,10 @@ impl t6 {
                     .current_dir(project)
                     .output();
                 let (ok, stderr) = match o {
-                    Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stderr).into_owned()),
+                    Ok(o) => (
+                        o.status.success(),
+                        String::from_utf8_lossy(&o.stderr).into_owned(),
+                    ),
                     Err(e) => (false, e.to_string()),
                 };
                 t7 {
@@ -115,10 +113,7 @@ impl t6 {
                 }
             }
             t5::Custom { cmd, args } => {
-                let r = Command::new(cmd)
-                    .args(args)
-                    .current_dir(project)
-                    .output();
+                let r = Command::new(cmd).args(args).current_dir(project).output();
                 match r {
                     Ok(o) => t7 {
                         s10: format!("{} {}", cmd, args.join(" ")),
@@ -141,10 +136,7 @@ impl t6 {
 
     fn run_cargo_check(&self, plan: &t3) -> t7 {
         let (cwd, args) = self.cargo_cwd_args(plan, "check", &[]);
-        let r = Command::new("cargo")
-            .args(args)
-            .current_dir(cwd)
-            .output();
+        let r = Command::new("cargo").args(args).current_dir(cwd).output();
         self.cargo_result("cargo check", r)
     }
 
@@ -168,10 +160,7 @@ impl t6 {
     }
 
     fn resolve_preset(&self, plan: &t3) -> Option<crate::config::BuildPreset> {
-        let name = plan
-            .s7
-            .clone()
-            .or_else(|| infer_preset_name(&plan.s4))?;
+        let name = plan.s7.clone().or_else(|| infer_preset_name(&plan.s4))?;
         load_build_preset(&name)
     }
 

@@ -150,24 +150,29 @@ impl Cluster {
 
     /// Check health of all nodes. Returns vec of (node_id, online, version).
     pub fn health_check(&self) -> Vec<(String, bool, Option<String>)> {
-        let handles: Vec<_> = self.nodes.iter().map(|node| {
-            let id = node.id.clone();
-            let url = node.base_url();
-            std::thread::spawn(move || {
-                let online = ollama::health(&url);
-                let ver = if online { ollama::version(&url) } else { None };
-                (id, online, ver)
+        let handles: Vec<_> = self
+            .nodes
+            .iter()
+            .map(|node| {
+                let id = node.id.clone();
+                let url = node.base_url();
+                std::thread::spawn(move || {
+                    let online = ollama::health(&url);
+                    let ver = if online { ollama::version(&url) } else { None };
+                    (id, online, ver)
+                })
             })
-        }).collect();
+            .collect();
 
         handles.into_iter().filter_map(|h| h.join().ok()).collect()
     }
 
     /// Get all online nodes.
     pub fn online_nodes(&self) -> Vec<&InferNode> {
-        self.nodes.iter().filter(|n| {
-            ollama::health(&n.base_url())
-        }).collect()
+        self.nodes
+            .iter()
+            .filter(|n| ollama::health(&n.base_url()))
+            .collect()
     }
 
     /// Pick the best node for a given task kind.
@@ -201,7 +206,9 @@ impl Cluster {
 
         // Fallback: any online non-busy node that meets the minimum tier
         self.nodes.iter().find(|n| {
-            !n.is_busy() && tier_rank(n.tier) >= tier_rank(min_tier) && ollama::health(&n.base_url())
+            !n.is_busy()
+                && tier_rank(n.tier) >= tier_rank(min_tier)
+                && ollama::health(&n.base_url())
         })
     }
 
@@ -220,9 +227,10 @@ impl Cluster {
 
         // Use coding model for code tasks, general model for others
         let model = match task {
-            TaskKind::CodeGen | TaskKind::FixCompile | TaskKind::TestWrite | TaskKind::ClippyFix => {
-                &node.model
-            }
+            TaskKind::CodeGen
+            | TaskKind::FixCompile
+            | TaskKind::TestWrite
+            | TaskKind::ClippyFix => &node.model,
             TaskKind::Classify | TaskKind::General | TaskKind::CodeReview => {
                 node.general_model.as_deref().unwrap_or(&node.model)
             }
@@ -269,7 +277,9 @@ impl Cluster {
             _ => return self.dispatch(task, system, prompt, num_ctx),
         };
 
-        let candidates: Vec<_> = self.nodes.iter()
+        let candidates: Vec<_> = self
+            .nodes
+            .iter()
             .filter(|n| preferred_roles.contains(&n.role) && !n.is_busy())
             .collect();
 
@@ -279,22 +289,25 @@ impl Cluster {
 
         // Race all candidates
         let (tx, rx) = mpsc::channel();
-        let _handles: Vec<_> = candidates.iter().map(|node| {
-            let tx = tx.clone();
-            let url = node.base_url();
-            let model = node.model.clone();
-            let id = node.id.clone();
-            let system = system.to_string();
-            let prompt = prompt.to_string();
-            let busy = Arc::clone(&node.busy);
+        let _handles: Vec<_> = candidates
+            .iter()
+            .map(|node| {
+                let tx = tx.clone();
+                let url = node.base_url();
+                let model = node.model.clone();
+                let id = node.id.clone();
+                let system = system.to_string();
+                let prompt = prompt.to_string();
+                let busy = Arc::clone(&node.busy);
 
-            std::thread::spawn(move || {
-                busy.store(true, Ordering::SeqCst);
-                let result = ollama::generate(&url, &model, &system, &prompt, num_ctx);
-                busy.store(false, Ordering::SeqCst);
-                let _ = tx.send((id, result));
+                std::thread::spawn(move || {
+                    busy.store(true, Ordering::SeqCst);
+                    let result = ollama::generate(&url, &model, &system, &prompt, num_ctx);
+                    busy.store(false, Ordering::SeqCst);
+                    let _ = tx.send((id, result));
+                })
             })
-        }).collect();
+            .collect();
         drop(tx);
 
         // Take first successful result
@@ -312,15 +325,16 @@ impl Cluster {
         let mut out = String::new();
         out.push_str("IRONHIVE Cluster Status\n");
         out.push_str("─────────────────────────────────────────────────────────────────\n");
-        out.push_str(
-            &format!("{:<5} {:<14} {:<22} {:<10} {:<8} {}\n",
-                "Node", "Role", "Model", "Tier", "Status", "Models")
-        );
+        out.push_str(&format!(
+            "{:<5} {:<14} {:<22} {:<10} {:<8} {}\n",
+            "Node", "Role", "Model", "Tier", "Status", "Models"
+        ));
         out.push_str("─────────────────────────────────────────────────────────────────\n");
 
         let health = self.health_check();
         for node in &self.nodes {
-            let (_, online, _ver) = health.iter()
+            let (_, online, _ver) = health
+                .iter()
                 .find(|(id, _, _)| id == &node.id)
                 .cloned()
                 .unwrap_or((node.id.clone(), false, None));
@@ -338,7 +352,11 @@ impl Cluster {
 
             let models = if online {
                 match ollama::list_models(&node.base_url()) {
-                    Ok(ms) => ms.iter().map(|m| m.name.clone()).collect::<Vec<_>>().join(", "),
+                    Ok(ms) => ms
+                        .iter()
+                        .map(|m| m.name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     Err(_) => "?".into(),
                 }
             } else {
@@ -351,7 +369,10 @@ impl Cluster {
             ));
         }
 
-        if let Some(ver) = health.iter().find_map(|(_, online, v)| if *online { v.clone() } else { None }) {
+        if let Some(ver) = health
+            .iter()
+            .find_map(|(_, online, v)| if *online { v.clone() } else { None })
+        {
             out.push_str(&format!("\nollama version: {}\n", ver));
         }
 
@@ -362,7 +383,8 @@ impl Cluster {
 /// Convenience: create default cluster and dispatch a code gen request.
 pub fn quick_gen(system: &str, prompt: &str) -> Result<String, String> {
     let cluster = Cluster::default_hive();
-    cluster.dispatch(TaskKind::CodeGen, system, prompt, Some(8192))
+    cluster
+        .dispatch(TaskKind::CodeGen, system, prompt, Some(8192))
         .map(|(_, r)| r)
 }
 
@@ -370,7 +392,8 @@ pub fn quick_gen(system: &str, prompt: &str) -> Result<String, String> {
 pub fn quick_review(system: &str, code: &str) -> Result<String, String> {
     let cluster = Cluster::default_hive();
     let prompt = format!("Review this Rust code for correctness, idiom violations, and potential issues:\n\n```rust\n{}\n```", code);
-    cluster.dispatch(TaskKind::CodeReview, system, &prompt, Some(8192))
+    cluster
+        .dispatch(TaskKind::CodeReview, system, &prompt, Some(8192))
         .map(|(_, r)| r)
 }
 
@@ -381,6 +404,7 @@ pub fn quick_fix(system: &str, code: &str, error: &str) -> Result<String, String
         "Fix this Rust code. The compiler error is:\n```\n{}\n```\n\nCode:\n```rust\n{}\n```\n\nReturn only the fixed code.",
         error, code
     );
-    cluster.dispatch(TaskKind::FixCompile, system, &prompt, Some(8192))
+    cluster
+        .dispatch(TaskKind::FixCompile, system, &prompt, Some(8192))
         .map(|(_, r)| r)
 }

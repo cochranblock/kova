@@ -101,7 +101,12 @@ fn run_local(plan: &crate::plan::t3) -> anyhow::Result<()> {
     let results = exec.f15(plan)?;
     for r in &results {
         let mark = if r.s11 { "✓" } else { "✗" };
-        eprintln!("{} {} {}", mark, r.s10, if r.s13.is_empty() { "" } else { &r.s13 });
+        eprintln!(
+            "{} {} {}",
+            mark,
+            r.s10,
+            if r.s13.is_empty() { "" } else { &r.s13 }
+        );
     }
     let all_ok = results.iter().all(|r| r.s11);
     if !all_ok {
@@ -144,7 +149,10 @@ pub fn run_command(
         }
         // Delegate to run_build for shared sync + parallel broadcast logic.
         let nodes: Vec<String> = if let Some(s) = nodes_override {
-            s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
         } else {
             let hosts = crate::inspect::run_inspect();
             hosts
@@ -197,8 +205,7 @@ pub fn run_build(
         .ok()
         .map(|h| PathBuf::from(h).join("approuter"));
     let plan = crate::plan::t3::f14(&intent, project_path.clone(), approuter_dir);
-    run_build_with_plan(plan, local, no_sync, nodes_override)
-        .map(|_| ())
+    run_build_with_plan(plan, local, no_sync, nodes_override).map(|_| ())
 }
 
 /// Shared sync + broadcast. Used by run_build and run_command --broadcast.
@@ -209,7 +216,10 @@ fn run_build_with_plan(
     nodes_override: Option<String>,
 ) -> anyhow::Result<()> {
     let nodes: Vec<String> = if let Some(s) = nodes_override {
-        s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
+        s.split(',')
+            .map(|x| x.trim().to_string())
+            .filter(|x| !x.is_empty())
+            .collect()
     } else {
         let hosts = crate::inspect::run_inspect();
         hosts
@@ -239,11 +249,17 @@ fn run_build_with_plan(
     };
 
     if !skip_sync {
-        eprintln!("[build] Syncing to {} workers (parallel, tar-stream)...", nodes.len());
+        eprintln!(
+            "[build] Syncing to {} workers (parallel, tar-stream)...",
+            nodes.len()
+        );
         sync_parallel(&nodes, local, true)?;
     }
 
-    eprintln!("[build] Broadcasting to {} workers (parallel)...", nodes.len());
+    eprintln!(
+        "[build] Broadcasting to {} workers (parallel)...",
+        nodes.len()
+    );
     broadcast_parallel(&plan, &nodes, local)?;
 
     eprintln!("[build] Done.");
@@ -311,7 +327,16 @@ fn sync_tar_stream(nodes: &[String], local: bool) -> anyhow::Result<()> {
 
     let tar_path = std::env::temp_dir().join(format!("kova-sync-{}.tar", std::process::id()));
     let status = Command::new("tar")
-        .args(["-chf", tar_path.to_str().unwrap(), "--exclude", "target", "--exclude", ".git", "--exclude", "node_modules"])
+        .args([
+            "-chf",
+            tar_path.to_str().unwrap(),
+            "--exclude",
+            "target",
+            "--exclude",
+            ".git",
+            "--exclude",
+            "node_modules",
+        ])
         .arg("-C")
         .arg(&tmp)
         .arg("projects")
@@ -344,7 +369,10 @@ fn sync_tar_stream(nodes: &[String], local: bool) -> anyhow::Result<()> {
 
     let mut all_ok = true;
     for h in handles {
-        if !h.join().map_err(|_| anyhow::anyhow!("Tar-stream sync thread panicked"))? {
+        if !h
+            .join()
+            .map_err(|_| anyhow::anyhow!("Tar-stream sync thread panicked"))?
+        {
             all_ok = false;
         }
     }
@@ -398,12 +426,15 @@ fn sync_rsync_parallel(nodes: &[String], local: bool) -> anyhow::Result<()> {
             let hive_workspace = hive_workspace.to_string();
             let hive_projects = hive_projects.to_string();
             let rsync_args = rsync_args.clone();
-            thread::spawn(move || sync_one_node(&t, &root, &hive_workspace, &hive_projects, &rsync_args))
+            thread::spawn(move || {
+                sync_one_node(&t, &root, &hive_workspace, &hive_projects, &rsync_args)
+            })
         })
         .collect();
 
     for h in handles {
-        h.join().map_err(|_| anyhow::anyhow!("Sync thread panicked"))??;
+        h.join()
+            .map_err(|_| anyhow::anyhow!("Sync thread panicked"))??;
     }
     Ok(())
 }
@@ -536,7 +567,9 @@ fn broadcast_parallel(plan: &crate::plan::t3, nodes: &[String], local: bool) -> 
             eprintln!("[{}] {}", n, line);
         }
         for h in handles {
-            let ok = h.join().map_err(|_| anyhow::anyhow!("Broadcast thread panicked"))?;
+            let ok = h
+                .join()
+                .map_err(|_| anyhow::anyhow!("Broadcast thread panicked"))?;
             if !ok {
                 anyhow::bail!("{} failed on at least one node", cmd);
             }
@@ -558,8 +591,18 @@ fn hive_paths(local: bool) -> (String, String) {
 
 /// Workspace crates to sync (per KOVA_PROJECT_PLACEMENT).
 const WORKSPACE_CRATES: &[&str] = &[
-    "approuter", "cochranblock", "oakilydokily", "kova", "kova-core", "kova-web",
-    "exopack", "whyyoulying", "wowasticker", "railgun", "ironhive", "vendor",
+    "approuter",
+    "cochranblock",
+    "oakilydokily",
+    "kova",
+    "kova-core",
+    "kova-web",
+    "exopack",
+    "whyyoulying",
+    "wowasticker",
+    "railgun",
+    "ironhive",
+    "vendor",
 ];
 
 fn kova_root() -> PathBuf {
@@ -572,7 +615,13 @@ fn kova_root() -> PathBuf {
 }
 
 /// Sync workspace from c2-core to workers. Replaces sync-hive.sh.
-pub fn run_sync(dry_run: bool, target: &str, local: bool, all: bool, full: bool) -> anyhow::Result<()> {
+pub fn run_sync(
+    dry_run: bool,
+    target: &str,
+    local: bool,
+    all: bool,
+    full: bool,
+) -> anyhow::Result<()> {
     let nodes: Vec<String> = if all {
         default_nodes().into_iter().map(String::from).collect()
     } else {
@@ -580,7 +629,11 @@ pub fn run_sync(dry_run: bool, target: &str, local: bool, all: bool, full: bool)
     };
 
     if !dry_run && !nodes.is_empty() {
-        eprintln!("[sync] Syncing to {} workers (parallel, {})...", nodes.len(), if full { "tar-stream" } else { "rsync" });
+        eprintln!(
+            "[sync] Syncing to {} workers (parallel, {})...",
+            nodes.len(),
+            if full { "tar-stream" } else { "rsync" }
+        );
         sync_parallel(&nodes, local, full)?;
         eprintln!("[sync] Done.");
         return Ok(());
@@ -655,7 +708,10 @@ pub fn run_sync(dry_run: bool, target: &str, local: bool, all: bool, full: bool)
         }
 
         // 3. Rsync ronin-sites, rogue-repo (outside workspace)
-        eprintln!("[sync] Syncing ronin-sites, rogue-repo to {}:{}/", t, hive_projects);
+        eprintln!(
+            "[sync] Syncing ronin-sites, rogue-repo to {}:{}/",
+            t, hive_projects
+        );
         for dir in ["ronin-sites", "rogue-repo"] {
             let src = root.join(dir);
             if src.is_dir() {

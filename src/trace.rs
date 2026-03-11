@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct LastTrace {
     pub intent: String,
     pub user_msg: String,
-    pub stage: String,       // "compile" | "clippy" | "tests"
+    pub stage: String, // "compile" | "clippy" | "tests"
     pub stderr: String,
     pub retry_count: u32,
     pub outcome: String,    // "success" | "failed"

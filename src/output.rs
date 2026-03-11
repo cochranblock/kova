@@ -50,7 +50,10 @@ mod tests {
     #[test]
     fn f85_resolve_target() {
         let dir = std::path::Path::new("/tmp");
-        assert_eq!(f85(dir, Some("plan.rs")).to_string_lossy(), "/tmp/src/plan.rs");
+        assert_eq!(
+            f85(dir, Some("plan.rs")).to_string_lossy(),
+            "/tmp/src/plan.rs"
+        );
         assert_eq!(f85(dir, None).to_string_lossy(), "/tmp/src/lib.rs");
     }
 }

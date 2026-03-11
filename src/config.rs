@@ -380,7 +380,10 @@ pub fn discover_projects() -> Vec<PathBuf> {
                         };
                         for m in members {
                             let full = root.join(&m);
-                            if full.exists() && full.join("Cargo.toml").exists() && seen.insert(full.clone()) {
+                            if full.exists()
+                                && full.join("Cargo.toml").exists()
+                                && seen.insert(full.clone())
+                            {
                                 out.push(full);
                             }
                         }

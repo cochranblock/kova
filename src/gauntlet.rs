@@ -379,11 +379,7 @@ pub fn run_gauntlet(phases: Option<Vec<u8>>) -> GauntletReport {
             5 => "Survive",
             _ => "?",
         };
-        let pct = if *total == 0 {
-            0
-        } else {
-            passed * 100 / total
-        };
+        let pct = if *total == 0 { 0 } else { passed * 100 / total };
         let bar = "█".repeat(*passed) + &"░".repeat(total - passed);
         println!(
             "  Phase {} ({}): {}/{} [{}] {}%",
@@ -412,10 +408,7 @@ pub fn run_gauntlet(phases: Option<Vec<u8>>) -> GauntletReport {
     if !failures.is_empty() {
         println!("  Failures:");
         for f in &failures {
-            println!(
-                "    Phase {} / {} — {}",
-                f.phase, f.name, f.failure_reason
-            );
+            println!("    Phase {} / {} — {}", f.phase, f.name, f.failure_reason);
         }
         println!();
     }

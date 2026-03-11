@@ -94,7 +94,10 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
     );
 
     // ── Stage 1: Fan-out to expert nodes ──
-    println!("[moe] stage 1: fan-out generation to {} experts...", config.num_experts);
+    println!(
+        "[moe] stage 1: fan-out generation to {} experts...",
+        config.num_experts
+    );
 
     let expert_nodes = pick_expert_nodes(&cluster, config.num_experts);
     if expert_nodes.is_empty() {
@@ -128,11 +131,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
             let num_ctx = config.num_ctx;
 
             // Pick the right model for this node
-            let node = cluster
-                .nodes
-                .iter()
-                .find(|n| n.id == node_id)
-                .unwrap();
+            let node = cluster.nodes.iter().find(|n| n.id == node_id).unwrap();
             let model = node.model.clone();
 
             std::thread::spawn(move || {
@@ -240,7 +239,10 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
             })
             .collect();
 
-        handles.into_iter().map(|h| h.join().unwrap_or((false, false, false, 0))).collect()
+        handles
+            .into_iter()
+            .map(|h| h.join().unwrap_or((false, false, false, 0)))
+            .collect()
     };
 
     for (i, (check_ok, clippy_ok, tests_ok, compile_ms)) in compile_results.into_iter().enumerate()
@@ -470,12 +472,7 @@ fn review_variant(cluster: &Cluster, code: &str, num_ctx: u32) -> (u8, String) {
     let system =
         "You are a Rust code reviewer. Rate code 0-10. First line must be the number only.";
 
-    match cluster.dispatch(
-        TaskKind::CodeReview,
-        system,
-        &review_prompt,
-        Some(num_ctx),
-    ) {
+    match cluster.dispatch(TaskKind::CodeReview, system, &review_prompt, Some(num_ctx)) {
         Ok((_, response)) => {
             let first_line = response.lines().next().unwrap_or("5");
             let score: u8 = first_line

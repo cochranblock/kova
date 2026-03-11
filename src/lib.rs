@@ -3,51 +3,52 @@
 //! Kova — augment engine. Core lib for GUI + serve.
 
 pub mod backlog;
-pub mod config;
-pub mod cursor_prompts;
-pub mod context;
-pub mod trace;
 pub mod compute;
+pub mod config;
+pub mod context;
+pub mod cursor_prompts;
 pub mod plan;
 pub mod storage;
+pub mod trace;
 
-pub use kova_core::{entry_to_intent, f62, intent_name, t0, t1, t2, Backlog, BacklogEntry};
 pub use backlog::f25;
+pub use compute::{t6, t7};
 pub use config::{
     all_build_presets, backlog_path, bind_addr, bootstrap, cursor_prompts_enabled, default_project,
-    discover_projects, f78, home, inference_model_path, infer_preset_name, kova_dir, load_build_preset,
-    load_prompt, models_dir, orchestration_max_fix_retries, orchestration_router_resident,
-    orchestration_run_clippy, orchestration_specialist_idle_unload_secs, prompts_dir,
-    sled_path, workspace_root, BuildPreset, ModelRole,
+    discover_projects, f78, home, infer_preset_name, inference_model_path, kova_dir,
+    load_build_preset, load_prompt, models_dir, orchestration_max_fix_retries,
+    orchestration_router_resident, orchestration_run_clippy,
+    orchestration_specialist_idle_unload_secs, prompts_dir, sled_path, workspace_root, BuildPreset,
+    ModelRole,
 };
 pub use context::{f73, f74, Message};
-pub use compute::{t6, t7};
+pub use kova_core::{entry_to_intent, f62, intent_name, t0, t1, t2, Backlog, BacklogEntry};
 pub use plan::{t3, t4, t5};
 #[cfg(feature = "inference")]
 pub use router::{f79, RouterResult};
 
+pub mod academy;
+#[cfg(feature = "inference")]
+pub mod context_loader;
 #[cfg(feature = "gui")]
 pub mod gui;
-#[cfg(feature = "gui")]
-pub mod theme;
-#[cfg(feature = "gui")]
-pub mod output;
-#[cfg(feature = "gui")]
-pub mod web;
-#[cfg(feature = "serve")]
-pub mod serve;
 #[cfg(feature = "inference")]
 pub mod inference;
 #[cfg(feature = "inference")]
 pub mod model;
-#[cfg(feature = "inference")]
-pub mod router;
-pub mod academy;
+#[cfg(feature = "gui")]
+pub mod output;
 #[cfg(feature = "inference")]
 pub mod pipeline;
-#[cfg(feature = "inference")]
-pub mod context_loader;
 pub mod recent_changes;
+#[cfg(feature = "inference")]
+pub mod router;
+#[cfg(feature = "serve")]
+pub mod serve;
+#[cfg(feature = "gui")]
+pub mod theme;
+#[cfg(feature = "gui")]
+pub mod web;
 
 #[cfg(feature = "autopilot")]
 pub mod autopilot;
@@ -55,23 +56,23 @@ pub mod autopilot;
 #[cfg(feature = "daemon")]
 pub mod daemon;
 
+#[cfg(feature = "inference")]
+pub mod agent_loop;
 pub mod c2;
 pub mod cargo_cmd;
 pub mod cluster;
+pub mod elicitor;
 pub mod factory;
 pub mod gauntlet;
 pub mod git_cmd;
-pub mod moe;
-pub mod ollama;
-pub mod elicitor;
 pub mod inspect;
+pub mod moe;
 pub mod node_cmd;
-pub mod ssh_ca;
-pub mod tools;
-#[cfg(feature = "inference")]
-pub mod agent_loop;
+pub mod ollama;
 #[cfg(feature = "inference")]
 pub mod repl;
+pub mod ssh_ca;
+pub mod tools;
 
 #[cfg(test)]
 mod test_utils;
@@ -108,7 +109,9 @@ pub fn run_test_suite() -> anyhow::Result<()> {
                 let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
                 anyhow::bail!("timed out after {}s", secs)
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => Err(anyhow::anyhow!("child thread panicked")),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(anyhow::anyhow!("child thread panicked"))
+            }
         }
     }
 
@@ -186,9 +189,7 @@ pub fn run_test_suite() -> anyhow::Result<()> {
         anyhow::bail!("release binary not found: {:?}", kova_bin);
     }
     let ok = run_with_timeout(
-        Command::new(&kova_bin)
-            .env("HOME", &home)
-            .arg("bootstrap"),
+        Command::new(&kova_bin).env("HOME", &home).arg("bootstrap"),
         120,
     )?;
     if !ok {
@@ -239,7 +240,8 @@ pub fn run_test_suite() -> anyhow::Result<()> {
                     .build()
                     .map_err(|e| anyhow::anyhow!("{}", e));
                 let result = match rt {
-                    Ok(r) => r.block_on(exopack::baked_demo::run_baked_demo(&kova_bin, &home, port))
+                    Ok(r) => r
+                        .block_on(exopack::baked_demo::run_baked_demo(&kova_bin, &home, port))
                         .map_err(|e| anyhow::anyhow!("{}", e)),
                     Err(e) => Err(e),
                 };

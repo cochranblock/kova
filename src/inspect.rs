@@ -113,9 +113,12 @@ echo "$gpu"
 
     let output = Command::new("ssh")
         .args([
-            "-o", "ConnectTimeout=5",
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=5",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "BatchMode=yes",
             node,
             cmd,
         ])
@@ -181,12 +184,24 @@ pub fn run_inspect() -> Vec<HostInfo> {
 
 /// Print human-readable table.
 pub fn print_table(hosts: &[HostInfo]) {
-    println!("{:<12} {:<8} {:<10} {:<14} GPU", "Host", "Cores", "RAM(GB)", "Disk(GB free)");
+    println!(
+        "{:<12} {:<8} {:<10} {:<14} GPU",
+        "Host", "Cores", "RAM(GB)", "Disk(GB free)"
+    );
     println!("{}", "-".repeat(70));
     for h in hosts {
-        let cores = h.cores.map(|n| n.to_string()).unwrap_or_else(|| "—".to_string());
-        let ram = h.ram_gb.map(|n| n.to_string()).unwrap_or_else(|| "—".to_string());
-        let disk = h.disk_free_gb.map(|n| n.to_string()).unwrap_or_else(|| "—".to_string());
+        let cores = h
+            .cores
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "—".to_string());
+        let ram = h
+            .ram_gb
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "—".to_string());
+        let disk = h
+            .disk_free_gb
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "—".to_string());
         let gpu = h.gpu.as_deref().unwrap_or("—");
         let id = if h.unreachable {
             format!("{} (unreachable)", h.id)
@@ -199,11 +214,19 @@ pub fn print_table(hosts: &[HostInfo]) {
 
 /// Print placement recommendations based on inspect data.
 pub fn print_recommend(hosts: &[HostInfo]) {
-    let workers: Vec<_> = hosts.iter().filter(|h| h.id != "c2-core" && !h.unreachable).collect();
+    let workers: Vec<_> = hosts
+        .iter()
+        .filter(|h| h.id != "c2-core" && !h.unreachable)
+        .collect();
     let max_ram = workers.iter().filter_map(|h| h.ram_gb).max().unwrap_or(0);
     let max_cores = workers.iter().filter_map(|h| h.cores).max().unwrap_or(0);
-    let heavy_ram = workers.iter().find(|h| h.ram_gb == Some(max_ram) && max_ram >= 40);
-    let max_cores_hosts: Vec<_> = workers.iter().filter(|h| h.cores == Some(max_cores)).collect();
+    let heavy_ram = workers
+        .iter()
+        .find(|h| h.ram_gb == Some(max_ram) && max_ram >= 40);
+    let max_cores_hosts: Vec<_> = workers
+        .iter()
+        .filter(|h| h.cores == Some(max_cores))
+        .collect();
 
     println!("\n--- Placement recommendations ---\n");
 
@@ -217,28 +240,43 @@ pub fn print_recommend(hosts: &[HostInfo]) {
 
     if !max_cores_hosts.is_empty() {
         let names: Vec<_> = max_cores_hosts.iter().map(|h| h.id.as_str()).collect();
-        println!("Parallel crate builds (max {} cores): {}", max_cores, names.join(", "));
+        println!(
+            "Parallel crate builds (max {} cores): {}",
+            max_cores,
+            names.join(", ")
+        );
         println!("  -> Use sshallp or kova c2 run f18 --broadcast\n");
     }
 
     if let Some(st) = workers.iter().find(|h| h.id == "st") {
         if let Some(d) = st.disk_free_gb {
             if d < 50 {
-                println!("WARNING: st disk low ({} GB free). Hive/NFS export at risk.", d);
+                println!(
+                    "WARNING: st disk low ({} GB free). Hive/NFS export at risk.",
+                    d
+                );
             } else {
                 println!("st: NFS export /mnt/hive. Use for rsync target, hive setup.");
             }
         }
     }
 
-    let gpu_workers: Vec<_> = workers.iter().filter(|h| h.gpu.as_ref().map(|s| !s.is_empty()).unwrap_or(false)).collect();
+    let gpu_workers: Vec<_> = workers
+        .iter()
+        .filter(|h| h.gpu.as_ref().map(|s| !s.is_empty()).unwrap_or(false))
+        .collect();
     if !gpu_workers.is_empty() {
-        let list: Vec<String> = gpu_workers.iter().map(|h| format!("{} ({})", h.id, h.gpu.as_deref().unwrap_or(""))).collect();
+        let list: Vec<String> = gpu_workers
+            .iter()
+            .map(|h| format!("{} ({})", h.id, h.gpu.as_deref().unwrap_or("")))
+            .collect();
         println!("\nWorkers with GPU: {}", list.join(", "));
         println!("  -> Offload batch inference, training from c2-core");
     }
 
-    if let Some(idlest) = crate::node_cmd::pick_idlest(&workers.iter().map(|h| h.id.clone()).collect::<Vec<_>>()) {
+    if let Some(idlest) =
+        crate::node_cmd::pick_idlest(&workers.iter().map(|h| h.id.clone()).collect::<Vec<_>>())
+    {
         println!("\nIdlest node: {} (use: kova c2 ncmd ct --idle)", idlest);
     }
 
@@ -283,5 +321,8 @@ pub fn print_json(hosts: &[HostInfo]) {
             })
         })
         .collect();
-    println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "hosts": items })).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({ "hosts": items })).unwrap_or_default()
+    );
 }

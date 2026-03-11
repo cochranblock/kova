@@ -24,9 +24,7 @@ pub async fn f77() -> anyhow::Result<()> {
     eprintln!("Downloading Qwen2.5-Coder-0.5B-Instruct (~380 MB)...");
     eprintln!("  {}", url);
 
-    let client = reqwest::Client::builder()
-        .user_agent("kova/0.1")
-        .build()?;
+    let client = reqwest::Client::builder().user_agent("kova/0.1").build()?;
     let mut resp = client.get(url).send().await?;
     resp.error_for_status_ref()?;
 

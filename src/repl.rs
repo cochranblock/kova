@@ -38,7 +38,10 @@ pub fn f139(project_dir: &Path) -> String {
     let kova_md = project_dir.join("KOVA.md");
     if let Ok(content) = std::fs::read_to_string(&kova_md) {
         if !content.trim().is_empty() {
-            parts.push(format!("## Project Instructions (KOVA.md)\n{}", content.trim()));
+            parts.push(format!(
+                "## Project Instructions (KOVA.md)\n{}",
+                content.trim()
+            ));
         }
     }
 
@@ -74,12 +77,13 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
 
     // Resolve model.
     let model_path = crate::config::inference_model_path()
-        .ok_or_else(|| anyhow::anyhow!(
-            "No model found. Run: kova model install"
-        ))?;
+        .ok_or_else(|| anyhow::anyhow!("No model found. Run: kova model install"))?;
 
     if !model_path.exists() {
-        anyhow::bail!("Model not found at {}. Run: kova model install", model_path.display());
+        anyhow::bail!(
+            "Model not found at {}. Run: kova model install",
+            model_path.display()
+        );
     }
 
     let system_prompt = f139(&project_dir);
@@ -88,8 +92,17 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
     // Print banner.
     eprintln!("\x1b[36m╭─────────────────────────────╮\x1b[0m");
     eprintln!("\x1b[36m│\x1b[0m  \x1b[1mKova\x1b[0m — augment engine     \x1b[36m│\x1b[0m");
-    eprintln!("\x1b[36m│\x1b[0m  project: \x1b[33m{}\x1b[0m", project_dir.file_name().unwrap_or_default().to_string_lossy());
-    eprintln!("\x1b[36m│\x1b[0m  model: \x1b[33m{}\x1b[0m", model_path.file_name().unwrap_or_default().to_string_lossy());
+    eprintln!(
+        "\x1b[36m│\x1b[0m  project: \x1b[33m{}\x1b[0m",
+        project_dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+    );
+    eprintln!(
+        "\x1b[36m│\x1b[0m  model: \x1b[33m{}\x1b[0m",
+        model_path.file_name().unwrap_or_default().to_string_lossy()
+    );
     eprintln!("\x1b[36m│\x1b[0m  /exit /clear /project <p>  \x1b[36m│\x1b[0m");
     eprintln!("\x1b[36m╰─────────────────────────────╯\x1b[0m");
     eprintln!();

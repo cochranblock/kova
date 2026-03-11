@@ -23,13 +23,12 @@ pub async fn fix_and_retry(
     let fix_system = if cursor.is_empty() {
         format!("You fix Rust {} errors.", stage)
     } else {
-        format!("You fix Rust {} errors.\n\n--- Cursor rules ---\n{}", stage, cursor)
+        format!(
+            "You fix Rust {} errors.\n\n--- Cursor rules ---\n{}",
+            stage, cursor
+        )
     };
-    crate::inference::f80(
-        fix_path,
-        &fix_system,
-        &fix_prompt,
-    )
-    .await
-    .map_err(|e| format!("Error on fix: {}", e))
+    crate::inference::f80(fix_path, &fix_system, &fix_prompt)
+        .await
+        .map_err(|e| format!("Error on fix: {}", e))
 }

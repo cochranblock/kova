@@ -14,32 +14,39 @@ use std::thread;
 // ── Node Map ──────────────────────────────────────────────
 
 /// nN → SSH hostname.
-const NODE_MAP: &[(&str, &str)] = &[
-    ("n0", "lf"),
-    ("n1", "gd"),
-    ("n2", "bt"),
-    ("n3", "st"),
-];
+const NODE_MAP: &[(&str, &str)] = &[("n0", "lf"), ("n1", "gd"), ("n2", "bt"), ("n3", "st")];
 
 /// Resolve nN token or pass through raw hostname.
 fn resolve_node(s: &str) -> &str {
-    NODE_MAP.iter().find(|(k, _)| *k == s).map(|(_, v)| *v).unwrap_or(s)
+    NODE_MAP
+        .iter()
+        .find(|(k, _)| *k == s)
+        .map(|(_, v)| *v)
+        .unwrap_or(s)
 }
 
 /// Resolve comma-separated node list. None = all.
 fn resolve_nodes(input: Option<&str>) -> Vec<String> {
     match input {
-        Some(s) => s.split(',')
+        Some(s) => s
+            .split(',')
             .map(|x| resolve_node(x.trim()).to_string())
             .filter(|x| !x.is_empty())
             .collect(),
-        None => crate::c2::default_nodes().into_iter().map(String::from).collect(),
+        None => crate::c2::default_nodes()
+            .into_iter()
+            .map(String::from)
+            .collect(),
     }
 }
 
 /// Reverse: hostname → nN token.
 fn to_token(hostname: &str) -> &str {
-    NODE_MAP.iter().find(|(_, v)| *v == hostname).map(|(k, _)| *k).unwrap_or(hostname)
+    NODE_MAP
+        .iter()
+        .find(|(_, v)| *v == hostname)
+        .map(|(k, _)| *k)
+        .unwrap_or(hostname)
 }
 
 // ── Command Enum (t96) ───────────────────────────────────
@@ -97,9 +104,12 @@ pub struct t97 {
 // ── SSH Helpers ──────────────────────────────────────────
 
 const SSH_OPTS: &[&str] = &[
-    "-o", "ConnectTimeout=3",
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-o", "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=3",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "BatchMode=yes",
 ];
 
 /// Run SSH command on a single node. Returns (success, stdout).
@@ -121,44 +131,58 @@ fn ssh_exec(node: &str, cmd: &str) -> (bool, String) {
     }
 }
 
-
 // ── Per-Command Functions ────────────────────────────────
 
 /// f122=nstat. Hostname, uptime, load.
 fn f122(nodes: &[String]) -> Vec<t97> {
     let cmd = r#"h=$(hostname); u=$(uptime -p 2>/dev/null || uptime | sed 's/.*up //' | cut -d, -f1-2); l=$(cat /proc/loadavg | cut -d' ' -f1); echo "$h"; echo "$u"; echo "$l""#;
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.to_string();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            if ok {
-                let lines: Vec<&str> = out.lines().collect();
-                let host = lines.first().unwrap_or(&"—").to_string();
-                let up = lines.get(1).unwrap_or(&"—").to_string()
-                    .replace(" days", "d").replace(" day", "d")
-                    .replace(" hours", "h").replace(" hour", "h")
-                    .replace(" minutes", "m").replace(" minute", "m")
-                    .replace("up ", "").replace(", ", "").replace(' ', "");
-                let load = lines.get(2).unwrap_or(&"—").to_string();
-                let _ = tx.send(t97 {
-                    s14: token, s15: true,
-                    s16: vec![("o1", host), ("o2", up), ("o3", load)],
-                });
-            } else {
-                let _ = tx.send(t97 {
-                    s14: token, s15: false,
-                    s16: vec![("o10", "err".into()), ("o11", out)],
-                });
-            }
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let cmd = cmd.to_string();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let (ok, out) = ssh_exec(&node, &cmd);
+                if ok {
+                    let lines: Vec<&str> = out.lines().collect();
+                    let host = lines.first().unwrap_or(&"—").to_string();
+                    let up = lines
+                        .get(1)
+                        .unwrap_or(&"—")
+                        .to_string()
+                        .replace(" days", "d")
+                        .replace(" day", "d")
+                        .replace(" hours", "h")
+                        .replace(" hour", "h")
+                        .replace(" minutes", "m")
+                        .replace(" minute", "m")
+                        .replace("up ", "")
+                        .replace(", ", "")
+                        .replace(' ', "");
+                    let load = lines.get(2).unwrap_or(&"—").to_string();
+                    let _ = tx.send(t97 {
+                        s14: token,
+                        s15: true,
+                        s16: vec![("o1", host), ("o2", up), ("o3", load)],
+                    });
+                } else {
+                    let _ = tx.send(t97 {
+                        s14: token,
+                        s15: false,
+                        s16: vec![("o10", "err".into()), ("o11", out)],
+                    });
+                }
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -166,31 +190,46 @@ fn f122(nodes: &[String]) -> Vec<t97> {
 fn f123(nodes: &[String]) -> Vec<t97> {
     let cmd = r#"echo $(nproc); free -g 2>/dev/null | awk '/Mem:/{print $2}' || echo 0; df -BG / 2>/dev/null | tail -1 | awk '{gsub("G",""); print $4}' || echo 0; rustc --version 2>/dev/null | awk '{print $2}' || echo —"#;
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.to_string();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            if ok {
-                let lines: Vec<&str> = out.lines().collect();
-                let cpu = lines.first().unwrap_or(&"—").to_string();
-                let ram = lines.get(1).unwrap_or(&"—").to_string();
-                let disk = lines.get(2).unwrap_or(&"—").to_string();
-                let rust = lines.get(3).unwrap_or(&"—").to_string();
-                let _ = tx.send(t97 {
-                    s14: token, s15: true,
-                    s16: vec![("o4", cpu), ("o5", format!("{}G", ram)), ("o6", format!("{}G", disk)), ("o8", rust)],
-                });
-            } else {
-                let _ = tx.send(t97 { s14: token, s15: false, s16: vec![("o10", "err".into())] });
-            }
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let cmd = cmd.to_string();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let (ok, out) = ssh_exec(&node, &cmd);
+                if ok {
+                    let lines: Vec<&str> = out.lines().collect();
+                    let cpu = lines.first().unwrap_or(&"—").to_string();
+                    let ram = lines.get(1).unwrap_or(&"—").to_string();
+                    let disk = lines.get(2).unwrap_or(&"—").to_string();
+                    let rust = lines.get(3).unwrap_or(&"—").to_string();
+                    let _ = tx.send(t97 {
+                        s14: token,
+                        s15: true,
+                        s16: vec![
+                            ("o4", cpu),
+                            ("o5", format!("{}G", ram)),
+                            ("o6", format!("{}G", disk)),
+                            ("o8", rust),
+                        ],
+                    });
+                } else {
+                    let _ = tx.send(t97 {
+                        s14: token,
+                        s15: false,
+                        s16: vec![("o10", "err".into())],
+                    });
+                }
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -198,20 +237,33 @@ fn f123(nodes: &[String]) -> Vec<t97> {
 fn f124(nodes: &[String]) -> Vec<t97> {
     let cmd = r#"systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | awk '{print $1}' | sed 's/.service//' | grep -v -E '^(systemd|dbus|user@|getty|ssh[d]?|cron|rsyslog|snapd|unattended|multipathd|polkit|upower|accounts|network|ModemManager|wpa_supplicant|thermald|irqbalance|packagekit|udisks|fwupd|power-profiles|switcheroo|rtkit|avahi|bluetooth|colord|cups)' | sort"#;
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.to_string();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            let svcs = if ok { out.lines().collect::<Vec<_>>().join(",") } else { "err".into() };
-            let _ = tx.send(t97 { s14: token, s15: ok, s16: vec![("o9", svcs)] });
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let cmd = cmd.to_string();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let (ok, out) = ssh_exec(&node, &cmd);
+                let svcs = if ok {
+                    out.lines().collect::<Vec<_>>().join(",")
+                } else {
+                    "err".into()
+                };
+                let _ = tx.send(t97 {
+                    s14: token,
+                    s15: ok,
+                    s16: vec![("o9", svcs)],
+                });
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -223,59 +275,82 @@ fn f125(nodes: &[String], install: bool) -> Vec<t97> {
         r#"rustc --version 2>/dev/null | awk '{print $2}' || echo none; cargo --version 2>/dev/null | awk '{print $2}' || echo none"#
     };
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.to_string();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            let lines: Vec<&str> = out.lines().collect();
-            let rust_v = lines.first().unwrap_or(&"—").to_string();
-            let cargo_v = lines.get(1).unwrap_or(&"—").to_string();
-            let _ = tx.send(t97 {
-                s14: token, s15: ok,
-                s16: vec![("o8", rust_v), ("o11", cargo_v)],
-            });
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let cmd = cmd.to_string();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let (ok, out) = ssh_exec(&node, &cmd);
+                let lines: Vec<&str> = out.lines().collect();
+                let rust_v = lines.first().unwrap_or(&"—").to_string();
+                let cargo_v = lines.get(1).unwrap_or(&"—").to_string();
+                let _ = tx.send(t97 {
+                    s14: token,
+                    s15: ok,
+                    s16: vec![("o8", rust_v), ("o11", cargo_v)],
+                });
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
 /// f126=nsync. Rsync project to nodes. Delegates to c2::sync_parallel.
 fn f126(nodes: &[String], project: &std::path::Path) -> Vec<t97> {
     let node_strs: Vec<String> = nodes.to_vec();
-    let name = project.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let name = project
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     // Use rsync directly: simpler for single project sync.
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = node_strs.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let src = project.to_path_buf();
-        let name = name.clone();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let dst = format!("{}:/tmp/kova-build/{}/", node, name);
-            // Ensure dir exists.
-            let _ = ssh_exec(&node, &format!("mkdir -p /tmp/kova-build/{}", name));
-            let status = Command::new("rsync")
-                .args(["-az", "--delete", "--exclude", "target/", "--exclude", ".git/"])
-                .arg(format!("{}/", src.display()))
-                .arg(&dst)
-                .status();
-            let ok = status.map(|s| s.success()).unwrap_or(false);
-            let _ = tx.send(t97 {
-                s14: token, s15: ok,
-                s16: vec![("o10", if ok { "ok" } else { "err" }.into()), ("o11", name)],
-            });
+    let handles: Vec<_> = node_strs
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let src = project.to_path_buf();
+            let name = name.clone();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let dst = format!("{}:/tmp/kova-build/{}/", node, name);
+                // Ensure dir exists.
+                let _ = ssh_exec(&node, &format!("mkdir -p /tmp/kova-build/{}", name));
+                let status = Command::new("rsync")
+                    .args([
+                        "-az",
+                        "--delete",
+                        "--exclude",
+                        "target/",
+                        "--exclude",
+                        ".git/",
+                    ])
+                    .arg(format!("{}/", src.display()))
+                    .arg(&dst)
+                    .status();
+                let ok = status.map(|s| s.success()).unwrap_or(false);
+                let _ = tx.send(t97 {
+                    s14: token,
+                    s15: ok,
+                    s16: vec![("o10", if ok { "ok" } else { "err" }.into()), ("o11", name)],
+                });
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -294,22 +369,31 @@ pub fn f133_sync(nodes: &[String], project: &str) -> Vec<t97> {
         )
     };
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.clone();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            let _ = tx.send(t97 {
-                s14: token, s15: ok,
-                s16: vec![("o10", if ok { "ok" } else { "err" }.into()), ("o11", out.trim().to_string())],
-            });
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let cmd = cmd.clone();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let (ok, out) = ssh_exec(&node, &cmd);
+                let _ = tx.send(t97 {
+                    s14: token,
+                    s15: ok,
+                    s16: vec![
+                        ("o10", if ok { "ok" } else { "err" }.into()),
+                        ("o11", out.trim().to_string()),
+                    ],
+                });
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -321,22 +405,31 @@ fn f127(nodes: &[String], project_name: &str, release: bool) -> Vec<t97> {
         project_name, flag
     );
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.clone();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            let _ = tx.send(t97 {
-                s14: token, s15: ok,
-                s16: vec![("o10", if ok { "ok" } else { "err" }.into()), ("o11", out.trim().to_string())],
-            });
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let cmd = cmd.clone();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let (ok, out) = ssh_exec(&node, &cmd);
+                let _ = tx.send(t97 {
+                    s14: token,
+                    s15: ok,
+                    s16: vec![
+                        ("o10", if ok { "ok" } else { "err" }.into()),
+                        ("o11", out.trim().to_string()),
+                    ],
+                });
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -348,22 +441,28 @@ fn f128(nodes: &[String], unit: Option<&str>, lines: u32) -> Vec<t97> {
         unit_flag, lines, lines
     );
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.clone();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            let _ = tx.send(t97 {
-                s14: token, s15: ok,
-                s16: vec![("o11", out.trim().to_string())],
-            });
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let cmd = cmd.clone();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let (ok, out) = ssh_exec(&node, &cmd);
+                let _ = tx.send(t97 {
+                    s14: token,
+                    s15: ok,
+                    s16: vec![("o11", out.trim().to_string())],
+                });
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -374,47 +473,9 @@ fn f129(nodes: &[String], proc_name: &str) -> Vec<t97> {
         proc_name
     );
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.clone();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            let _ = tx.send(t97 {
-                s14: token, s15: ok,
-                s16: vec![("o10", out.trim().to_string())],
-            });
-        })
-    }).collect();
-    drop(tx);
-    let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
-    results
-}
-
-/// f130=ndeploy. Sync + build + optional restart.
-fn f130(nodes: &[String], project: &std::path::Path, release: bool, service: Option<&str>) -> Vec<t97> {
-    let name = project.file_name().unwrap_or_default().to_string_lossy().to_string();
-
-    // Phase 1: sync
-    eprintln!("[f130] sync {}...", name);
-    let sync_results = f126(nodes, project);
-    let failed: Vec<_> = sync_results.iter().filter(|r| !r.s15).map(|r| r.s14.clone()).collect();
-    if !failed.is_empty() {
-        eprintln!("[f130] sync failed on: {}", failed.join(","));
-    }
-
-    // Phase 2: build
-    eprintln!("[f130] build {}{}...", name, if release { " --release" } else { "" });
-    let build_results = f127(nodes, &name, release);
-
-    // Phase 3: restart (if service specified)
-    if let Some(svc) = service {
-        eprintln!("[f130] restart {}...", svc);
-        let cmd = format!("sudo systemctl restart {} 2>&1 || echo restart_failed", svc);
-        let (tx, rx) = mpsc::channel::<t97>();
-        let handles: Vec<_> = nodes.iter().map(|node| {
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
             let tx = tx.clone();
             let node = node.clone();
             let cmd = cmd.clone();
@@ -422,14 +483,84 @@ fn f130(nodes: &[String], project: &std::path::Path, release: bool, service: Opt
                 let token = to_token(&node).to_string();
                 let (ok, out) = ssh_exec(&node, &cmd);
                 let _ = tx.send(t97 {
-                    s14: token, s15: ok,
-                    s16: vec![("o10", if ok { "ok" } else { "err" }.into()), ("o11", out.trim().to_string())],
+                    s14: token,
+                    s15: ok,
+                    s16: vec![("o10", out.trim().to_string())],
                 });
             })
-        }).collect();
+        })
+        .collect();
+    drop(tx);
+    let results: Vec<t97> = rx.into_iter().collect();
+    for h in handles {
+        let _ = h.join();
+    }
+    results
+}
+
+/// f130=ndeploy. Sync + build + optional restart.
+fn f130(
+    nodes: &[String],
+    project: &std::path::Path,
+    release: bool,
+    service: Option<&str>,
+) -> Vec<t97> {
+    let name = project
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    // Phase 1: sync
+    eprintln!("[f130] sync {}...", name);
+    let sync_results = f126(nodes, project);
+    let failed: Vec<_> = sync_results
+        .iter()
+        .filter(|r| !r.s15)
+        .map(|r| r.s14.clone())
+        .collect();
+    if !failed.is_empty() {
+        eprintln!("[f130] sync failed on: {}", failed.join(","));
+    }
+
+    // Phase 2: build
+    eprintln!(
+        "[f130] build {}{}...",
+        name,
+        if release { " --release" } else { "" }
+    );
+    let build_results = f127(nodes, &name, release);
+
+    // Phase 3: restart (if service specified)
+    if let Some(svc) = service {
+        eprintln!("[f130] restart {}...", svc);
+        let cmd = format!("sudo systemctl restart {} 2>&1 || echo restart_failed", svc);
+        let (tx, rx) = mpsc::channel::<t97>();
+        let handles: Vec<_> = nodes
+            .iter()
+            .map(|node| {
+                let tx = tx.clone();
+                let node = node.clone();
+                let cmd = cmd.clone();
+                thread::spawn(move || {
+                    let token = to_token(&node).to_string();
+                    let (ok, out) = ssh_exec(&node, &cmd);
+                    let _ = tx.send(t97 {
+                        s14: token,
+                        s15: ok,
+                        s16: vec![
+                            ("o10", if ok { "ok" } else { "err" }.into()),
+                            ("o11", out.trim().to_string()),
+                        ],
+                    });
+                })
+            })
+            .collect();
         drop(tx);
         let results: Vec<t97> = rx.into_iter().collect();
-        for h in handles { let _ = h.join(); }
+        for h in handles {
+            let _ = h.join();
+        }
         return results;
     }
 
@@ -457,31 +588,41 @@ pub fn pick_idlest(nodes: &[String]) -> Option<String> {
 fn f131(nodes: &[String]) -> Vec<t97> {
     let cmd = r#"echo "$(nproc) $(free -g|awk '/Mem:/{print $3}')G $(cat /proc/loadavg|cut -d' ' -f1) $(hostname)""#;
     let (tx, rx) = mpsc::channel::<t97>();
-    let handles: Vec<_> = nodes.iter().map(|node| {
-        let tx = tx.clone();
-        let node = node.clone();
-        let cmd = cmd.to_string();
-        thread::spawn(move || {
-            let token = to_token(&node).to_string();
-            let (ok, out) = ssh_exec(&node, &cmd);
-            if ok {
-                let parts: Vec<&str> = out.split_whitespace().collect();
-                let cpu = parts.first().unwrap_or(&"—").to_string();
-                let mem = parts.get(1).unwrap_or(&"—").to_string();
-                let load = parts.get(2).unwrap_or(&"—").to_string();
-                let host = parts.get(3).unwrap_or(&"—").to_string();
-                let _ = tx.send(t97 {
-                    s14: token, s15: true,
-                    s16: vec![("o4", cpu), ("o5", mem), ("o3", load), ("o1", host)],
-                });
-            } else {
-                let _ = tx.send(t97 { s14: token, s15: false, s16: vec![("o10", "err".into())] });
-            }
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let tx = tx.clone();
+            let node = node.clone();
+            let cmd = cmd.to_string();
+            thread::spawn(move || {
+                let token = to_token(&node).to_string();
+                let (ok, out) = ssh_exec(&node, &cmd);
+                if ok {
+                    let parts: Vec<&str> = out.split_whitespace().collect();
+                    let cpu = parts.first().unwrap_or(&"—").to_string();
+                    let mem = parts.get(1).unwrap_or(&"—").to_string();
+                    let load = parts.get(2).unwrap_or(&"—").to_string();
+                    let host = parts.get(3).unwrap_or(&"—").to_string();
+                    let _ = tx.send(t97 {
+                        s14: token,
+                        s15: true,
+                        s16: vec![("o4", cpu), ("o5", mem), ("o3", load), ("o1", host)],
+                    });
+                } else {
+                    let _ = tx.send(t97 {
+                        s14: token,
+                        s15: false,
+                        s16: vec![("o10", "err".into())],
+                    });
+                }
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t97> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -522,16 +663,34 @@ fn expand_header(token: &str) -> &str {
 
 /// Print ultra-compact single line: n0:4c/2G/0.5 n1:8c/3G/0.2
 fn print_oneline(results: &[t97]) {
-    let parts: Vec<String> = results.iter().map(|r| {
-        if r.s15 {
-            let cpu = r.s16.iter().find(|(k, _)| *k == "o4").map(|(_, v)| v.as_str()).unwrap_or("?");
-            let mem = r.s16.iter().find(|(k, _)| *k == "o5").map(|(_, v)| v.as_str()).unwrap_or("?");
-            let load = r.s16.iter().find(|(k, _)| *k == "o3").map(|(_, v)| v.as_str()).unwrap_or("?");
-            format!("{}:{}c/{}/{}", r.s14, cpu, mem, load)
-        } else {
-            format!("{}:err", r.s14)
-        }
-    }).collect();
+    let parts: Vec<String> = results
+        .iter()
+        .map(|r| {
+            if r.s15 {
+                let cpu = r
+                    .s16
+                    .iter()
+                    .find(|(k, _)| *k == "o4")
+                    .map(|(_, v)| v.as_str())
+                    .unwrap_or("?");
+                let mem = r
+                    .s16
+                    .iter()
+                    .find(|(k, _)| *k == "o5")
+                    .map(|(_, v)| v.as_str())
+                    .unwrap_or("?");
+                let load = r
+                    .s16
+                    .iter()
+                    .find(|(k, _)| *k == "o3")
+                    .map(|(_, v)| v.as_str())
+                    .unwrap_or("?");
+                format!("{}:{}c/{}/{}", r.s14, cpu, mem, load)
+            } else {
+                format!("{}:err", r.s14)
+            }
+        })
+        .collect();
     eprintln!("{}", parts.join(" "));
 }
 
@@ -550,9 +709,10 @@ fn print_compressed(cmd: &t96, results: &[t97], expand: bool) {
     }
 
     // Header row.
-    let header: Vec<&str> = hdrs.iter().map(|h| {
-        if expand { expand_header(h) } else { *h }
-    }).collect();
+    let header: Vec<&str> = hdrs
+        .iter()
+        .map(|h| if expand { expand_header(h) } else { *h })
+        .collect();
     eprintln!("{}", header.join("\t"));
 
     // Data rows.
@@ -602,12 +762,17 @@ pub fn f132(
         }
         t96::C6 => {
             let project = crate::c2::resolve_project(extra.map(std::path::PathBuf::from));
-            let name = project.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = project
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             f127(&node_list, &name, release)
         }
         t96::C7 => f128(&node_list, extra.as_deref(), lines),
         t96::C8 => {
-            let proc_name = extra.as_deref()
+            let proc_name = extra
+                .as_deref()
                 .ok_or_else(|| anyhow::anyhow!("c8 requires --extra <process_name>"))?;
             f129(&node_list, proc_name)
         }
@@ -691,7 +856,11 @@ mod tests {
             t97 {
                 s14: "n0".to_string(),
                 s15: true,
-                s16: vec![("o4", "4".into()), ("o5", "2G".into()), ("o3", "0.5".into())],
+                s16: vec![
+                    ("o4", "4".into()),
+                    ("o5", "2G".into()),
+                    ("o3", "0.5".into()),
+                ],
             },
             t97 {
                 s14: "n1".to_string(),

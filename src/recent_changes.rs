@@ -26,14 +26,18 @@ pub fn f86(project_dir: &Path, within: Duration) -> Vec<t86> {
         .unwrap_or_default()
         .saturating_sub(within);
     let mut out = Vec::new();
-    let root = project_dir.canonicalize().unwrap_or_else(|_| project_dir.to_path_buf());
+    let root = project_dir
+        .canonicalize()
+        .unwrap_or_else(|_| project_dir.to_path_buf());
     walk_recent(&root, &root, cutoff.as_secs(), &mut out);
     out.sort_by(|a, b| b.s1.cmp(&a.s1)); // newest first
     out
 }
 
 fn walk_recent(root: &Path, dir: &Path, cutoff_secs: u64, out: &mut Vec<t86>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let path = e.path();
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -97,7 +101,10 @@ mod tests {
         std::fs::write(tmp.path().join("old.rs"), "// old").unwrap();
         std::thread::sleep(Duration::from_secs(2));
         let out = f86(tmp.path(), Duration::from_secs(1));
-        assert!(out.is_empty(), "no files modified in last 1s (file written 2s ago)");
+        assert!(
+            out.is_empty(),
+            "no files modified in last 1s (file written 2s ago)"
+        );
     }
 
     #[test]
@@ -116,13 +123,11 @@ mod tests {
 
     #[test]
     fn f87_formats_changes() {
-        let c = vec![
-            t86 {
-                s0: "src/lib.rs".into(),
-                s1: 1700000000,
-                s2: "modified".into(),
-            },
-        ];
+        let c = vec![t86 {
+            s0: "src/lib.rs".into(),
+            s1: 1700000000,
+            s2: "modified".into(),
+        }];
         let s = f87(&c);
         assert!(s.contains("src/lib.rs"));
         assert!(s.contains("f86"));

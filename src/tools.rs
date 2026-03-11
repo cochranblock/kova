@@ -48,60 +48,144 @@ pub static TOOLS: &[t101] = &[
         name: "read_file",
         description: "Read file contents. Returns file text with line numbers.",
         params: &[
-            t102 { name: "path", param_type: "string", required: true, description: "File path (absolute or relative to project)." },
-            t102 { name: "offset", param_type: "number", required: false, description: "Start line (1-indexed)." },
-            t102 { name: "limit", param_type: "number", required: false, description: "Max lines to read." },
+            t102 {
+                name: "path",
+                param_type: "string",
+                required: true,
+                description: "File path (absolute or relative to project).",
+            },
+            t102 {
+                name: "offset",
+                param_type: "number",
+                required: false,
+                description: "Start line (1-indexed).",
+            },
+            t102 {
+                name: "limit",
+                param_type: "number",
+                required: false,
+                description: "Max lines to read.",
+            },
         ],
     },
     t101 {
         name: "write_file",
         description: "Write content to a file. Creates dirs if needed.",
         params: &[
-            t102 { name: "path", param_type: "string", required: true, description: "File path." },
-            t102 { name: "content", param_type: "string", required: true, description: "File content." },
+            t102 {
+                name: "path",
+                param_type: "string",
+                required: true,
+                description: "File path.",
+            },
+            t102 {
+                name: "content",
+                param_type: "string",
+                required: true,
+                description: "File content.",
+            },
         ],
     },
     t101 {
         name: "edit_file",
         description: "Replace exact text in a file. old_text must be unique in the file.",
         params: &[
-            t102 { name: "path", param_type: "string", required: true, description: "File path." },
-            t102 { name: "old_text", param_type: "string", required: true, description: "Text to find and replace." },
-            t102 { name: "new_text", param_type: "string", required: true, description: "Replacement text." },
+            t102 {
+                name: "path",
+                param_type: "string",
+                required: true,
+                description: "File path.",
+            },
+            t102 {
+                name: "old_text",
+                param_type: "string",
+                required: true,
+                description: "Text to find and replace.",
+            },
+            t102 {
+                name: "new_text",
+                param_type: "string",
+                required: true,
+                description: "Replacement text.",
+            },
         ],
     },
     t101 {
         name: "bash",
         description: "Execute a shell command. Returns stdout+stderr and exit code.",
         params: &[
-            t102 { name: "command", param_type: "string", required: true, description: "Shell command." },
-            t102 { name: "cwd", param_type: "string", required: false, description: "Working directory." },
-            t102 { name: "timeout", param_type: "number", required: false, description: "Timeout in seconds (default 120)." },
+            t102 {
+                name: "command",
+                param_type: "string",
+                required: true,
+                description: "Shell command.",
+            },
+            t102 {
+                name: "cwd",
+                param_type: "string",
+                required: false,
+                description: "Working directory.",
+            },
+            t102 {
+                name: "timeout",
+                param_type: "number",
+                required: false,
+                description: "Timeout in seconds (default 120).",
+            },
         ],
     },
     t101 {
         name: "glob",
         description: "Find files matching a glob pattern.",
         params: &[
-            t102 { name: "pattern", param_type: "string", required: true, description: "Glob pattern (e.g. **/*.rs)." },
-            t102 { name: "path", param_type: "string", required: false, description: "Search root (default: project dir)." },
+            t102 {
+                name: "pattern",
+                param_type: "string",
+                required: true,
+                description: "Glob pattern (e.g. **/*.rs).",
+            },
+            t102 {
+                name: "path",
+                param_type: "string",
+                required: false,
+                description: "Search root (default: project dir).",
+            },
         ],
     },
     t101 {
         name: "grep",
         description: "Search file contents for a pattern. Returns file:line:content matches.",
         params: &[
-            t102 { name: "pattern", param_type: "string", required: true, description: "Search string (plain text, not regex)." },
-            t102 { name: "path", param_type: "string", required: false, description: "Search root (default: project dir)." },
-            t102 { name: "glob", param_type: "string", required: false, description: "File filter glob (e.g. *.rs)." },
+            t102 {
+                name: "pattern",
+                param_type: "string",
+                required: true,
+                description: "Search string (plain text, not regex).",
+            },
+            t102 {
+                name: "path",
+                param_type: "string",
+                required: false,
+                description: "Search root (default: project dir).",
+            },
+            t102 {
+                name: "glob",
+                param_type: "string",
+                required: false,
+                description: "File filter glob (e.g. *.rs).",
+            },
         ],
     },
     t101 {
         name: "memory_write",
-        description: "Save a note to persistent memory (~/.kova/memory.md). Survives across sessions.",
-        params: &[
-            t102 { name: "content", param_type: "string", required: true, description: "Content to append." },
-        ],
+        description:
+            "Save a note to persistent memory (~/.kova/memory.md). Survives across sessions.",
+        params: &[t102 {
+            name: "content",
+            param_type: "string",
+            required: true,
+            description: "Content to append.",
+        }],
     },
 ];
 
@@ -156,16 +240,31 @@ pub fn f140(text: &str) -> Vec<t103> {
 }
 
 fn extract_json_object(s: &str) -> Option<&str> {
-    if !s.starts_with('{') { return None; }
+    if !s.starts_with('{') {
+        return None;
+    }
     let mut depth = 0i32;
     let mut in_string = false;
     let mut escape = false;
     for (i, ch) in s.char_indices() {
-        if escape { escape = false; continue; }
-        if ch == '\\' && in_string { escape = true; continue; }
-        if ch == '"' { in_string = !in_string; continue; }
-        if in_string { continue; }
-        if ch == '{' { depth += 1; }
+        if escape {
+            escape = false;
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if ch == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        if ch == '{' {
+            depth += 1;
+        }
         if ch == '}' {
             depth -= 1;
             if depth == 0 {
@@ -202,21 +301,23 @@ fn parse_tool_call_array(json_str: &str) -> Vec<t103> {
         Some(a) => a,
         None => return Vec::new(),
     };
-    arr.iter().filter_map(|item| {
-        let tool = item.get("tool")?.as_str()?.to_string();
-        let args_val = item.get("args")?;
-        let mut args = HashMap::new();
-        if let Some(obj) = args_val.as_object() {
-            for (k, v) in obj {
-                let val = match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                };
-                args.insert(k.clone(), val);
+    arr.iter()
+        .filter_map(|item| {
+            let tool = item.get("tool")?.as_str()?.to_string();
+            let args_val = item.get("args")?;
+            let mut args = HashMap::new();
+            if let Some(obj) = args_val.as_object() {
+                for (k, v) in obj {
+                    let val = match v {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    args.insert(k.clone(), val);
+                }
             }
-        }
-        Some(t103 { tool, args })
-    }).collect()
+            Some(t103 { tool, args })
+        })
+        .collect()
 }
 
 // ── Tool Dispatch (f141) ─────────────────────────────────
@@ -241,7 +342,11 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
 
 fn resolve_path(raw: &str, project_dir: &Path) -> PathBuf {
     let p = PathBuf::from(raw);
-    if p.is_absolute() { p } else { project_dir.join(p) }
+    if p.is_absolute() {
+        p
+    } else {
+        project_dir.join(p)
+    }
 }
 
 fn get_arg<'a>(call: &'a t103, key: &str) -> Option<&'a str> {
@@ -266,7 +371,8 @@ fn f142(call: &t103, project_dir: &Path) -> t104 {
     let offset: usize = get_arg(call, "offset")
         .and_then(|s| s.parse().ok())
         .unwrap_or(1)
-        .max(1) - 1;
+        .max(1)
+        - 1;
     let limit: usize = get_arg(call, "limit")
         .and_then(|s| s.parse().ok())
         .unwrap_or(2000);
@@ -280,9 +386,17 @@ fn f142(call: &t103, project_dir: &Path) -> t104 {
                 .enumerate()
                 .map(|(i, l)| format!("{:>5}\t{}", offset + i + 1, l))
                 .collect();
-            t104 { tool: call.tool.clone(), success: true, output: numbered.join("\n") }
+            t104 {
+                tool: call.tool.clone(),
+                success: true,
+                output: numbered.join("\n"),
+            }
         }
-        Err(e) => t104 { tool: call.tool.clone(), success: false, output: format!("read error: {}", e) },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("read error: {}", e),
+        },
     }
 }
 
@@ -301,8 +415,16 @@ fn f143(call: &t103, project_dir: &Path) -> t104 {
         let _ = std::fs::create_dir_all(parent);
     }
     match std::fs::write(&path, content) {
-        Ok(_) => t104 { tool: call.tool.clone(), success: true, output: format!("wrote {}", path.display()) },
-        Err(e) => t104 { tool: call.tool.clone(), success: false, output: format!("write error: {}", e) },
+        Ok(_) => t104 {
+            tool: call.tool.clone(),
+            success: true,
+            output: format!("wrote {}", path.display()),
+        },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("write error: {}", e),
+        },
     }
 }
 
@@ -323,19 +445,41 @@ fn f144(call: &t103, project_dir: &Path) -> t104 {
     };
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(e) => return t104 { tool: call.tool.clone(), success: false, output: format!("read: {}", e) },
+        Err(e) => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("read: {}", e),
+            }
+        }
     };
     let count = content.matches(old_text).count();
     if count == 0 {
-        return t104 { tool: call.tool.clone(), success: false, output: "old_text not found in file".into() };
+        return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: "old_text not found in file".into(),
+        };
     }
     if count > 1 {
-        return t104 { tool: call.tool.clone(), success: false, output: format!("old_text matches {} times, must be unique", count) };
+        return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("old_text matches {} times, must be unique", count),
+        };
     }
     let new_content = content.replacen(old_text, new_text, 1);
     match std::fs::write(&path, &new_content) {
-        Ok(_) => t104 { tool: call.tool.clone(), success: true, output: format!("edited {}", path.display()) },
-        Err(e) => t104 { tool: call.tool.clone(), success: false, output: format!("write: {}", e) },
+        Ok(_) => t104 {
+            tool: call.tool.clone(),
+            success: true,
+            output: format!("edited {}", path.display()),
+        },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("write: {}", e),
+        },
     }
 }
 
@@ -364,15 +508,25 @@ fn f145(call: &t103, project_dir: &Path) -> t104 {
         Ok(child) => {
             let output = match child.wait_with_output() {
                 Ok(o) => o,
-                Err(e) => return t104 { tool: call.tool.clone(), success: false, output: format!("wait: {}", e) },
+                Err(e) => {
+                    return t104 {
+                        tool: call.tool.clone(),
+                        success: false,
+                        output: format!("wait: {}", e),
+                    }
+                }
             };
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let code = output.status.code().unwrap_or(-1);
             let mut out = String::new();
-            if !stdout.is_empty() { out.push_str(&stdout); }
+            if !stdout.is_empty() {
+                out.push_str(&stdout);
+            }
             if !stderr.is_empty() {
-                if !out.is_empty() { out.push('\n'); }
+                if !out.is_empty() {
+                    out.push('\n');
+                }
                 out.push_str(&stderr);
             }
             // Truncate for context savings.
@@ -382,12 +536,25 @@ fn f145(call: &t103, project_dir: &Path) -> t104 {
                 if total > 100 {
                     let head: Vec<&str> = lines[..50].to_vec();
                     let tail: Vec<&str> = lines[total - 50..].to_vec();
-                    out = format!("{}\n... ({} lines omitted) ...\n{}", head.join("\n"), total - 100, tail.join("\n"));
+                    out = format!(
+                        "{}\n... ({} lines omitted) ...\n{}",
+                        head.join("\n"),
+                        total - 100,
+                        tail.join("\n")
+                    );
                 }
             }
-            t104 { tool: call.tool.clone(), success: output.status.success(), output: format!("[exit {}]\n{}", code, out.trim()) }
+            t104 {
+                tool: call.tool.clone(),
+                success: output.status.success(),
+                output: format!("[exit {}]\n{}", code, out.trim()),
+            }
         }
-        Err(e) => t104 { tool: call.tool.clone(), success: false, output: format!("spawn: {}", e) },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("spawn: {}", e),
+        },
     }
 }
 
@@ -409,19 +576,32 @@ fn f146(call: &t103, project_dir: &Path) -> t104 {
         Ok(entries) => {
             let mut matches: Vec<String> = Vec::new();
             for path in entries.take(200).flatten() {
-                let display = path.strip_prefix(&root)
+                let display = path
+                    .strip_prefix(&root)
                     .unwrap_or(&path)
                     .display()
                     .to_string();
                 matches.push(display);
             }
             if matches.is_empty() {
-                t104 { tool: call.tool.clone(), success: true, output: "no matches".into() }
+                t104 {
+                    tool: call.tool.clone(),
+                    success: true,
+                    output: "no matches".into(),
+                }
             } else {
-                t104 { tool: call.tool.clone(), success: true, output: matches.join("\n") }
+                t104 {
+                    tool: call.tool.clone(),
+                    success: true,
+                    output: matches.join("\n"),
+                }
             }
         }
-        Err(e) => t104 { tool: call.tool.clone(), success: false, output: format!("glob: {}", e) },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("glob: {}", e),
+        },
     }
 }
 
@@ -452,23 +632,43 @@ fn f150(call: &t103, project_dir: &Path) -> t104 {
         Ok(out) => {
             let text = String::from_utf8_lossy(&out.stdout);
             let lines: Vec<&str> = text.lines().take(100).collect();
-            let stripped: Vec<String> = lines.iter().map(|l| {
-                // Strip project_dir prefix.
-                let root_str = root.to_string_lossy();
-                l.strip_prefix(root_str.as_ref()).unwrap_or(l)
-                    .strip_prefix('/')
-                    .unwrap_or(l)
-                    .to_string()
-            }).collect();
+            let stripped: Vec<String> = lines
+                .iter()
+                .map(|l| {
+                    // Strip project_dir prefix.
+                    let root_str = root.to_string_lossy();
+                    l.strip_prefix(root_str.as_ref())
+                        .unwrap_or(l)
+                        .strip_prefix('/')
+                        .unwrap_or(l)
+                        .to_string()
+                })
+                .collect();
             if stripped.is_empty() {
-                t104 { tool: call.tool.clone(), success: true, output: "no matches".into() }
+                t104 {
+                    tool: call.tool.clone(),
+                    success: true,
+                    output: "no matches".into(),
+                }
             } else {
                 let total = text.lines().count();
-                let suffix = if total > 100 { format!("\n... +{} more", total - 100) } else { String::new() };
-                t104 { tool: call.tool.clone(), success: true, output: format!("{}{}", stripped.join("\n"), suffix) }
+                let suffix = if total > 100 {
+                    format!("\n... +{} more", total - 100)
+                } else {
+                    String::new()
+                };
+                t104 {
+                    tool: call.tool.clone(),
+                    success: true,
+                    output: format!("{}{}", stripped.join("\n"), suffix),
+                }
             }
         }
-        Err(e) => t104 { tool: call.tool.clone(), success: false, output: format!("grep: {}", e) },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("grep: {}", e),
+        },
     }
 }
 
@@ -487,8 +687,16 @@ fn f155(call: &t103) -> t104 {
         format!("{}\n{}\n", existing.trim_end(), content)
     };
     match std::fs::write(&memory_path, new_content) {
-        Ok(_) => t104 { tool: call.tool.clone(), success: true, output: "saved to memory".into() },
-        Err(e) => t104 { tool: call.tool.clone(), success: false, output: format!("write: {}", e) },
+        Ok(_) => t104 {
+            tool: call.tool.clone(),
+            success: true,
+            output: "saved to memory".into(),
+        },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("write: {}", e),
+        },
     }
 }
 
@@ -502,7 +710,10 @@ pub fn f149() -> String {
         out.push_str("Parameters:\n");
         for p in tool.params {
             let req = if p.required { "required" } else { "optional" };
-            out.push_str(&format!("- `{}` ({}): {} [{}]\n", p.name, p.param_type, p.description, req));
+            out.push_str(&format!(
+                "- `{}` ({}): {} [{}]\n",
+                p.name, p.param_type, p.description, req
+            ));
         }
         out.push('\n');
     }
@@ -528,7 +739,8 @@ mod tests {
 
     #[test]
     fn f140_parse_bare_json() {
-        let text = r#"I'll check the file. {"tool": "read_file", "args": {"path": "Cargo.toml"}} Done."#;
+        let text =
+            r#"I'll check the file. {"tool": "read_file", "args": {"path": "Cargo.toml"}} Done."#;
         let calls = f140(text);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].tool, "read_file");
@@ -565,7 +777,8 @@ mod tests {
                 ("path".into(), "test.rs".into()),
                 ("old_text".into(), "fn old()".into()),
                 ("new_text".into(), "fn new_fn()".into()),
-            ].into(),
+            ]
+            .into(),
         };
         let result = f144(&call, tmp.path());
         assert!(result.success);

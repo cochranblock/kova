@@ -30,12 +30,20 @@ const PROJECT_MAP: &[(&str, &str)] = &[
 
 /// Resolve pN → crate name, or pass through.
 fn resolve_project(s: &str) -> &str {
-    PROJECT_MAP.iter().find(|(k, _)| *k == s).map(|(_, v)| *v).unwrap_or(s)
+    PROJECT_MAP
+        .iter()
+        .find(|(k, _)| *k == s)
+        .map(|(_, v)| *v)
+        .unwrap_or(s)
 }
 
 /// Reverse: crate name → pN token.
 fn to_project_token(name: &str) -> &str {
-    PROJECT_MAP.iter().find(|(_, v)| *v == name).map(|(k, _)| *k).unwrap_or(name)
+    PROJECT_MAP
+        .iter()
+        .find(|(_, v)| *v == name)
+        .map(|(k, _)| *k)
+        .unwrap_or(name)
 }
 
 // ── Command Enum (t99) ───────────────────────────────────
@@ -160,20 +168,28 @@ fn compress_json_messages(json_lines: &str) -> (u32, u32, String, Option<String>
 
         match reason {
             "compiler-message" => {
-                let Some(msg) = val.get("message") else { continue };
+                let Some(msg) = val.get("message") else {
+                    continue;
+                };
                 let level = msg.get("level").and_then(|l| l.as_str()).unwrap_or("");
                 let text = msg.get("message").and_then(|m| m.as_str()).unwrap_or("");
-                let code = msg.get("code")
+                let code = msg
+                    .get("code")
                     .and_then(|c| c.get("code"))
                     .and_then(|c| c.as_str())
                     .unwrap_or("");
 
                 // Extract primary span: file:line.
-                let span_str = msg.get("spans")
+                let span_str = msg
+                    .get("spans")
                     .and_then(|s| s.as_array())
-                    .and_then(|spans| spans.iter().find(|s| {
-                        s.get("is_primary").and_then(|p| p.as_bool()).unwrap_or(false)
-                    }))
+                    .and_then(|spans| {
+                        spans.iter().find(|s| {
+                            s.get("is_primary")
+                                .and_then(|p| p.as_bool())
+                                .unwrap_or(false)
+                        })
+                    })
                     .map(|s| {
                         let file = s.get("file_name").and_then(|f| f.as_str()).unwrap_or("");
                         let line = s.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0);
@@ -219,7 +235,12 @@ fn compress_json_messages(json_lines: &str) -> (u32, u32, String, Option<String>
 }
 
 /// Parse unstructured test output lines (test runner doesn't use JSON format).
-fn parse_test_line(trimmed: &str, errors: &mut u32, compressed: &mut Vec<String>, test_summary: &mut Option<String>) {
+fn parse_test_line(
+    trimmed: &str,
+    errors: &mut u32,
+    compressed: &mut Vec<String>,
+    test_summary: &mut Option<String>,
+) {
     if trimmed.starts_with("test result:") {
         let pass = extract_test_count(trimmed, "passed").unwrap_or(0);
         let fail = extract_test_count(trimmed, "failed").unwrap_or(0);
@@ -230,7 +251,9 @@ fn parse_test_line(trimmed: &str, errors: &mut u32, compressed: &mut Vec<String>
         }
     }
     if trimmed.starts_with("---- ") && trimmed.ends_with(" ----") {
-        let test_name = trimmed.trim_start_matches("---- ").trim_end_matches(" ----");
+        let test_name = trimmed
+            .trim_start_matches("---- ")
+            .trim_end_matches(" ----");
         compressed.push(format!("FAIL:{}", test_name));
     }
     if trimmed.starts_with("thread '") && trimmed.contains("panicked at") {
@@ -283,8 +306,7 @@ fn compress_path(p: &str) -> String {
 }
 
 fn extract_count(line: &str) -> Option<u32> {
-    line.split_whitespace()
-        .find_map(|w| w.parse::<u32>().ok())
+    line.split_whitespace().find_map(|w| w.parse::<u32>().ok())
 }
 
 fn extract_test_count(line: &str, label: &str) -> Option<u32> {
@@ -295,7 +317,10 @@ fn extract_test_count(line: &str, label: &str) -> Option<u32> {
 
 /// Commands that support --message-format=json.
 fn supports_json(cmd: &t99) -> bool {
-    matches!(cmd, t99::X0 | t99::X1 | t99::X2 | t99::X3 | t99::X5 | t99::X9)
+    matches!(
+        cmd,
+        t99::X0 | t99::X1 | t99::X2 | t99::X3 | t99::X5 | t99::X9
+    )
 }
 
 // ── Output Printing ──────────────────────────────────────
@@ -309,7 +334,8 @@ fn print_result(result: &t100, expand: bool) {
     } else {
         eprintln!("r0\tr1\tr2\tr3\tr4\tr5\tr7");
     }
-    eprintln!("{}\t{}\t{}\t{:.1}s\t{}\t{}\t{}",
+    eprintln!(
+        "{}\t{}\t{}\t{:.1}s\t{}\t{}\t{}",
         result.r0,
         result.r1,
         status,
@@ -331,8 +357,14 @@ fn print_multi(results: &[t100], expand: bool) {
     }
     for r in results {
         let status = if r.r2 { "ok" } else { "err" };
-        eprintln!("{}\t{}\t{}\t{:.1}s\t{}\t{}\t{}",
-            r.r0, r.r1, status, r.r3, r.r4, r.r5,
+        eprintln!(
+            "{}\t{}\t{}\t{:.1}s\t{}\t{}\t{}",
+            r.r0,
+            r.r1,
+            status,
+            r.r3,
+            r.r4,
+            r.r5,
             r.r7.as_deref().unwrap_or("—"),
         );
     }
@@ -348,7 +380,13 @@ fn print_multi(results: &[t100], expand: bool) {
 // ── Core Execution ──────────────────────────────────────
 
 /// f133=cargo_exec. Execute single cargo command with compressed output.
-fn f133(cmd: &t99, project: &str, features: Option<&str>, bin: Option<&str>, extra_args: &[String]) -> t100 {
+fn f133(
+    cmd: &t99,
+    project: &str,
+    features: Option<&str>,
+    bin: Option<&str>,
+    extra_args: &[String],
+) -> t100 {
     let crate_name = resolve_project(project);
     let project_token = to_project_token(crate_name).to_string();
 
@@ -374,11 +412,15 @@ fn f133(cmd: &t99, project: &str, features: Option<&str>, bin: Option<&str>, ext
     args.push(crate_name.into());
 
     // Features: explicit > preset > none.
-    let feat = features
-        .map(|f| f.to_string())
-        .or_else(|| preset.as_ref().and_then(|p| {
-            if p.features.is_empty() { None } else { Some(p.features.join(",")) }
-        }));
+    let feat = features.map(|f| f.to_string()).or_else(|| {
+        preset.as_ref().and_then(|p| {
+            if p.features.is_empty() {
+                None
+            } else {
+                Some(p.features.join(","))
+            }
+        })
+    });
     if let Some(f) = &feat {
         args.push("--features".into());
         args.push(f.clone());
@@ -460,18 +502,16 @@ fn f133(cmd: &t99, project: &str, features: Option<&str>, bin: Option<&str>, ext
                 r7: test_summary,
             }
         }
-        Err(e) => {
-            t100 {
-                r0: cmd_token(cmd).to_string(),
-                r1: project_token,
-                r2: false,
-                r3: start.elapsed().as_secs_f64(),
-                r4: 0,
-                r5: 1,
-                r6: e.to_string(),
-                r7: None,
-            }
-        }
+        Err(e) => t100 {
+            r0: cmd_token(cmd).to_string(),
+            r1: project_token,
+            r2: false,
+            r3: start.elapsed().as_secs_f64(),
+            r4: 0,
+            r5: 1,
+            r6: e.to_string(),
+            r7: None,
+        },
     }
 }
 
@@ -491,22 +531,32 @@ fn cmd_token(cmd: &t99) -> &'static str {
 }
 
 /// f134=cargo_exec_multi. Run command on multiple projects in parallel.
-fn f134(cmd: &t99, projects: &[String], features: Option<&str>, extra_args: &[String]) -> Vec<t100> {
+fn f134(
+    cmd: &t99,
+    projects: &[String],
+    features: Option<&str>,
+    extra_args: &[String],
+) -> Vec<t100> {
     let (tx, rx) = std::sync::mpsc::channel::<t100>();
-    let handles: Vec<_> = projects.iter().map(|proj| {
-        let tx = tx.clone();
-        let cmd = *cmd;
-        let proj = proj.clone();
-        let features = features.map(|f| f.to_string());
-        let extra = extra_args.to_vec();
-        std::thread::spawn(move || {
-            let result = f133(&cmd, &proj, features.as_deref(), None, &extra);
-            let _ = tx.send(result);
+    let handles: Vec<_> = projects
+        .iter()
+        .map(|proj| {
+            let tx = tx.clone();
+            let cmd = *cmd;
+            let proj = proj.clone();
+            let features = features.map(|f| f.to_string());
+            let extra = extra_args.to_vec();
+            std::thread::spawn(move || {
+                let result = f133(&cmd, &proj, features.as_deref(), None, &extra);
+                let _ = tx.send(result);
+            })
         })
-    }).collect();
+        .collect();
     drop(tx);
     let results: Vec<t100> = rx.into_iter().collect();
-    for h in handles { let _ = h.join(); }
+    for h in handles {
+        let _ = h.join();
+    }
     results
 }
 
@@ -527,7 +577,11 @@ fn f135(cmds: &[t99], project: &str, features: Option<&str>, extra_args: &[Strin
 fn workspace_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let root = crate::config::workspace_root(&cwd);
-    if root.exists() { root } else { cwd }
+    if root.exists() {
+        root
+    } else {
+        cwd
+    }
 }
 
 // ── Dispatcher (f136) ────────────────────────────────────
@@ -547,7 +601,8 @@ pub fn f136(
     // Chain mode: x1,x2,x3 on same project sequentially.
     if let Some(chain_str) = chain {
         let proj = project.as_deref().unwrap_or("p0");
-        let cmds: Vec<t99> = chain_str.split(',')
+        let cmds: Vec<t99> = chain_str
+            .split(',')
             .filter_map(|s| parse_cmd_token(s.trim()))
             .collect();
         if cmds.is_empty() {
@@ -563,9 +618,7 @@ pub fn f136(
 
     // All mode: run on all workspace crates in parallel.
     if all {
-        let projects: Vec<String> = PROJECT_MAP.iter()
-            .map(|(k, _)| k.to_string())
-            .collect();
+        let projects: Vec<String> = PROJECT_MAP.iter().map(|(k, _)| k.to_string()).collect();
         let results = f134(&cmd, &projects, features.as_deref(), &extra);
         print_multi(&results, expand);
         if results.iter().any(|r| !r.r2) {
@@ -655,7 +708,11 @@ mod tests {
     fn compress_json_failed_test_name() {
         let input = "---- my_module::tests::my_test ----";
         let (_, _, out, _) = compress_json_messages(input);
-        assert!(out.contains("FAIL:my_module::tests::my_test"), "got: {}", out);
+        assert!(
+            out.contains("FAIL:my_module::tests::my_test"),
+            "got: {}",
+            out
+        );
     }
 
     #[test]

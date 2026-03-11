@@ -510,9 +510,21 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             SshCaCmd::Sign { node } => kova::ssh_ca::run_sign(&node),
             SshCaCmd::Setup => kova::ssh_ca::run_setup(),
         },
-        C2Cmd::Ncmd { cmd, nodes, idle, extra, release, lines, expand, oneline } => {
+        C2Cmd::Ncmd {
+            cmd,
+            nodes,
+            idle,
+            extra,
+            release,
+            lines,
+            expand,
+            oneline,
+        } => {
             let nodes_opt = if idle {
-                let all: Vec<String> = kova::c2::default_nodes().into_iter().map(String::from).collect();
+                let all: Vec<String> = kova::c2::default_nodes()
+                    .into_iter()
+                    .map(String::from)
+                    .collect();
                 kova::node_cmd::pick_idlest(&all)
             } else {
                 nodes
@@ -546,13 +558,22 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
             println!("\n{}/{} nodes online", online, results.len());
             Ok(())
         }
-        ClusterCmd::Gen { prompt, system, ctx } => {
+        ClusterCmd::Gen {
+            prompt,
+            system,
+            ctx,
+        } => {
             let prompt = prompt.join(" ");
             let system = system.unwrap_or_else(|| {
                 "You are a Rust systems programming expert. Write clean, idiomatic Rust. No filler.".into()
             });
             println!("[cluster] dispatching code gen...");
-            match cluster.dispatch(kova::cluster::TaskKind::CodeGen, &system, &prompt, Some(ctx)) {
+            match cluster.dispatch(
+                kova::cluster::TaskKind::CodeGen,
+                &system,
+                &prompt,
+                Some(ctx),
+            ) {
                 Ok((node, response)) => {
                     println!("[cluster] {} responded:\n", node);
                     println!("{}", response);
@@ -565,7 +586,12 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
             let code = std::fs::read_to_string(&file)?;
             let system = "Review this Rust code. Flag: correctness issues, anti-patterns, P12 slop words (utilize/leverage/optimize/comprehensive/robust/seamlessly), unnecessary abstractions. Be direct.";
             println!("[cluster] dispatching review of {}...", file.display());
-            match cluster.dispatch(kova::cluster::TaskKind::CodeReview, system, &code, Some(8192)) {
+            match cluster.dispatch(
+                kova::cluster::TaskKind::CodeReview,
+                system,
+                &code,
+                Some(8192),
+            ) {
                 Ok((node, response)) => {
                     println!("[cluster] {} review:\n", node);
                     println!("{}", response);
@@ -590,20 +616,26 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
         }
         ClusterCmd::Bench => {
             println!("[cluster] benchmarking all nodes...\n");
-            let prompt = "Write a Rust function that computes the nth Fibonacci number iteratively.";
+            let prompt =
+                "Write a Rust function that computes the nth Fibonacci number iteratively.";
             let system = "You are a Rust expert. Write clean code. No explanation.";
 
-            let handles: Vec<_> = cluster.nodes.iter().map(|node| {
-                let url = node.base_url();
-                let model = node.model.clone();
-                let id = node.id.clone();
-                std::thread::spawn(move || {
-                    let start = std::time::Instant::now();
-                    let result = kova::ollama::generate(&url, &model, system, prompt, Some(4096));
-                    let elapsed = start.elapsed();
-                    (id, model, result, elapsed)
+            let handles: Vec<_> = cluster
+                .nodes
+                .iter()
+                .map(|node| {
+                    let url = node.base_url();
+                    let model = node.model.clone();
+                    let id = node.id.clone();
+                    std::thread::spawn(move || {
+                        let start = std::time::Instant::now();
+                        let result =
+                            kova::ollama::generate(&url, &model, system, prompt, Some(4096));
+                        let elapsed = start.elapsed();
+                        (id, model, result, elapsed)
+                    })
                 })
-            }).collect();
+                .collect();
 
             for h in handles {
                 if let Ok((id, model, result, elapsed)) = h.join() {
@@ -611,7 +643,14 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
                         Ok(resp) => {
                             let tokens = resp.split_whitespace().count(); // rough estimate
                             let tps = tokens as f64 / elapsed.as_secs_f64();
-                            println!("  {} ({}) — {:.1}s, ~{} tokens, ~{:.1} tok/s", id, model, elapsed.as_secs_f64(), tokens, tps);
+                            println!(
+                                "  {} ({}) — {:.1}s, ~{} tokens, ~{:.1} tok/s",
+                                id,
+                                model,
+                                elapsed.as_secs_f64(),
+                                tokens,
+                                tps
+                            );
                         }
                         Err(e) => println!("  {} ({}) — FAILED: {}", id, model, e),
                     }
@@ -625,9 +664,12 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
                 print!("  {} — ", node.id);
                 match kova::ollama::list_models(&url) {
                     Ok(models) => {
-                        let names: Vec<_> = models.iter().map(|m| {
-                            format!("{} ({:.1}GB)", m.name, m.size as f64 / 1_073_741_824.0)
-                        }).collect();
+                        let names: Vec<_> = models
+                            .iter()
+                            .map(|m| {
+                                format!("{} ({:.1}GB)", m.name, m.size as f64 / 1_073_741_824.0)
+                            })
+                            .collect();
                         println!("{}", names.join(", "));
                     }
                     Err(e) => println!("OFFLINE ({})", e),
@@ -643,11 +685,17 @@ fn main() -> anyhow::Result<()> {
 
     // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
     match &args.cmd {
-        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) | Some(Cmd::Academy(_)) | Some(Cmd::Gauntlet(_)) => {
+        Some(Cmd::Cluster(_))
+        | Some(Cmd::Factory(_))
+        | Some(Cmd::Moe(_))
+        | Some(Cmd::Academy(_))
+        | Some(Cmd::Gauntlet(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
-                    let project = a.project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+                    let project = a
+                        .project
+                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
                     let config = kova::factory::FactoryConfig {
                         max_fix_retries: a.retries,
                         run_clippy: !a.no_clippy,
@@ -673,7 +721,9 @@ fn main() -> anyhow::Result<()> {
                 }
                 Cmd::Academy(a) => {
                     let config = kova::academy::AcademyConfig {
-                        project_dir: a.project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
+                        project_dir: a
+                            .project
+                            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
                         num_experts: a.experts,
                         max_fix_retries: a.retries,
                         num_ctx: a.ctx,
@@ -743,12 +793,14 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
                         None => eprintln!("  {}: (not found)", role),
                     }
                 }
-                eprintln!("  orchestration: max_fix_retries={} run_clippy={}",
+                eprintln!(
+                    "  orchestration: max_fix_retries={} run_clippy={}",
                     kova::orchestration_max_fix_retries(),
-                    kova::orchestration_run_clippy());
+                    kova::orchestration_run_clippy()
+                );
                 Ok(())
             }
-        }
+        },
         Some(Cmd::Bootstrap) => {
             kova::bootstrap()?;
             eprintln!("Bootstrap complete. ~/.kova/ ready.");
@@ -761,7 +813,9 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             let project = kova::default_project();
             let out = kova::cursor_prompts::load_cursor_prompts(&project);
             if out.is_empty() {
-                eprintln!("Prompts disabled (config [cursor] prompts_enabled = false or no rules found)");
+                eprintln!(
+                    "Prompts disabled (config [cursor] prompts_enabled = false or no rules found)"
+                );
             } else {
                 print!("{}", out);
             }
@@ -784,8 +838,14 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         Some(Cmd::X(args)) => {
             kova::bootstrap()?;
             kova::cargo_cmd::f136(
-                args.cmd, args.project, args.features, args.bin,
-                args.extra, args.all, args.chain, args.expand,
+                args.cmd,
+                args.project,
+                args.features,
+                args.bin,
+                args.extra,
+                args.all,
+                args.chain,
+                args.expand,
             )
         }
         #[cfg(feature = "inference")]
@@ -819,7 +879,11 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) | Some(Cmd::Academy(_)) | Some(Cmd::Gauntlet(_)) => unreachable!("handled before tokio"),
+        Some(Cmd::Cluster(_))
+        | Some(Cmd::Factory(_))
+        | Some(Cmd::Moe(_))
+        | Some(Cmd::Academy(_))
+        | Some(Cmd::Gauntlet(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]

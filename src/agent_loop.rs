@@ -52,7 +52,11 @@ pub fn f147(
     for call in &calls {
         eprintln!("\x1b[90m[tool: {}]\x1b[0m", call.tool);
         let result = tools::f141(call, project_dir);
-        let status = if result.success { "\x1b[32mok\x1b[0m" } else { "\x1b[31merr\x1b[0m" };
+        let status = if result.success {
+            "\x1b[32mok\x1b[0m"
+        } else {
+            "\x1b[31merr\x1b[0m"
+        };
         eprintln!("\x1b[90m[{}: {}]\x1b[0m", call.tool, status);
         // Print truncated result preview.
         let preview = truncate_output(&result.output, 20);
@@ -62,7 +66,9 @@ pub fn f147(
         results.push(result);
     }
 
-    t106::Continue { tool_results: results }
+    t106::Continue {
+        tool_results: results,
+    }
 }
 
 /// f148=agent_loop. Run agent turns until done or max iterations.
@@ -97,7 +103,10 @@ pub fn f148(
                 conversation.push_str("\nAssistant: ");
 
                 if i + 1 >= max_iterations {
-                    eprintln!("\x1b[33m[agent: max iterations ({}) reached]\x1b[0m", max_iterations);
+                    eprintln!(
+                        "\x1b[33m[agent: max iterations ({}) reached]\x1b[0m",
+                        max_iterations
+                    );
                 }
             }
         }
@@ -114,5 +123,10 @@ fn truncate_output(s: &str, max_lines: usize) -> String {
     let half = max_lines / 2;
     let head: Vec<&str> = lines[..half].to_vec();
     let tail: Vec<&str> = lines[lines.len() - half..].to_vec();
-    format!("{}\n... ({} lines omitted) ...\n{}", head.join("\n"), lines.len() - max_lines, tail.join("\n"))
+    format!(
+        "{}\n... ({} lines omitted) ...\n{}",
+        head.join("\n"),
+        lines.len() - max_lines,
+        tail.join("\n")
+    )
 }

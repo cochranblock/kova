@@ -16,7 +16,9 @@ const NODE_PRINCIPALS: &[(&str, &str, &str)] = &[
 ];
 
 fn ssh_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".ssh")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".ssh")
 }
 
 fn ca_key_path() -> PathBuf {
@@ -48,7 +50,16 @@ pub fn run_init() -> anyhow::Result<()> {
     if !ca.with_extension("pub").exists() {
         eprintln!("[ssh-ca] Creating CA key at {}", ca_str);
         let status = Command::new("ssh-keygen")
-            .args(["-t", "ed25519", "-f", &ca_str, "-C", "kova-host-ca", "-N", ""])
+            .args([
+                "-t",
+                "ed25519",
+                "-f",
+                &ca_str,
+                "-C",
+                "kova-host-ca",
+                "-N",
+                "",
+            ])
             .status()?;
         if !status.success() {
             anyhow::bail!("ssh-keygen failed");
@@ -117,10 +128,13 @@ pub fn run_sign(node: &str) -> anyhow::Result<()> {
     eprintln!("[ssh-ca] Signing host cert for {}...", node);
     let status = Command::new("ssh-keygen")
         .args([
-            "-s", ca.to_string_lossy().as_ref(),
+            "-s",
+            ca.to_string_lossy().as_ref(),
             "-h",
-            "-I", node,
-            "-n", &principals,
+            "-I",
+            node,
+            "-n",
+            &principals,
             host_key_path.to_string_lossy().as_ref(),
         ])
         .status()?;

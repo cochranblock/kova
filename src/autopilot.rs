@@ -34,23 +34,42 @@ pub fn run(prompt: String) -> anyhow::Result<()> {
 
     #[cfg(target_os = "macos")]
     {
-        enigo.key(Key::Meta, Direction::Press).map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
-        enigo.key(Key::Unicode('i'), Direction::Click).map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
-        enigo.key(Key::Meta, Direction::Release).map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
+        enigo
+            .key(Key::Meta, Direction::Press)
+            .map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
+        enigo
+            .key(Key::Unicode('i'), Direction::Click)
+            .map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
+        enigo
+            .key(Key::Meta, Direction::Release)
+            .map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
     }
     #[cfg(not(target_os = "macos"))]
     {
-        enigo.key(Key::Control, Direction::Press).map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
-        enigo.key(Key::Unicode('i'), Direction::Click).map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
-        enigo.key(Key::Control, Direction::Release).map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
+        enigo
+            .key(Key::Control, Direction::Press)
+            .map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
+        enigo
+            .key(Key::Unicode('i'), Direction::Click)
+            .map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
+        enigo
+            .key(Key::Control, Direction::Release)
+            .map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
     }
     thread::sleep(Duration::from_millis(800));
 
-    enigo.text(&prompt).map_err(|e| anyhow::anyhow!("enigo text: {}", e))?;
+    enigo
+        .text(&prompt)
+        .map_err(|e| anyhow::anyhow!("enigo text: {}", e))?;
     thread::sleep(Duration::from_millis(200));
 
-    enigo.key(Key::Return, Direction::Click).map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
+    enigo
+        .key(Key::Return, Direction::Click)
+        .map_err(|e| anyhow::anyhow!("enigo: {}", e))?;
 
-    eprintln!("[autopilot] Submitted {} chars to Cursor composer", prompt.len());
+    eprintln!(
+        "[autopilot] Submitted {} chars to Cursor composer",
+        prompt.len()
+    );
     Ok(())
 }
