@@ -4,3 +4,6 @@
 *.swo
 .DS_Store
 *.log
+
+# Claude Code worktrees
+.claude/worktrees/
