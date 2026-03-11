@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! f91–f93. Cargo check, clippy, test.
 
 use std::path::Path;

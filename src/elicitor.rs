@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Elicitor module. Format questions, parse short replies, build restatements.
 //! Used by GUI and serve for clarification flow.
 

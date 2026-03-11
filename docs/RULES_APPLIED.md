@@ -1,4 +1,5 @@
 <!-- Unlicense — cochranblock.org -->
+<!-- Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
 # Rules Applied — Cochranblock Workspace
 
 Rules from `.cursor/rules/` mapped to this workspace. Applied and verified.

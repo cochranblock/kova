@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Demo mode: action script recording for UI testing.
 //! Record user actions + function invocations; replay to iterate Kova dev cycles.
 

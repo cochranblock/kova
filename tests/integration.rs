@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Integration tests. f30 scope. No self-licking.
 
 use kova::{load_backlog, t0, t3, t5, t6};

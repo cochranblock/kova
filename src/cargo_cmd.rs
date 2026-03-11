@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Tokenized cargo commands. §13 compressed output for AI context.
 //! xN=command, pN=project alias, rN=output field.
 //! Token in → cargo execute → compress out.

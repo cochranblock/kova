@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Tokenized node commands. §13 compressed output for AI context.
 //! nN=node, cN=command, oN=output field.
 //! Like Rust macros: token in → execute → compress out.
@@ -76,6 +77,9 @@ pub enum t96 {
     /// ci: compact inspect — one-line-per-node.
     #[value(name = "ci")]
     Ci,
+    /// ct: ntest — remote exopack test run.
+    #[value(name = "ct")]
+    Ct,
 }
 
 // ── Result Type (t97) ────────────────────────────────────
@@ -275,6 +279,34 @@ fn f126(nodes: &[String], project: &std::path::Path) -> Vec<t97> {
     results
 }
 
+/// f133=ntest. Remote exopack test run. Worker workspace from env or /home/mcochran.
+fn f133(nodes: &[String], project: &str) -> Vec<t97> {
+    let workspace = std::env::var("KOVA_WORKER_WORKSPACE").unwrap_or_else(|_| "/home/mcochran".into());
+    let bin = format!("{}-test", project);
+    let cmd = format!(
+        "cd {} && $HOME/.cargo/bin/cargo run -p {} --bin {} --features tests 2>&1 | tail -20",
+        workspace, project, bin
+    );
+    let (tx, rx) = mpsc::channel::<t97>();
+    let handles: Vec<_> = nodes.iter().map(|node| {
+        let tx = tx.clone();
+        let node = node.clone();
+        let cmd = cmd.clone();
+        thread::spawn(move || {
+            let token = to_token(&node).to_string();
+            let (ok, out) = ssh_exec(&node, &cmd);
+            let _ = tx.send(t97 {
+                s14: token, s15: ok,
+                s16: vec![("o10", if ok { "ok" } else { "err" }.into()), ("o11", out.trim().to_string())],
+            });
+        })
+    }).collect();
+    drop(tx);
+    let results: Vec<t97> = rx.into_iter().collect();
+    for h in handles { let _ = h.join(); }
+    results
+}
+
 /// f127=nbuild. Remote cargo build.
 fn f127(nodes: &[String], project_name: &str, release: bool) -> Vec<t97> {
     let flag = if release { " --release" } else { "" };
@@ -398,6 +430,23 @@ fn f130(nodes: &[String], project: &std::path::Path, release: bool, service: Opt
     build_results
 }
 
+/// Pick node with lowest load. Returns hostname or None if all fail.
+pub fn pick_idlest(nodes: &[String]) -> Option<String> {
+    let results = f131(nodes);
+    let mut ok: Vec<(f32, String)> = results
+        .iter()
+        .filter(|r| r.s15)
+        .filter_map(|r| {
+            let load_str = r.s16.iter().find(|(k, _)| *k == "o3")?.1.as_str();
+            let load = load_str.trim().parse::<f32>().ok()?;
+            let host = r.s16.iter().find(|(k, _)| *k == "o1")?.1.clone();
+            Some((load, host))
+        })
+        .collect();
+    ok.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    ok.first().map(|(_, h)| h.clone())
+}
+
 /// f131=nci. Compact inspect — one-line-per-node summary.
 fn f131(nodes: &[String]) -> Vec<t97> {
     let cmd = r#"echo "$(nproc) $(free -g|awk '/Mem:/{print $3}')G $(cat /proc/loadavg|cut -d' ' -f1) $(hostname)""#;
@@ -439,7 +488,7 @@ fn headers_for(cmd: &t96) -> &'static [&'static str] {
         t96::C2 => &["o0", "o4", "o5", "o6", "o8"],
         t96::C3 => &["o0", "o9"],
         t96::C4 => &["o0", "o8", "o11"],
-        t96::C5 | t96::C6 | t96::C9 => &["o0", "o10", "o11"],
+        t96::C5 | t96::C6 | t96::C9 | t96::Ct => &["o0", "o10", "o11"],
         t96::C7 => &["o0", "o11"],
         t96::C8 => &["o0", "o10"],
         t96::Ci => &["o0", "o4", "o5", "o3", "o1"],
@@ -520,7 +569,7 @@ fn print_compressed(cmd: &t96, results: &[t97], expand: bool) {
 
 // ── Dispatcher (f132) ────────────────────────────────────
 
-/// f132=node_cmd_dispatch. Central dispatcher for c1-c9/ci tokens.
+/// f132=node_cmd_dispatch. Central dispatcher for c1-c9/ci/ct tokens.
 pub fn f132(
     cmd: t96,
     nodes: Option<String>,
@@ -561,6 +610,10 @@ pub fn f132(
             f130(&node_list, &project, release, None)
         }
         t96::Ci => f131(&node_list),
+        t96::Ct => {
+            let project = extra.as_deref().unwrap_or("cochranblock");
+            f133(&node_list, project)
+        }
     };
 
     if oneline && matches!(cmd, t96::Ci) {

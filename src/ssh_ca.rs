@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! kova c2 ssh-ca — SSH host certificate authority. No host key churn when IPs change.
 
 use std::fs;

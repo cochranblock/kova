@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Last pipeline run for "Explain" feature. In-memory only. t93=LastTrace.
 
 use serde::{Deserialize, Serialize};

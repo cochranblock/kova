@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Tool definitions and dispatch for agentic mode.
 //! t101=ToolDef, t102=ToolParam, t103=ToolCall, t104=ToolResult, t105=ToolRegistry.
 //! f140=parse_tool_calls, f141=dispatch_tool, f142-f146,f150,f155=individual tools.

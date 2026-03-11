@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! f81=run_code_gen_pipeline. Modular: inference, compilation, fix_loop.
 
 mod compilation;

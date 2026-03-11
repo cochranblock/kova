@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Kova theme. THEME.md palette + professional layout.
 
 use eframe::egui::{self, FontId, Rounding, Stroke, TextStyle, Visuals};

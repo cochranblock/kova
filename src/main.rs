@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Kova — augment engine. GUI + serve.
 
 use clap::{Parser, Subcommand};
@@ -118,15 +119,18 @@ enum C2Cmd {
         #[command(subcommand)]
         cmd: SshCaCmd,
     },
-    /// Tokenized node commands (c1-c9, ci). §13 compressed output.
+    /// Tokenized node commands (c1-c9, ci, ct). §13 compressed output.
     Ncmd {
-        /// Command token: c1(nstat) c2(nspec) c3(nsvc) c4(nrust) c5(nsync) c6(nbuild) c7(nlog) c8(nkill) c9(ndeploy) ci(inspect).
+        /// Command token: c1(nstat) c2(nspec) c3(nsvc) c4(nrust) c5(nsync) c6(nbuild) c7(nlog) c8(nkill) c9(ndeploy) ci(inspect) ct(ntest).
         #[arg(value_enum)]
         cmd: kova::node_cmd::t96,
         /// Restrict to nodes (e.g. n0,n2 or lf,bt). Default: all.
         #[arg(long)]
         nodes: Option<String>,
-        /// Extra arg: process name (c8), unit (c7), project path (c5/c6/c9), "install" (c4).
+        /// Use idlest node (from nci). Overrides --nodes.
+        #[arg(long)]
+        idle: bool,
+        /// Extra arg: process name (c8), unit (c7), project path (c5/c6/c9), "install" (c4), project (ct).
         #[arg(long)]
         extra: Option<String>,
         /// Release mode (c6/c9).
@@ -371,8 +375,17 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             SshCaCmd::Sign { node } => kova::ssh_ca::run_sign(&node),
             SshCaCmd::Setup => kova::ssh_ca::run_setup(),
         },
-        C2Cmd::Ncmd { cmd, nodes, extra, release, lines, expand, oneline } => {
-            kova::node_cmd::f132(cmd, nodes, extra, release, lines, expand, oneline)
+        C2Cmd::Ncmd { cmd, nodes, idle, extra, release, lines, expand, oneline } => {
+            let nodes_opt = if idle {
+                let all: Vec<String> = kova::c2::default_nodes().into_iter().map(String::from).collect();
+                kova::node_cmd::pick_idlest(&all).map(|n| n)
+            } else {
+                nodes
+            };
+            if idle && nodes_opt.is_none() {
+                anyhow::bail!("No reachable nodes. Run: kova c2 ncmd ci");
+            }
+            kova::node_cmd::f132(cmd, nodes_opt, extra, release, lines, expand, oneline)
         }
     }
 }

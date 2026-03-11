@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Mural UI Quality Simulation — source-level analysis of mural-wasm rendering quality.
 //!
 //! Checks sprite rendering, animation timing, movement physics, draw pipeline,

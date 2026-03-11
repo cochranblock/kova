@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! HTTP API. kova serve. POST /api/intent, GET /ws/stream (WebSocket). Web GUI at /.
 //! f114=serve_run
 

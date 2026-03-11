@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Screen capture and recording — trait + xcap impl.
 //! Use for demo mode: screenshot before/after actions, optional video.
 //!

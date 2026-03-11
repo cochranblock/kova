@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Kova WASM thin client. egui in browser, connects to kova serve.
 //! Embedded from former kova-web crate.
 

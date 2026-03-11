@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Output helpers. Diff, apply. f84=format_diff f85=resolve_target_path
 
 use std::path::{Path, PathBuf};

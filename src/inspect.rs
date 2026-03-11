@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! kova c2 inspect — Gather CPU, RAM, disk, GPU from c2-core + workers.
 
 use std::process::Command;

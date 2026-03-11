@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! TRIPLE SIMS — Three programmatic simulations for quality evaluation.
 //!
 //! Sim 1 (f170): User Story UX — walk user scenarios, verify elicitation/router/context flows.

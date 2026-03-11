@@ -1,4 +1,5 @@
 // Unlicense — cochranblock.org
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Kova autopilot — type prompts into Cursor's agent composer. No API costs.
 //! f121=autopilot_run
 
