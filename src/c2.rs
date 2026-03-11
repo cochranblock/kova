@@ -71,12 +71,20 @@ fn is_under_hive_vault(p: &Path) -> bool {
 }
 
 fn to_worker_path(p: &Path) -> PathBuf {
+    to_worker_path_impl(p, "/mnt/hive")
+}
+
+fn to_worker_path_local(p: &Path) -> PathBuf {
+    to_worker_path_impl(p, "/tmp/hive-build")
+}
+
+fn to_worker_path_impl(p: &Path, base: &str) -> PathBuf {
     let s = p.to_string_lossy();
     if let Ok(home) = std::env::var("HOME") {
         let hive_vault = format!("{}/hive-vault", home);
         if s.starts_with(&hive_vault) {
             let rest = s.strip_prefix(&hive_vault).unwrap_or("");
-            return PathBuf::from("/mnt/hive").join(rest.trim_start_matches('/'));
+            return PathBuf::from(base).join(rest.trim_start_matches('/'));
         }
     }
     p.to_path_buf()
@@ -97,8 +105,12 @@ fn run_local(plan: &crate::plan::t3) -> anyhow::Result<()> {
 }
 
 /// f120=kova_c2_broadcast. SSH broadcast to workers.
-fn run_broadcast(plan: &crate::plan::t3, nodes: &[&str]) -> anyhow::Result<()> {
-    let worker_path = to_worker_path(&plan.s4);
+fn run_broadcast(plan: &crate::plan::t3, nodes: &[&str], local: bool) -> anyhow::Result<()> {
+    let worker_path = if local {
+        to_worker_path_local(&plan.s4)
+    } else {
+        to_worker_path(&plan.s4)
+    };
     for step in &plan.s3 {
         let cmd = match &step.s6 {
             crate::plan::t5::CargoCheck => "cargo check",
@@ -134,6 +146,7 @@ pub fn run_command(
     broadcast: bool,
     release: bool,
     nodes_override: Option<String>,
+    local: bool,
 ) -> anyhow::Result<()> {
     let project_path = resolve_project(project);
     let intent = token.to_intent(release);
@@ -177,22 +190,28 @@ pub fn run_command(
 
         // Pre-flight: hive must be synced on workers
         let first = &nodes[0];
-        let worker_path = to_worker_path(&plan.s4);
+        let worker_path = if local {
+            to_worker_path_local(&plan.s4)
+        } else {
+            to_worker_path(&plan.s4)
+        };
         let preflight = Command::new("ssh")
             .args(["-o", "ConnectTimeout=5", first])
             .arg(format!("test -d {}", worker_path.display()))
             .status();
         if let Ok(status) = preflight {
             if !status.success() {
+                let sync_cmd = if local { "kova c2 sync --local" } else { "kova c2 sync" };
                 anyhow::bail!(
-                    "Hive not synced on {}. Run: kova c2 sync",
-                    first
+                    "Hive not synced on {}. Run: {}",
+                    first,
+                    sync_cmd
                 );
             }
         }
 
         let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
-        run_broadcast(&plan, &node_refs)
+        run_broadcast(&plan, &node_refs, local)
     } else {
         run_local(&plan)
     }
@@ -220,71 +239,97 @@ fn kova_root() -> PathBuf {
 }
 
 /// Sync workspace from c2-core to workers. Replaces sync-hive.sh.
-pub fn run_sync(dry_run: bool, target: &str) -> anyhow::Result<()> {
+pub fn run_sync(dry_run: bool, target: &str, local: bool, all: bool) -> anyhow::Result<()> {
     let root = kova_root();
-    let hive_workspace = "/mnt/hive/projects/workspace";
-    let hive_projects = "/mnt/hive/projects";
-
-    // 1. Ensure hive dir exists on target
-    let check = Command::new("ssh")
-        .args(["-o", "ConnectTimeout=5", target])
-        .arg(format!("test -d {}", hive_workspace))
-        .status();
-    if let Ok(status) = check {
-        if !status.success() {
-            anyhow::bail!(
-                "Hive not ready. Run on target:\n  ssh {} \"sudo mkdir -p {} {}/ronin-sites {}/rogue-repo && sudo chown -R $(whoami):$(whoami) {}\"",
-                target, hive_workspace, hive_projects, hive_projects, hive_projects
-            );
-        }
+    let (hive_workspace, hive_projects) = if local {
+        ("/tmp/hive-build/projects/workspace", "/tmp/hive-build/projects")
     } else {
-        anyhow::bail!("Cannot reach {}. Check SSH.", target);
-    }
+        ("/mnt/hive/projects/workspace", "/mnt/hive/projects")
+    };
+
+    let targets: Vec<&str> = if all {
+        default_nodes().into_iter().collect()
+    } else {
+        vec![target]
+    };
 
     let mut rsync_args = vec!["-avz", "--exclude", "target", "--exclude", "node_modules"];
     if dry_run {
         rsync_args.push("--dry-run");
     }
 
-    // 2. Rsync workspace crates
-    eprintln!("[sync] Syncing workspace to {}:{}/", target, hive_workspace);
-    for crate_name in WORKSPACE_CRATES {
-        let src = root.join(crate_name);
-        if src.is_dir() {
-            let status = Command::new("rsync")
-                .args(&rsync_args)
-                .arg(&src)
-                .arg(format!("{}:{}/", target, hive_workspace))
-                .status()?;
+    for t in &targets {
+        // 1. Ensure hive dir exists on target
+        let check = if local {
+            Command::new("ssh")
+                .args(["-o", "ConnectTimeout=5", t])
+                .arg(format!(
+                    "mkdir -p {} {}/ronin-sites {}/rogue-repo",
+                    hive_workspace, hive_projects, hive_projects
+                ))
+                .status()
+        } else {
+            Command::new("ssh")
+                .args(["-o", "ConnectTimeout=5", t])
+                .arg(format!("test -d {}", hive_workspace))
+                .status()
+        };
+
+        if let Ok(status) = check {
             if !status.success() {
-                anyhow::bail!("rsync {} failed", crate_name);
+                if local {
+                    anyhow::bail!("Cannot create dirs on {}. Check SSH.", t);
+                } else {
+                    anyhow::bail!(
+                        "Hive not ready. Run on target:\n  ssh {} \"sudo mkdir -p {} {}/ronin-sites {}/rogue-repo && sudo chown -R $(whoami):$(whoami) {}\"",
+                        t, hive_workspace, hive_projects, hive_projects, hive_projects
+                    );
+                }
+            }
+        } else {
+            anyhow::bail!("Cannot reach {}. Check SSH.", t);
+        }
+
+        // 2. Rsync workspace crates
+        eprintln!("[sync] Syncing workspace to {}:{}/", t, hive_workspace);
+        for crate_name in WORKSPACE_CRATES {
+            let src = root.join(crate_name);
+            if src.is_dir() {
+                let status = Command::new("rsync")
+                    .args(&rsync_args)
+                    .arg(&src)
+                    .arg(format!("{}:{}/", t, hive_workspace))
+                    .status()?;
+                if !status.success() {
+                    anyhow::bail!("rsync {} failed", crate_name);
+                }
             }
         }
-    }
-    let cargo_toml = root.join("Cargo.toml");
-    if cargo_toml.is_file() {
-        let status = Command::new("rsync")
-            .args(&rsync_args)
-            .arg(&cargo_toml)
-            .arg(format!("{}:{}/", target, hive_workspace))
-            .status()?;
-        if !status.success() {
-            anyhow::bail!("rsync Cargo.toml failed");
-        }
-    }
-
-    // 3. Rsync ronin-sites, rogue-repo (outside workspace)
-    eprintln!("[sync] Syncing ronin-sites, rogue-repo to {}:{}/", target, hive_projects);
-    for dir in ["ronin-sites", "rogue-repo"] {
-        let src = root.join(dir);
-        if src.is_dir() {
+        let cargo_toml = root.join("Cargo.toml");
+        if cargo_toml.is_file() {
             let status = Command::new("rsync")
                 .args(&rsync_args)
-                .arg(&src)
-                .arg(format!("{}:{}/", target, hive_projects))
+                .arg(&cargo_toml)
+                .arg(format!("{}:{}/", t, hive_workspace))
                 .status()?;
             if !status.success() {
-                anyhow::bail!("rsync {} failed", dir);
+                anyhow::bail!("rsync Cargo.toml failed");
+            }
+        }
+
+        // 3. Rsync ronin-sites, rogue-repo (outside workspace)
+        eprintln!("[sync] Syncing ronin-sites, rogue-repo to {}:{}/", t, hive_projects);
+        for dir in ["ronin-sites", "rogue-repo"] {
+            let src = root.join(dir);
+            if src.is_dir() {
+                let status = Command::new("rsync")
+                    .args(&rsync_args)
+                    .arg(&src)
+                    .arg(format!("{}:{}/", t, hive_projects))
+                    .status()?;
+                if !status.success() {
+                    anyhow::bail!("rsync {} failed", dir);
+                }
             }
         }
     }

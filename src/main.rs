@@ -55,6 +55,9 @@ enum C2Cmd {
         /// Restrict broadcast to specific nodes (e.g. lf,bt). Default: all reachable.
         #[arg(long)]
         nodes: Option<String>,
+        /// Build on local path (/tmp/hive-build) instead of NFS. Faster; run sync --local first.
+        #[arg(long)]
+        local: bool,
     },
     /// List worker nodes (lf gd bt st).
     Nodes,
@@ -70,9 +73,15 @@ enum C2Cmd {
     Sync {
         #[arg(long)]
         dry_run: bool,
-        /// Target host (default: st).
+        /// Target host (default: st). Ignored when --all.
         #[arg(long, default_value = "st")]
         target: String,
+        /// Sync to /tmp/hive-build on workers instead of /mnt/hive. Use with run --local.
+        #[arg(long)]
+        local: bool,
+        /// Sync to all workers (lf gd bt st).
+        #[arg(long)]
+        all: bool,
     },
     /// SSH host CA: init, sign, setup. No host key churn when IPs change.
     SshCa {
@@ -213,7 +222,8 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             broadcast,
             release,
             nodes,
-        } => kova::c2::run_command(token, project, broadcast, release, nodes),
+            local,
+        } => kova::c2::run_command(token, project, broadcast, release, nodes, local),
         C2Cmd::Inspect { json } => {
             let hosts = kova::inspect::run_inspect();
             if json {
@@ -229,7 +239,12 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             kova::inspect::print_recommend(&hosts);
             Ok(())
         }
-        C2Cmd::Sync { dry_run, target } => kova::c2::run_sync(dry_run, &target),
+        C2Cmd::Sync {
+            dry_run,
+            target,
+            local,
+            all,
+        } => kova::c2::run_sync(dry_run, &target, local, all),
         C2Cmd::SshCa { cmd } => match cmd {
             SshCaCmd::Init => kova::ssh_ca::run_init(),
             SshCaCmd::Sign { node } => kova::ssh_ca::run_sign(&node),

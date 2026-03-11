@@ -19,7 +19,7 @@ struct Command {
   payload :union {
     # Cargo build: compile a Rust project under /mnt/hive/projects/
     cargoBuild @2 :CargoBuildPayload;
-    # File sync: rsync/copy between paths on the GlusterFS volume
+    # File sync: rsync/copy between paths on the shared hive (NFS)
     fileSync @3 :FileSyncPayload;
     # Reserved for future command types
     unset @4 :Void;
