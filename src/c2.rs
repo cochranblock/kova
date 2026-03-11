@@ -559,7 +559,7 @@ fn hive_paths(local: bool) -> (String, String) {
 /// Workspace crates to sync (per KOVA_PROJECT_PLACEMENT).
 const WORKSPACE_CRATES: &[&str] = &[
     "approuter", "cochranblock", "oakilydokily", "kova", "kova-core", "kova-web",
-    "exopack", "whyyoulying", "wowasticker", "vendor",
+    "exopack", "whyyoulying", "wowasticker", "railgun", "ironhive", "vendor",
 ];
 
 fn kova_root() -> PathBuf {

@@ -279,14 +279,20 @@ fn f126(nodes: &[String], project: &std::path::Path) -> Vec<t97> {
     results
 }
 
-/// f133=ntest. Remote exopack test run. Worker workspace from env or /home/mcochran.
+/// f133=ntest. Remote exopack test run. Worker workspace: env, /tmp/hive-build (local sync), or /home/mcochran.
 pub fn f133_sync(nodes: &[String], project: &str) -> Vec<t97> {
-    let workspace = std::env::var("KOVA_WORKER_WORKSPACE").unwrap_or_else(|_| "/home/mcochran".into());
     let bin = format!("{}-test", project);
-    let cmd = format!(
-        "cd {} && $HOME/.cargo/bin/cargo run -p {} --bin {} --features tests 2>&1 | tail -20",
-        workspace, project, bin
-    );
+    let cmd = if let Ok(w) = std::env::var("KOVA_WORKER_WORKSPACE") {
+        format!(
+            "cd {} && $HOME/.cargo/bin/cargo run -p {} --bin {} --features tests 2>&1 | tail -20",
+            w, project, bin
+        )
+    } else {
+        format!(
+            "WORKDIR=$(test -d /tmp/hive-build/projects/workspace && echo /tmp/hive-build/projects/workspace || echo /home/mcochran); cd $WORKDIR && $HOME/.cargo/bin/cargo run -p {} --bin {} --features tests 2>&1 | tail -20",
+            project, bin
+        )
+    };
     let (tx, rx) = mpsc::channel::<t97>();
     let handles: Vec<_> = nodes.iter().map(|node| {
         let tx = tx.clone();
