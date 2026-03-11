@@ -17,6 +17,9 @@ pub mod screenshot;
 #[cfg(feature = "triple_sims")]
 pub mod triple_sims;
 
+#[cfg(feature = "triple_sims")]
+pub mod mural_sim;
+
 #[cfg(feature = "devtools")]
 pub mod devtools;
 
