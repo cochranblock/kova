@@ -51,6 +51,9 @@ enum Cmd {
     /// Mixture of Experts. Fan-out to N nodes, compile all, score, pick winner.
     #[command(name = "moe")]
     Moe(MoeArgs),
+    /// Academy. MoE-powered autonomous dev agent. Plan → generate → wire → test → fix → commit.
+    #[command(name = "academy")]
+    Academy(AcademyArgs),
 }
 
 #[derive(clap::Args)]
@@ -216,6 +219,30 @@ struct MoeArgs {
     /// Save winning expert to ~/.kova/experts/.
     #[arg(long)]
     save: bool,
+}
+
+#[derive(clap::Args)]
+struct AcademyArgs {
+    /// High-level task description.
+    task: Vec<String>,
+    /// Project directory (default: cwd).
+    #[arg(short, long)]
+    project: Option<std::path::PathBuf>,
+    /// Number of MoE experts per generation step (default: 2).
+    #[arg(short, long, default_value = "2")]
+    experts: usize,
+    /// Max fix retries per step (default: 3).
+    #[arg(long, default_value = "3")]
+    retries: u32,
+    /// Context window size.
+    #[arg(long, default_value = "8192")]
+    ctx: u32,
+    /// Skip auto-commit.
+    #[arg(long)]
+    no_commit: bool,
+    /// Dry run — plan only, don't execute.
+    #[arg(long)]
+    dry_run: bool,
 }
 
 #[derive(clap::Args)]
@@ -607,7 +634,7 @@ fn main() -> anyhow::Result<()> {
 
     // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
     match &args.cmd {
-        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) => {
+        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) | Some(Cmd::Academy(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -633,6 +660,18 @@ fn main() -> anyhow::Result<()> {
                         save_winner: a.save,
                     };
                     kova::moe::run_moe(&a.prompt.join(" "), config);
+                    Ok(())
+                }
+                Cmd::Academy(a) => {
+                    let config = kova::academy::AcademyConfig {
+                        project_dir: a.project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
+                        num_experts: a.experts,
+                        max_fix_retries: a.retries,
+                        num_ctx: a.ctx,
+                        auto_commit: !a.no_commit,
+                        dry_run: a.dry_run,
+                    };
+                    kova::academy::run_academy(&a.task.join(" "), config);
                     Ok(())
                 }
                 _ => unreachable!(),
@@ -762,7 +801,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) => unreachable!("handled before tokio"),
+        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) | Some(Cmd::Academy(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]

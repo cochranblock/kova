@@ -42,7 +42,6 @@ pub mod inference;
 pub mod model;
 #[cfg(feature = "inference")]
 pub mod router;
-#[cfg(feature = "inference")]
 pub mod academy;
 #[cfg(feature = "inference")]
 pub mod pipeline;
