@@ -66,6 +66,7 @@ pub mod factory;
 pub mod gauntlet;
 pub mod git_cmd;
 pub mod inspect;
+pub mod micro;
 pub mod moe;
 pub mod node_cmd;
 pub mod ollama;

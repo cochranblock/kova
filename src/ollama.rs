@@ -137,6 +137,60 @@ pub fn generate(
     Ok(gen.response)
 }
 
+/// Generate with explicit temperature and num_ctx. For micro-model dispatch.
+pub fn generate_with_temp(
+    base_url: &str,
+    model: &str,
+    system: &str,
+    prompt: &str,
+    num_ctx: Option<u32>,
+    temperature: Option<f32>,
+) -> Result<String, String> {
+    let url = format!("{}/api/generate", base_url);
+    let body = GenerateRequest {
+        model,
+        prompt,
+        system,
+        stream: false,
+        options: Some(GenerateOptions {
+            num_ctx,
+            temperature,
+        }),
+    };
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("http client: {}", e))?;
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .map_err(|e| format!("ollama generate: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "ollama http {}: {}",
+            resp.status(),
+            resp.text().unwrap_or_default()
+        ));
+    }
+
+    let gen: GenerateResponse = resp
+        .json()
+        .map_err(|e| format!("ollama response parse: {}", e))?;
+
+    if let (Some(count), Some(dur)) = (gen.eval_count, gen.eval_duration) {
+        if dur > 0 {
+            let tps = count as f64 / (dur as f64 / 1_000_000_000.0);
+            eprintln!("[micro] {} tokens, {:.1} tok/s", count, tps);
+        }
+    }
+
+    Ok(gen.response)
+}
+
 /// Streaming generation. Returns receiver for token chunks.
 pub fn generate_stream(
     base_url: &str,

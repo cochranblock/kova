@@ -57,6 +57,9 @@ enum Cmd {
     /// Gauntlet. Hell Week stress test for the AI pipeline. 5 phases, no mercy.
     #[command(name = "gauntlet")]
     Gauntlet(GauntletArgs),
+    /// Micro-model registry. List, run, and validate tiny purpose-built AI units.
+    #[command(name = "micro")]
+    Micro(MicroArgs),
 }
 
 #[derive(clap::Args)]
@@ -252,6 +255,46 @@ struct AcademyArgs {
 struct GauntletArgs {
     /// Run only specific phases (e.g. 1 2 3). Default: all.
     phases: Vec<u8>,
+}
+
+#[derive(clap::Args)]
+struct MicroArgs {
+    #[command(subcommand)]
+    cmd: MicroCmd,
+}
+
+#[derive(Subcommand)]
+enum MicroCmd {
+    /// List all registered micro-model templates.
+    List,
+    /// Run a specific micro-model template against input.
+    Run {
+        /// Template ID (e.g. f79, f80, f81) or name (e.g. classify_intent).
+        template: String,
+        /// Input text. If not provided, reads from stdin.
+        input: Vec<String>,
+        /// Target node URL (bypass cluster routing).
+        #[arg(long)]
+        node: Option<String>,
+        /// Model override.
+        #[arg(long)]
+        model: Option<String>,
+    },
+    /// Validate a micro-model response.
+    Validate {
+        /// Template ID.
+        template: String,
+        /// Response text to validate.
+        response: String,
+        /// Original input (for coherence check).
+        #[arg(long)]
+        input: Option<String>,
+    },
+    /// Route an input to the best micro-model (shows what would be selected).
+    Route {
+        /// Input text to classify.
+        input: Vec<String>,
+    },
 }
 
 #[derive(clap::Args)]
@@ -537,6 +580,116 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
     }
 }
 
+fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
+    use kova::micro::{registry::MicroRegistry, router::MicroRouter, runner, validate};
+
+    let registry = MicroRegistry::new();
+
+    match args.cmd {
+        MicroCmd::List => {
+            print!("{}", registry.status());
+            Ok(())
+        }
+        MicroCmd::Run {
+            template,
+            input,
+            node,
+            model,
+        } => {
+            // Find template by ID or name
+            let tmpl = registry
+                .get(&template)
+                .or_else(|| registry.get_by_name(&template))
+                .ok_or_else(|| anyhow::anyhow!("unknown template: {}", template))?;
+
+            let input_text = if input.is_empty() {
+                use std::io::Read;
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                buf
+            } else {
+                input.join(" ")
+            };
+
+            if let Some(url) = node {
+                // Direct mode: hit specific node
+                let result = runner::run_micro_direct(tmpl, &input_text, &url, model.as_deref())
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                println!("{}", result.response);
+                eprintln!(
+                    "[micro] {} on {} ({:?})",
+                    result.template_id, result.node_id, result.duration
+                );
+            } else {
+                // Cluster mode
+                let cluster = kova::cluster::Cluster::default_hive();
+                let breaker = runner::CircuitBreaker::new(3);
+                let budget = runner::Budget::new(100_000);
+                let result = runner::run_micro(tmpl, &input_text, &cluster, &breaker, &budget)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                println!("{}", result.response);
+                eprintln!(
+                    "[micro] {} on {} ({:?})",
+                    result.template_id, result.node_id, result.duration
+                );
+            }
+            Ok(())
+        }
+        MicroCmd::Validate {
+            template,
+            response,
+            input,
+        } => {
+            let tmpl = registry
+                .get(&template)
+                .or_else(|| registry.get_by_name(&template))
+                .ok_or_else(|| anyhow::anyhow!("unknown template: {}", template))?;
+
+            let mock_result = runner::MicroResult {
+                template_id: tmpl.id.clone(),
+                node_id: "validate".into(),
+                model: tmpl.model.clone(),
+                response: response.clone(),
+                duration: std::time::Duration::ZERO,
+                tokens: None,
+            };
+
+            let input_text = input.as_deref().unwrap_or("");
+            let result = validate::validate(&mock_result, input_text, &tmpl.output_schema);
+
+            println!("{}", result.summary);
+            for check in &result.checks {
+                println!(
+                    "  {} {} — {}",
+                    if check.passed { "✓" } else { "✗" },
+                    check.name,
+                    check.detail
+                );
+            }
+            println!("confidence: {:.0}%", result.confidence * 100.0);
+            Ok(())
+        }
+        MicroCmd::Route { input } => {
+            let input_text = input.join(" ");
+            let router = MicroRouter::new();
+            let decision = router.route(&input_text, &registry, None);
+            let tmpl = registry.get(&decision.template_id);
+            println!(
+                "route: {} (confidence: {:.0}%, method: {:?})",
+                decision.template_id,
+                decision.confidence * 100.0,
+                decision.method
+            );
+            if let Some(t) = tmpl {
+                println!("  name: {}", t.name);
+                println!("  tier: {} ({})", t.tier, t.model);
+                println!("  purpose: {}", t.purpose);
+            }
+            Ok(())
+        }
+    }
+}
+
 fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
     let cluster = kova::cluster::Cluster::default_hive();
     match args.cmd {
@@ -689,7 +842,8 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Factory(_))
         | Some(Cmd::Moe(_))
         | Some(Cmd::Academy(_))
-        | Some(Cmd::Gauntlet(_)) => {
+        | Some(Cmd::Gauntlet(_))
+        | Some(Cmd::Micro(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -742,6 +896,7 @@ fn main() -> anyhow::Result<()> {
                     kova::gauntlet::run_gauntlet(phases);
                     Ok(())
                 }
+                Cmd::Micro(a) => run_micro(a),
                 _ => unreachable!(),
             };
         }
@@ -883,7 +1038,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Factory(_))
         | Some(Cmd::Moe(_))
         | Some(Cmd::Academy(_))
-        | Some(Cmd::Gauntlet(_)) => unreachable!("handled before tokio"),
+        | Some(Cmd::Gauntlet(_))
+        | Some(Cmd::Micro(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
