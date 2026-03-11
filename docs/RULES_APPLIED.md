@@ -23,7 +23,7 @@ Rules from `.cursor/rules/` mapped to this workspace. Applied and verified.
 
 ## Workspace Mapping
 
-- **portfolio/** — Rust web server. Tokenization (v0, p0, f14, etc.) follows `kova/docs/compression_map.md`; exempt from "descriptive variables" (that rule targets math/science code).
+- **cochranblock/** — Rust web server. Tokenization (v0, p0, f14, etc.) follows `kova/docs/compression_map.md`; exempt from "descriptive variables" (that rule targets math/science code).
 - **kova/docs/** — Plans, protocol map, compression map, architecture. CDRL-like when Kova structure exists.
 - **red-team-recon/, gitlab-config/** — Not present yet; rules apply when added.
 

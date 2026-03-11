@@ -1097,10 +1097,10 @@ impl Drop for TestContext {
 
 /// Find the compiled app binary
 fn app_binary_path() -> String {
-    // In a cargo workspace, the binary is at target/debug/portfolio-server
-    // or target/release/portfolio-server
-    let debug_path = "target/debug/portfolio-server";
-    let release_path = "target/release/portfolio-server";
+    // In a cargo workspace, the binary is at target/debug/cochranblock
+    // or target/release/cochranblock
+    let debug_path = "target/debug/cochranblock";
+    let release_path = "target/release/cochranblock";
 
     if std::path::Path::new(release_path).exists() {
         release_path.into()
@@ -1735,7 +1735,7 @@ Some things can't be tested from inside the system being tested:
 /// Verify the production binary size is within acceptable limits
 pub fn check_binary_size() -> Result<(), TestError> {
     let result = inject_shell(
-        "ls -la target/release/portfolio-server | awk '{print $5}'"
+        "ls -la target/release/cochranblock | awk '{print $5}'"
     )?;
 
     let size_bytes: u64 = result.stdout.trim().parse()
@@ -1759,7 +1759,7 @@ pub fn check_binary_size() -> Result<(), TestError> {
 
 /// Verify the binary has no dynamic dependencies we don't expect
 pub fn check_dynamic_deps() -> Result<(), TestError> {
-    let result = inject_shell("ldd target/release/portfolio-server 2>&1 || true")?;
+    let result = inject_shell("ldd target/release/cochranblock 2>&1 || true")?;
 
     let output = result.stdout.to_lowercase();
 
@@ -1971,7 +1971,7 @@ print(json.dumps([{{
 ## 7.1 Workspace Layout
 
 ```
-portfolio-workspace/
+cochranblock-workspace/
 ├── Cargo.toml                          # [workspace] definition
 │
 ├── crates/
@@ -2224,7 +2224,7 @@ async fn main() -> anyhow::Result<()> {
 
 ```
 ══════════════════════════════════════════════════════════════
-  TEST REPORT — portfolio-server
+  TEST REPORT — cochranblock
 ══════════════════════════════════════════════════════════════
 
   PHASE 1: Unit Tests                          12/12 PASSED ✓
