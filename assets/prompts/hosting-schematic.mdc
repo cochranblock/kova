@@ -23,7 +23,7 @@ cargo run -p approuter --release --bin approuter -- start-all
 | Product       | Port | Hostnames                          |
 |---------------|------|------------------------------------|
 | cochranblock  | 8081 | cochranblock.org, www.cochranblock.org |
-| oakilydokily  | 3000 | oakilydokily.com, kaylie.cochranblock.org |
+| oakilydokily  | 3000 | oakilydokily.com |
 | rogue-repo    | 3001 | roguerepo.io, www.roguerepo.io     |
 | ronin-sites   | 8000 | ronin-sites.pro, *.ronin-sites.pro  |
 
