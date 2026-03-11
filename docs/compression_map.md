@@ -66,6 +66,36 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f119 | kova_c2_run | c2 | CLI orchestration (kova c2 run) |
 | f120 | kova_c2_broadcast | c2 | SSH broadcast to workers |
 | f121 | autopilot_run | autopilot | Type prompt into Cursor composer |
+| f122 | nstat | node_cmd | Hostname, uptime, load (c1) |
+| f123 | nspec | node_cmd | CPU, RAM, disk, rust version (c2) |
+| f124 | nsvc | node_cmd | Running services (c3) |
+| f125 | nrust | node_cmd | Check/install Rust toolchain (c4) |
+| f126 | nsync | node_cmd | Rsync project to nodes (c5) |
+| f127 | nbuild | node_cmd | Remote cargo build (c6) |
+| f128 | nlog | node_cmd | Tail journalctl (c7) |
+| f129 | nkill | node_cmd | Kill process by name (c8) |
+| f130 | ndeploy | node_cmd | Sync + build + restart (c9) |
+| f131 | nci | node_cmd | Compact inspect, one-line-per-node (ci) |
+| f132 | node_cmd_dispatch | node_cmd | Central dispatcher for c1-c9/ci |
+| f133 | cargo_exec | cargo_cmd | Execute single cargo command, compressed output |
+| f134 | cargo_exec_multi | cargo_cmd | Run on multiple projects in parallel |
+| f135 | cargo_exec_chain | cargo_cmd | Sequential commands, stop on error |
+| f136 | cargo_cmd_dispatch | cargo_cmd | Central dispatcher for x0-x9 |
+| f137 | repl_run | repl | Interactive REPL entry point |
+| f138 | repl_stream_print | repl | Stream tokens to stdout |
+| f139 | repl_build_system_prompt | repl | Assemble system prompt from all sources |
+| f140 | parse_tool_calls | tools | Extract tool calls from LLM output |
+| f141 | dispatch_tool | tools | Execute tool call, return result |
+| f142 | tool_read_file | tools | Read file with line numbers |
+| f143 | tool_write_file | tools | Write file, create dirs |
+| f144 | tool_edit_file | tools | String replacement edit |
+| f145 | tool_bash | tools | Execute shell command |
+| f146 | tool_glob | tools | Glob file search |
+| f147 | agent_turn | agent_loop | Single agent turn: inference → tools |
+| f148 | agent_loop | agent_loop | Outer loop until done or max iterations |
+| f149 | format_tool_prompt | tools | Format tool defs for system prompt |
+| f150 | tool_grep | tools | Search file contents |
+| f155 | tool_memory_write | tools | Append to persistent memory |
 
 ## Types (tN)
 
@@ -86,6 +116,15 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | t93 | LastTrace |
 | t94 | RouterResult |
 | t95 | ErrorKind |
+| t96 | NodeCmd |
+| t97 | NodeResult |
+| t99 | CargoCmd |
+| t100 | CargoResult |
+| t101 | ToolDef |
+| t102 | ToolParam |
+| t103 | ToolCall |
+| t104 | ToolResult |
+| t106 | AgentAction |
 
 ## Struct fields (sN) — plan t3
 
@@ -94,6 +133,51 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | s4 | project | PathBuf |
 | s5 | approuter_dir | Option<PathBuf> |
 | s7 | project_hint | Option<String> |
+| s14 | node_token | String (n0..n3) |
+| s15 | success | bool |
+| s16 | output_fields | Vec<(&str, String)> |
+
+## Node Command Tokens
+
+### Nodes (nN)
+
+| Token | Hostname | Host |
+|-------|----------|------|
+| n0 | kova-legion-forge | lf |
+| n1 | kova-tunnel-god | gd |
+| n2 | kova-thick-beast | bt |
+| n3 | kova-elite-support | st |
+
+### Commands (cN)
+
+| Token | Function | Purpose |
+|-------|----------|---------|
+| c1 | f122 | nstat: hostname, uptime, load |
+| c2 | f123 | nspec: cpu, ram, disk, rust |
+| c3 | f124 | nsvc: running services |
+| c4 | f125 | nrust: check/install rust |
+| c5 | f126 | nsync: rsync project |
+| c6 | f127 | nbuild: remote cargo build |
+| c7 | f128 | nlog: tail journalctl |
+| c8 | f129 | nkill: kill process |
+| c9 | f130 | ndeploy: sync+build+restart |
+| ci | f131 | compact inspect |
+
+### Output Fields (oN)
+
+| Token | Field |
+|-------|-------|
+| o0 | node (nN token) |
+| o1 | hostname |
+| o2 | uptime |
+| o3 | load |
+| o4 | cpu cores |
+| o5 | ram |
+| o6 | disk free |
+| o8 | rust version |
+| o9 | services |
+| o10 | status |
+| o11 | message |
 
 ## Test traceability
 

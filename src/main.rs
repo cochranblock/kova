@@ -32,6 +32,10 @@ enum Cmd {
     Autopilot(AutopilotArgs),
     /// Deploy quality gate: clippy, TRIPLE SIMS, release build, smoke, baked demo. Requires --features tests.
     Test,
+    /// Tokenized cargo commands. §13 compressed output. x0=build x1=check x2=test x3=clippy x4=run x5=build-rel x6=clean x7=doc x8=fmt-chk x9=bench.
+    X(XArgs),
+    /// Interactive REPL. Agentic tool loop with local LLM. Like Claude Code but local.
+    Chat(ChatArgs),
 }
 
 #[derive(clap::Args)]
@@ -109,6 +113,27 @@ enum C2Cmd {
         #[command(subcommand)]
         cmd: SshCaCmd,
     },
+    /// Tokenized node commands (c1-c9, ci). §13 compressed output.
+    Ncmd {
+        /// Command token: c1(nstat) c2(nspec) c3(nsvc) c4(nrust) c5(nsync) c6(nbuild) c7(nlog) c8(nkill) c9(ndeploy) ci(inspect).
+        #[arg(value_enum)]
+        cmd: kova::node_cmd::t96,
+        /// Restrict to nodes (e.g. n0,n2 or lf,bt). Default: all.
+        #[arg(long)]
+        nodes: Option<String>,
+        /// Extra arg: process name (c8), unit (c7), project path (c5/c6/c9), "install" (c4).
+        #[arg(long)]
+        extra: Option<String>,
+        /// Release mode (c6/c9).
+        #[arg(long)]
+        release: bool,
+        /// Lines to tail (c7, default 50).
+        #[arg(long, default_value = "50")]
+        lines: u32,
+        /// Expand oN tokens to human-readable names.
+        #[arg(long)]
+        expand: bool,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -122,6 +147,41 @@ enum SshCaCmd {
     },
     /// Init + sign all workers (lf gd bt st).
     Setup,
+}
+
+#[derive(clap::Args)]
+struct ChatArgs {
+    /// Project directory (default: cwd).
+    #[arg(short, long)]
+    project: Option<std::path::PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct XArgs {
+    /// Command token: x0(build) x1(check) x2(test) x3(clippy) x4(run) x5(build-rel) x6(clean) x7(doc) x8(fmt-chk) x9(bench).
+    #[arg(value_enum)]
+    cmd: kova::cargo_cmd::t99,
+    /// Project token: p0(kova) p1(approuter) p2(cochranblock) p3(oakilydokily) p4(rogue-repo) p5(ronin-sites). Default: p0.
+    #[arg(short, long)]
+    project: Option<String>,
+    /// Features (e.g. "gui,serve,inference"). Overrides preset.
+    #[arg(short, long)]
+    features: Option<String>,
+    /// Binary name (for x4/run).
+    #[arg(long)]
+    bin: Option<String>,
+    /// Extra cargo args.
+    #[arg(last = true)]
+    extra: Vec<String>,
+    /// Run on all workspace crates in parallel.
+    #[arg(long)]
+    all: bool,
+    /// Chain commands sequentially: --chain x1,x2,x3 (stop on first error).
+    #[arg(long)]
+    chain: Option<String>,
+    /// Expand rN tokens to human-readable names.
+    #[arg(long)]
+    expand: bool,
 }
 
 #[derive(clap::Args)]
@@ -280,6 +340,9 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             SshCaCmd::Sign { node } => kova::ssh_ca::run_sign(&node),
             SshCaCmd::Setup => kova::ssh_ca::run_setup(),
         },
+        C2Cmd::Ncmd { cmd, nodes, extra, release, lines, expand } => {
+            kova::node_cmd::f132(cmd, nodes, extra, release, lines, expand)
+        }
     }
 }
 
@@ -359,6 +422,22 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::bail!("Build with --features autopilot for autopilot mode")
             }
         }
+        Some(Cmd::X(args)) => {
+            kova::bootstrap()?;
+            kova::cargo_cmd::f136(
+                args.cmd, args.project, args.features, args.bin,
+                args.extra, args.all, args.chain, args.expand,
+            )
+        }
+        #[cfg(feature = "inference")]
+        Some(Cmd::Chat(args)) => {
+            kova::bootstrap()?;
+            kova::repl::f137(args.project)
+        }
+        #[cfg(not(feature = "inference"))]
+        Some(Cmd::Chat(_)) => {
+            anyhow::bail!("Build with --features inference for chat mode")
+        }
         #[cfg(feature = "tests")]
         Some(Cmd::Test) => run_test(),
         #[cfg(not(feature = "tests"))]
@@ -382,16 +461,22 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         None => {
-            #[cfg(feature = "gui")]
+            // Default: REPL (like Claude Code). Fallback: GUI.
+            #[cfg(feature = "inference")]
+            {
+                kova::bootstrap()?;
+                kova::repl::f137(None)
+            }
+            #[cfg(all(not(feature = "inference"), feature = "gui"))]
             {
                 run_gui(false)
             }
-            #[cfg(not(feature = "gui"))]
+            #[cfg(all(not(feature = "inference"), not(feature = "gui")))]
             {
                 eprintln!("Usage: kova <COMMAND>");
-                eprintln!("  kova gui   — native GUI");
-                eprintln!("  kova serve — HTTP API");
-                eprintln!("Build with --features gui for GUI, --features serve for serve.");
+                eprintln!("  kova chat  — interactive REPL (requires --features inference)");
+                eprintln!("  kova gui   — native GUI (requires --features gui)");
+                eprintln!("  kova serve — HTTP API (requires --features serve)");
                 Ok(())
             }
         }

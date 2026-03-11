@@ -75,11 +75,11 @@ fn is_under_hive_vault(p: &Path) -> bool {
     false
 }
 
-fn to_worker_path(p: &Path) -> PathBuf {
+pub(crate) fn to_worker_path(p: &Path) -> PathBuf {
     to_worker_path_impl(p, &crate::config::hive_shared_base())
 }
 
-fn to_worker_path_local(p: &Path) -> PathBuf {
+pub(crate) fn to_worker_path_local(p: &Path) -> PathBuf {
     to_worker_path_impl(p, &crate::config::hive_local_base())
 }
 
@@ -509,12 +509,12 @@ fn broadcast_parallel(plan: &crate::plan::t3, nodes: &[String], local: bool) -> 
                     let ok = match child {
                         Ok(mut c) => {
                             if let Some(out) = c.stdout.take() {
-                                for line in BufReader::new(out).lines().filter_map(|l| l.ok()) {
+                                for line in BufReader::new(out).lines().map_while(Result::ok) {
                                     let _ = tx.send((node.clone(), line));
                                 }
                             }
                             if let Some(err) = c.stderr.take() {
-                                for line in BufReader::new(err).lines().filter_map(|l| l.ok()) {
+                                for line in BufReader::new(err).lines().map_while(Result::ok) {
                                     let _ = tx.send((node.clone(), line));
                                 }
                             }
@@ -578,7 +578,7 @@ pub fn run_sync(dry_run: bool, target: &str, local: bool, all: bool, full: bool)
         vec![target.to_string()]
     };
 
-    if !dry_run && nodes.len() > 0 {
+    if !dry_run && !nodes.is_empty() {
         eprintln!("[sync] Syncing to {} workers (parallel, {})...", nodes.len(), if full { "tar-stream" } else { "rsync" });
         sync_parallel(&nodes, local, full)?;
         eprintln!("[sync] Done.");

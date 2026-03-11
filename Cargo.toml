@@ -46,6 +46,7 @@ once_cell = { version = "1.19", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"], optional = true }
 exopack = { git = "https://github.com/cochranblock/exopack", optional = true, features = ["triple_sims", "interface", "baked_demo", "demo", "video"] }
 dirs = "5"
+glob = "0.3"
 enigo = { version = "0.2", optional = true, default-features = false, features = ["x11rb"] }
 capnp = { version = "0.25", optional = true }
 

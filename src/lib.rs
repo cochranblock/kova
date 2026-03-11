@@ -31,6 +31,8 @@ pub mod gui;
 pub mod theme;
 #[cfg(feature = "gui")]
 pub mod output;
+#[cfg(feature = "gui")]
+pub mod web;
 #[cfg(feature = "serve")]
 pub mod serve;
 #[cfg(feature = "inference")]
@@ -54,9 +56,16 @@ pub mod autopilot;
 pub mod daemon;
 
 pub mod c2;
+pub mod cargo_cmd;
 pub mod elicitor;
 pub mod inspect;
+pub mod node_cmd;
 pub mod ssh_ca;
+pub mod tools;
+#[cfg(feature = "inference")]
+pub mod agent_loop;
+#[cfg(feature = "inference")]
+pub mod repl;
 
 #[cfg(test)]
 mod test_utils;
