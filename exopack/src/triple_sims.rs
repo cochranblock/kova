@@ -646,7 +646,22 @@ pub fn f172_sim3_impl_deep_dive(project: &Path) -> SimResult {
 
 // ── Public API ─────────────────────────────────────────────────────────
 
-/// f60=triple_sims_run. Run all simulations against project. Returns SimReport.
+/// f60=run_async_3x. Run async closure 3 times; all must pass. Used by cochranblock-test, oakilydokily-test.
+pub async fn f60<F, Fut>(run_once: F) -> bool
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    for i in 1..=3 {
+        if !run_once().await {
+            eprintln!("TRIPLE SIMS pass {}/3 failed", i);
+            return false;
+        }
+    }
+    true
+}
+
+/// f60_triple_sims_run. Run all simulations against project. Returns SimReport.
 /// Sims 1-3: kova core. Sim 4: mural UI quality (if oakilydokily found as sibling).
 pub fn f60_triple_sims_run(project: &Path) -> SimReport {
     println!("TRIPLE SIMS: Sim 1 — User Story UX...");

@@ -28,7 +28,7 @@ demo = ["serde", "serde_json", "video"]
 # baked_demo: full intended-usage demo, zero user input (interface + serde_json)
 baked_demo = ["interface", "serde_json"]
 # triple_sims: run test runner 3 times; all must pass
-triple_sims = []
+triple_sims = ["tokio"]
 # devtools: headless browser console check via CDP (chromiumoxide)
 devtools = ["chromiumoxide", "chromiumoxide/fetcher", "chromiumoxide/rustls", "chromiumoxide/zip8", "dirs", "futures", "tokio", "serde_json"]
 
