@@ -580,7 +580,9 @@ pub fn run_sync(dry_run: bool, target: &str, local: bool, all: bool, full: bool)
 
     if !dry_run && nodes.len() > 0 {
         eprintln!("[sync] Syncing to {} workers (parallel, {})...", nodes.len(), if full { "tar-stream" } else { "rsync" });
-        return sync_parallel(&nodes, local, full);
+        sync_parallel(&nodes, local, full)?;
+        eprintln!("[sync] Done.");
+        return Ok(());
     }
 
     let root = kova_root();
