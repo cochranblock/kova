@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! kova c2 ssh-ca — SSH host certificate authority. No host key churn when IPs change.
 
 use std::fs;

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 #![allow(non_camel_case_types, non_snake_case, dead_code)]
 //! Compute layer. Execute plan. f15. Uses build presets when available.
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Output helpers. Diff, apply. f84=format_diff f85=resolve_target_path
 
 use std::path::{Path, PathBuf};

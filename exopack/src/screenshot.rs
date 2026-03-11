@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! f61 = screenshot — out_dir, theme, capture_project for TRIPLE SIMS visual verification.
 
 use std::path::PathBuf;

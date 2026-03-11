@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Project context for code gen. Cargo.toml, mentioned .rs files, recent changes.
 //! f82=load_project_context
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Agentic tool loop. LLM calls tools, gets results, repeats until done.
 //! f147=agent_turn, f148=agent_loop.
 //! t106=AgentAction.

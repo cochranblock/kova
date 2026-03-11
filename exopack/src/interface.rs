@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Create test interfaces: spawn HTTP server, HTTP client with cookie store.
 
 

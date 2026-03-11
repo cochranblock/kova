@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2026 The Cochran Block. All rights reserved.
+# Unlicense — cochranblock.org
 # Install Kova AI to ~/.local/bin. Run from intent-engine root.
 
 set -e

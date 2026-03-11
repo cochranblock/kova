@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Load Cursor prompts for injection into model context.
 //! fN=load_cursor_prompts
 

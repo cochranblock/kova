@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Screen capture and recording — trait + xcap impl.
 //! Use for demo mode: screenshot before/after actions, optional video.
 //!

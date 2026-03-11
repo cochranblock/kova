@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 #![allow(non_camel_case_types)]
 //! f86=recent_changes_snapshot, f87=format_recent_changes.
 //! Tokenized output for LLM context. Stay on task with latest modified work.

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Baked-in demo: replicates every intended use of Kova with zero user input.
 //! Run programmatically to iterate through dev cycles without human interaction.
 

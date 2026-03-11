@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 The Cochran Block. All rights reserved. -->
+<!-- Unlicense — cochranblock.org -->
 # Intent Engine — Research Foundation
 
 **Target:** DARPA-contract-worthy intent engine for Rust coding  

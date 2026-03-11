@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Mural UI Quality Simulation — source-level analysis of mural-wasm rendering quality.
 //!
 //! Checks sprite rendering, animation timing, movement physics, draw pipeline,

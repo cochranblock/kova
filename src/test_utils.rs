@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Test helpers. kova_test! for traceability, assert_matches for patterns.
 
 /// Test with fN traceability. Adds #[test] and /// fN=traceability doc.

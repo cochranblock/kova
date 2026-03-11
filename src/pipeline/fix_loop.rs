@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Fix loop: categorize errors, call Mechanic (Fixer) model.
 
 use std::path::Path;

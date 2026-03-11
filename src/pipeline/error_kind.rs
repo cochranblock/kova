@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Categorize cargo check stderr for agentic fix loop. f118=categorize, t95=ErrorKind.
 
 /// t95=ErrorKind. Error category for Mechanic (Fixer) model context.

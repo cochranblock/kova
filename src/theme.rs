@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Kova theme. THEME.md palette + professional layout.
 
 use eframe::egui::{self, FontId, Rounding, Stroke, TextStyle, Visuals};

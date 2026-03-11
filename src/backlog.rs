@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Backlog loading. f25=load_backlog from disk. Types in kova-core.
 
 use std::path::Path;

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! DevTools: headless browser console check via CDP. Catches JS errors, syntax errors, console.error.
 //! f63 = capture_screenshots. Real browser screenshots including WASM canvas.
 //!

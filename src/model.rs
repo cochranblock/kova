@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Model install. f77=model_install
 
 /// f77=model_install. Download Qwen2.5-Coder-0.5B-Instruct GGUF to ~/.kova/models/

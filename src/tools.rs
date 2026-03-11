@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Tool definitions and dispatch for agentic mode.
 //! t101=ToolDef, t102=ToolParam, t103=ToolCall, t104=ToolResult, t105=ToolRegistry.
 //! f140=parse_tool_calls, f141=dispatch_tool, f142-f146,f150,f155=individual tools.

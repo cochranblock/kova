@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Recursive Academy. Explain trace via model.
 //! fN=explain_trace
 

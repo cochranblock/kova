@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Kova WASM thin client. egui in browser, connects to kova serve.
 //! Embedded from former kova-web crate.
 

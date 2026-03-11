@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! f81=run_code_gen_pipeline. Modular: inference, compilation, fix_loop.
 
 mod compilation;

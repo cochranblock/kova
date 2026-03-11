@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Local LLM inference. Kalosm + GGUF. Streams tokens.
 //! f76=chat_stream
 

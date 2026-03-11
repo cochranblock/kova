@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Tokenized cargo commands. §13 compressed output for AI context.
 //! xN=command, pN=project alias, rN=output field.
 //! Token in → cargo execute → compress out.

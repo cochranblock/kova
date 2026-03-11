@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! HTTP API. kova serve. POST /api/intent, GET /ws/stream (WebSocket). Web GUI at /.
 //! f114=serve_run
 

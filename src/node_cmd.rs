@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Tokenized node commands. §13 compressed output for AI context.
 //! nN=node, cN=command, oN=output field.
 //! Like Rust macros: token in → execute → compress out.

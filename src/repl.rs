@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Interactive REPL. Kova's Claude Code replacement.
 //! f137=repl_run, f138=repl_stream_print, f139=repl_build_system_prompt.
 

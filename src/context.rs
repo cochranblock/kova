@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Conversation persistence. conv:default:messages in sled.
 
 use crate::storage;

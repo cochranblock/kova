@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Config. ~/.kova/config.toml. Paths. Bootstrap. Build presets.
 //! f78=model_path_for_role
 

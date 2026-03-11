@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! TRIPLE SIMS — Three programmatic simulations for quality evaluation.
 //!
 //! Sim 1 (f170): User Story UX — walk user scenarios, verify elicitation/router/context flows.

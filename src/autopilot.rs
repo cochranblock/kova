@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Kova autopilot — type prompts into Cursor's agent composer. No API costs.
 //! f121=autopilot_run
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Last pipeline run for "Explain" feature. In-memory only. t93=LastTrace.
 
 use serde::{Deserialize, Serialize};

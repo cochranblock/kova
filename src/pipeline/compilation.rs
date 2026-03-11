@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! f91–f93. Cargo check, clippy, test.
 
 use std::path::Path;

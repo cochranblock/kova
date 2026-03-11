@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 The Cochran Block. All rights reserved. -->
+<!-- Unlicense — cochranblock.org -->
 # Rust Self-Evaluating Test Binary — Comprehensive Architecture Guide
 ## Two-Binary Model with Real Validation, Mock Infrastructure, and Cross-Language Bootstrap
 

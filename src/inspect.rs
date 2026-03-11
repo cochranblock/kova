@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! kova c2 inspect — Gather CPU, RAM, disk, GPU from c2-core + workers.
 
 use std::process::Command;

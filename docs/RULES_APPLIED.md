@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 The Cochran Block. All rights reserved. -->
+<!-- Unlicense — cochranblock.org -->
 # Rules Applied — Cochranblock Workspace
 
 Rules from `.cursor/rules/` mapped to this workspace. Applied and verified.

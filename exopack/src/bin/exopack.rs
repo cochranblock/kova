@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! exopack CLI: live-demo for -test binaries. Build and run with streaming output.
 
 use std::path::PathBuf;

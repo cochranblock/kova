@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! kova c2 — Tokenized orchestration. f18–f23 local or broadcast.
 //! run_build: one-command sync + broadcast with parallel execution.
 //! Sync: tar-stream for full sync (dir missing), rsync for incremental.

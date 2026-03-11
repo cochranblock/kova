@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 The Cochran Block. All rights reserved. -->
+<!-- Unlicense — cochranblock.org -->
 # Round-Trip Validation: Compact ↔ Human
 
 ## Example 1: DNS Monitor Loop (most complex function)

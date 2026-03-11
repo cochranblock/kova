@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Integration tests. f30 scope. No self-licking.
 
 use kova::{load_backlog, t0, t3, t5, t6};

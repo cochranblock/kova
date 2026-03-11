@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! egui GUI. kova gui. Professional theme per THEME.md.
 //! f113=gui_run
 

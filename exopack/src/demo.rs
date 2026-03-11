@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The Cochran Block. All rights reserved.
+// Unlicense — cochranblock.org
 //! Demo mode: action script recording for UI testing.
 //! Record user actions + function invocations; replay to iterate Kova dev cycles.
 
