@@ -48,6 +48,7 @@ alias kn8='kova c2 ncmd c8'
 alias kn9='kova c2 ncmd c9'
 alias kni='kova c2 ncmd ci'
 alias kni1='kova c2 ncmd ci --oneline'
+alias knct='kova c2 ncmd ct --idle'
 
 # c2 operations
 alias kc2='kova c2'

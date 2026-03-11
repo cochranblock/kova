@@ -238,6 +238,10 @@ pub fn print_recommend(hosts: &[HostInfo]) {
         println!("  -> Offload batch inference, training from c2-core");
     }
 
+    if let Some(idlest) = crate::node_cmd::pick_idlest(&workers.iter().map(|h| h.id.clone()).collect::<Vec<_>>()) {
+        println!("\nIdlest node: {} (use: kova c2 ncmd ct --idle)", idlest);
+    }
+
     // Actionable copy-paste commands
     println!("\n--- Copy-paste commands ---\n");
     let hive_note = if workers.is_empty() {
