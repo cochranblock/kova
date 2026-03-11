@@ -98,10 +98,10 @@ impl Cluster {
                     id: "n0".into(),
                     host: "localhost".into(),
                     port: 11438, // SSH tunnel from lf
-                    model: "qwen2.5-coder:32b".into(),
-                    general_model: Some("qwen2.5:14b".into()),
+                    model: "qwen2.5-coder:14b".into(),
+                    general_model: Some("qwen2.5:7b".into()),
                     role: NodeRole::PrimaryGen,
-                    tier: ModelTier::Heavy,
+                    tier: ModelTier::Mid,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
                 InferNode {
