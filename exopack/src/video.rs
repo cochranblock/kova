@@ -72,6 +72,13 @@ pub struct FrameRecorder {
 }
 
 #[cfg(feature = "video")]
+impl Default for FrameRecorder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "video")]
 impl FrameRecorder {
     pub fn new() -> Self {
         Self {
@@ -122,7 +129,7 @@ impl FrameRecorder {
         }
 
         // Smooth enough
-        let score = (1.0 - variance.min(1.0)) * (1.0 - (max_diff - avg_diff).min(1.0).max(0.0));
+        let score = (1.0 - variance.min(1.0)) * (1.0 - (max_diff - avg_diff).clamp(0.0, 1.0));
         if score > 0.7 {
             (true, score, "smooth")
         } else if score > 0.4 {

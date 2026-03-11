@@ -378,7 +378,7 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
         C2Cmd::Ncmd { cmd, nodes, idle, extra, release, lines, expand, oneline } => {
             let nodes_opt = if idle {
                 let all: Vec<String> = kova::c2::default_nodes().into_iter().map(String::from).collect();
-                kova::node_cmd::pick_idlest(&all).map(|n| n)
+                kova::node_cmd::pick_idlest(&all)
             } else {
                 nodes
             };

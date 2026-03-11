@@ -97,7 +97,7 @@ pub struct t97 {
 // ── SSH Helpers ──────────────────────────────────────────
 
 const SSH_OPTS: &[&str] = &[
-    "-o", "ConnectTimeout=5",
+    "-o", "ConnectTimeout=3",
     "-o", "StrictHostKeyChecking=accept-new",
     "-o", "BatchMode=yes",
 ];

@@ -183,6 +183,7 @@ fn warn(sim: u8, area: &str, msg: &str) -> Finding {
 // ── Sim 1: User Story UX Simulation (f170) ────────────────────────────
 
 /// f170=sim1_user_story. Walk user scenarios, verify router/elicitor/context/output flows.
+#[allow(clippy::vec_init_then_push)]
 pub fn f170_sim1_user_story(project: &Path) -> SimResult {
     let mut findings = Vec::new();
 

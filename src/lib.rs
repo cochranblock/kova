@@ -81,9 +81,32 @@ pub fn load_backlog(p: &std::path::Path) -> anyhow::Result<Backlog> {
 #[cfg(feature = "tests")]
 pub fn run_test_suite() -> anyhow::Result<()> {
     use std::path::Path;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
 
     let project = Path::new(env!("CARGO_MANIFEST_DIR"));
+
+    /// Run subprocess with timeout. Kills process if it exceeds limit.
+    fn run_with_timeout(cmd: &mut Command, secs: u64) -> anyhow::Result<bool> {
+        let mut child = cmd.spawn()?;
+        let pid = child.id();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let out = child.wait();
+            let _ = tx.send(out);
+        });
+        match rx.recv_timeout(Duration::from_secs(secs)) {
+            Ok(Ok(status)) => Ok(status.success()),
+            Ok(Err(e)) => Err(e.into()),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+                anyhow::bail!("timed out after {}s", secs)
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(anyhow::anyhow!("child thread panicked")),
+        }
+    }
 
     fn run_cargo(project: &Path, args: &[&str]) -> (bool, String) {
         match Command::new("cargo")
@@ -158,26 +181,40 @@ pub fn run_test_suite() -> anyhow::Result<()> {
     if !kova_bin.exists() {
         anyhow::bail!("release binary not found: {:?}", kova_bin);
     }
-    let out = Command::new(&kova_bin)
-        .env("HOME", &home)
-        .arg("bootstrap")
-        .output()?;
-    if !out.status.success() {
-        anyhow::bail!(
-            "kova bootstrap failed:\n{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+    let ok = run_with_timeout(
+        Command::new(&kova_bin)
+            .env("HOME", &home)
+            .arg("bootstrap"),
+        120,
+    )?;
+    if !ok {
+        anyhow::bail!("kova bootstrap failed (run manually to see stderr)");
     }
-    let c2_out = Command::new(&kova_bin)
-        .env("HOME", &home)
-        .args(["c2", "nodes"])
-        .output()?;
-    if !c2_out.status.success() {
-        anyhow::bail!(
-            "kova c2 nodes failed:\n{}",
-            String::from_utf8_lossy(&c2_out.stderr)
-        );
-    }
+    let c2_out = {
+        let mut cmd = Command::new(&kova_bin);
+        cmd.env("HOME", &home)
+            .args(["c2", "nodes"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let child = cmd.spawn()?;
+        let pid = child.id();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let out = child.wait_with_output();
+            let _ = tx.send(out);
+        });
+        match rx.recv_timeout(Duration::from_secs(15)) {
+            Ok(Ok(out)) => out,
+            Ok(Err(e)) => return Err(e.into()),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+                anyhow::bail!("kova c2 nodes timed out after 15s");
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("kova c2 nodes: child thread panicked")
+            }
+        }
+    };
     let stdout = String::from_utf8_lossy(&c2_out.stdout);
     if !stdout.contains("lf") {
         anyhow::bail!("kova c2 nodes: expected lf in output, got:\n{}", stdout);
