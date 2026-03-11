@@ -20,6 +20,16 @@ pub enum ModelTier {
     Router,
 }
 
+/// Numeric rank for tier comparison. Higher = more capable.
+fn tier_rank(t: ModelTier) -> u8 {
+    match t {
+        ModelTier::Router => 0,
+        ModelTier::Light => 1,
+        ModelTier::Mid => 2,
+        ModelTier::Heavy => 3,
+    }
+}
+
 /// Node role in the factory pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeRole {
@@ -161,15 +171,23 @@ impl Cluster {
     }
 
     /// Pick the best node for a given task kind.
+    /// Enforces minimum tier: code gen/fix tasks never fall back to Light/Router nodes.
     pub fn pick_node(&self, task: TaskKind) -> Option<&InferNode> {
         let preferred_roles: &[NodeRole] = match task {
-            TaskKind::CodeGen => &[NodeRole::PrimaryGen, NodeRole::SecondaryGen, NodeRole::Reviewer],
+            TaskKind::CodeGen => &[NodeRole::PrimaryGen, NodeRole::SecondaryGen],
             TaskKind::CodeReview => &[NodeRole::Reviewer, NodeRole::Batch, NodeRole::Coordinator],
             TaskKind::TestWrite => &[NodeRole::Reviewer, NodeRole::Batch],
-            TaskKind::FixCompile => &[NodeRole::PrimaryGen, NodeRole::SecondaryGen, NodeRole::Reviewer],
-            TaskKind::ClippyFix => &[NodeRole::Batch, NodeRole::Reviewer],
+            TaskKind::FixCompile => &[NodeRole::PrimaryGen, NodeRole::SecondaryGen],
+            TaskKind::ClippyFix => &[NodeRole::Reviewer, NodeRole::Batch],
             TaskKind::Classify => &[NodeRole::Coordinator, NodeRole::Reviewer],
             TaskKind::General => &[NodeRole::Reviewer, NodeRole::PrimaryGen, NodeRole::Batch],
+        };
+
+        // Minimum tier for the task — prevents weak nodes grabbing heavy work
+        let min_tier = match task {
+            TaskKind::CodeGen | TaskKind::FixCompile => ModelTier::Heavy,
+            TaskKind::CodeReview | TaskKind::TestWrite | TaskKind::ClippyFix => ModelTier::Mid,
+            TaskKind::Classify | TaskKind::General => ModelTier::Router,
         };
 
         // Try preferred roles in order, pick first non-busy online node
@@ -181,8 +199,10 @@ impl Cluster {
             }
         }
 
-        // Fallback: any online non-busy node
-        self.nodes.iter().find(|n| !n.is_busy() && ollama::health(&n.base_url()))
+        // Fallback: any online non-busy node that meets the minimum tier
+        self.nodes.iter().find(|n| {
+            !n.is_busy() && tier_rank(n.tier) >= tier_rank(min_tier) && ollama::health(&n.base_url())
+        })
     }
 
     /// Dispatch inference to the best node for a task.
