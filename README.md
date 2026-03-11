@@ -2,6 +2,28 @@
 
 Augment engine. Local LLM agentic tool loop, swarm orchestration, tokenized everything.
 
+## Proof of Artifacts
+
+*Wire diagrams for quick review.*
+
+### Wire / Architecture
+
+```mermaid
+flowchart TB
+    User[User] --> GUI[GUI / egui]
+    User --> Serve[HTTP / serve]
+    GUI --> AgentLoop[Agent loop]
+    Serve --> AgentLoop
+    AgentLoop --> Router[Router]
+    Router --> Infer[Inference]
+    Router --> Cargo[cargo_cmd]
+    Router --> Node[node_cmd]
+    AgentLoop --> C2[c2 swarm]
+    C2 --> Nodes[lf gd bt st]
+```
+
+---
+
 ## Artifacts
 
 | Artifact | What | Lines |
