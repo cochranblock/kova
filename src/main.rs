@@ -45,6 +45,9 @@ enum Cmd {
     /// IRONHIVE cluster inference. Distributed AI across worker nodes.
     #[command(name = "cluster")]
     Cluster(ClusterArgs),
+    /// Rust Binary Factory. Full pipeline: classify → generate → compile → review → fix.
+    #[command(name = "factory")]
+    Factory(FactoryArgs),
 }
 
 #[derive(clap::Args)]
@@ -162,6 +165,30 @@ enum SshCaCmd {
     },
     /// Init + sign all workers (lf gd bt st).
     Setup,
+}
+
+#[derive(clap::Args)]
+struct FactoryArgs {
+    /// What to build.
+    prompt: Vec<String>,
+    /// Project directory (default: cwd).
+    #[arg(short, long)]
+    project: Option<std::path::PathBuf>,
+    /// Max fix retries (default: 2).
+    #[arg(long, default_value = "2")]
+    retries: u32,
+    /// Skip code review stage.
+    #[arg(long)]
+    no_review: bool,
+    /// Skip clippy.
+    #[arg(long)]
+    no_clippy: bool,
+    /// Skip tests.
+    #[arg(long)]
+    no_tests: bool,
+    /// Context window size.
+    #[arg(long, default_value = "8192")]
+    ctx: u32,
 }
 
 #[derive(clap::Args)]
@@ -551,9 +578,28 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    // Handle cluster commands synchronously (reqwest::blocking can't run inside tokio)
-    if let Some(Cmd::Cluster(cluster_args)) = args.cmd {
-        return run_cluster(cluster_args);
+    // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
+    match &args.cmd {
+        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) => {
+            return match args.cmd.unwrap() {
+                Cmd::Cluster(a) => run_cluster(a),
+                Cmd::Factory(a) => {
+                    let project = a.project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+                    let config = kova::factory::FactoryConfig {
+                        max_fix_retries: a.retries,
+                        run_clippy: !a.no_clippy,
+                        run_tests: !a.no_tests,
+                        run_review: !a.no_review,
+                        num_ctx: a.ctx,
+                        ..Default::default()
+                    };
+                    kova::factory::run_factory(&a.prompt.join(" "), &project, config);
+                    Ok(())
+                }
+                _ => unreachable!(),
+            };
+        }
+        _ => {}
     }
 
     // Everything else runs inside tokio
@@ -677,7 +723,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Some(Cmd::Cluster(args)) => run_cluster(args),
+        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
