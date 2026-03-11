@@ -42,6 +42,9 @@ enum Cmd {
     Git(GitArgs),
     /// Short serve alias. `kova s` = `kova serve --open`. `kova s -d` = demo mode.
     S(SShortArgs),
+    /// IRONHIVE cluster inference. Distributed AI across worker nodes.
+    #[command(name = "cluster")]
+    Cluster(ClusterArgs),
 }
 
 #[derive(clap::Args)]
@@ -159,6 +162,48 @@ enum SshCaCmd {
     },
     /// Init + sign all workers (lf gd bt st).
     Setup,
+}
+
+#[derive(clap::Args)]
+struct ClusterArgs {
+    #[command(subcommand)]
+    cmd: ClusterCmd,
+}
+
+#[derive(Subcommand)]
+enum ClusterCmd {
+    /// Show cluster status: nodes, models, health.
+    Status,
+    /// Ping all ollama endpoints.
+    Health,
+    /// Generate code via cluster (routes to best node).
+    Gen {
+        /// Prompt for code generation.
+        prompt: Vec<String>,
+        /// System prompt override.
+        #[arg(long)]
+        system: Option<String>,
+        /// Context window size.
+        #[arg(long, default_value = "8192")]
+        ctx: u32,
+    },
+    /// Review code via cluster.
+    Review {
+        /// File to review.
+        file: std::path::PathBuf,
+    },
+    /// Fix compile error via cluster.
+    Fix {
+        /// File with broken code.
+        file: std::path::PathBuf,
+        /// Compiler error message.
+        #[arg(long)]
+        error: String,
+    },
+    /// Benchmark tok/s on each node.
+    Bench,
+    /// List models on all nodes.
+    Models,
 }
 
 #[derive(clap::Args)]
@@ -390,17 +435,141 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
+    let cluster = kova::cluster::Cluster::default_hive();
+    match args.cmd {
+        ClusterCmd::Status => {
+            print!("{}", cluster.status());
+            Ok(())
+        }
+        ClusterCmd::Health => {
+            let results = cluster.health_check();
+            for (id, online, ver) in &results {
+                let status = if *online {
+                    format!("online ({})", ver.as_deref().unwrap_or("?"))
+                } else {
+                    "OFFLINE".into()
+                };
+                println!("  {} — {}", id, status);
+            }
+            let online = results.iter().filter(|(_, o, _)| *o).count();
+            println!("\n{}/{} nodes online", online, results.len());
+            Ok(())
+        }
+        ClusterCmd::Gen { prompt, system, ctx } => {
+            let prompt = prompt.join(" ");
+            let system = system.unwrap_or_else(|| {
+                "You are a Rust systems programming expert. Write clean, idiomatic Rust. No filler.".into()
+            });
+            println!("[cluster] dispatching code gen...");
+            match cluster.dispatch(kova::cluster::TaskKind::CodeGen, &system, &prompt, Some(ctx)) {
+                Ok((node, response)) => {
+                    println!("[cluster] {} responded:\n", node);
+                    println!("{}", response);
+                    Ok(())
+                }
+                Err(e) => anyhow::bail!("cluster gen failed: {}", e),
+            }
+        }
+        ClusterCmd::Review { file } => {
+            let code = std::fs::read_to_string(&file)?;
+            let system = "Review this Rust code. Flag: correctness issues, anti-patterns, P12 slop words (utilize/leverage/optimize/comprehensive/robust/seamlessly), unnecessary abstractions. Be direct.";
+            println!("[cluster] dispatching review of {}...", file.display());
+            match cluster.dispatch(kova::cluster::TaskKind::CodeReview, system, &code, Some(8192)) {
+                Ok((node, response)) => {
+                    println!("[cluster] {} review:\n", node);
+                    println!("{}", response);
+                    Ok(())
+                }
+                Err(e) => anyhow::bail!("cluster review failed: {}", e),
+            }
+        }
+        ClusterCmd::Fix { file, error } => {
+            let code = std::fs::read_to_string(&file)?;
+            match kova::cluster::quick_fix(
+                "Fix this Rust code. Return only the corrected code block.",
+                &code,
+                &error,
+            ) {
+                Ok(response) => {
+                    println!("{}", response);
+                    Ok(())
+                }
+                Err(e) => anyhow::bail!("cluster fix failed: {}", e),
+            }
+        }
+        ClusterCmd::Bench => {
+            println!("[cluster] benchmarking all nodes...\n");
+            let prompt = "Write a Rust function that computes the nth Fibonacci number iteratively.";
+            let system = "You are a Rust expert. Write clean code. No explanation.";
+
+            let handles: Vec<_> = cluster.nodes.iter().map(|node| {
+                let url = node.base_url();
+                let model = node.model.clone();
+                let id = node.id.clone();
+                std::thread::spawn(move || {
+                    let start = std::time::Instant::now();
+                    let result = kova::ollama::generate(&url, &model, system, prompt, Some(4096));
+                    let elapsed = start.elapsed();
+                    (id, model, result, elapsed)
+                })
+            }).collect();
+
+            for h in handles {
+                if let Ok((id, model, result, elapsed)) = h.join() {
+                    match result {
+                        Ok(resp) => {
+                            let tokens = resp.split_whitespace().count(); // rough estimate
+                            let tps = tokens as f64 / elapsed.as_secs_f64();
+                            println!("  {} ({}) — {:.1}s, ~{} tokens, ~{:.1} tok/s", id, model, elapsed.as_secs_f64(), tokens, tps);
+                        }
+                        Err(e) => println!("  {} ({}) — FAILED: {}", id, model, e),
+                    }
+                }
+            }
+            Ok(())
+        }
+        ClusterCmd::Models => {
+            for node in &cluster.nodes {
+                let url = node.base_url();
+                print!("  {} — ", node.id);
+                match kova::ollama::list_models(&url) {
+                    Ok(models) => {
+                        let names: Vec<_> = models.iter().map(|m| {
+                            format!("{} ({:.1}GB)", m.name, m.size as f64 / 1_073_741_824.0)
+                        }).collect();
+                        println!("{}", names.join(", "));
+                    }
+                    Err(e) => println!("OFFLINE ({})", e),
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
+    // Handle cluster commands synchronously (reqwest::blocking can't run inside tokio)
+    if let Some(Cmd::Cluster(cluster_args)) = args.cmd {
+        return run_cluster(cluster_args);
+    }
+
+    // Everything else runs inside tokio
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(async_main(args.cmd))
+}
+
+async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
     #[cfg(feature = "serve")]
     {
         tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     }
-
-    let args = Args::parse();
-    let cmd = args.cmd;
 
     match cmd {
         Some(Cmd::Gui(args)) => run_gui(args.demo),
@@ -508,6 +677,7 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Some(Cmd::Cluster(args)) => run_cluster(args),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
