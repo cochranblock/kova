@@ -1,6 +1,7 @@
 // Copyright (c) 2026 The Cochran Block. All rights reserved.
 //! kova c2 — Tokenized orchestration. f18–f23 local or broadcast.
 //! run_build: one-command sync + broadcast with parallel execution.
+//! Sync: tar-stream for full sync (dir missing), rsync for incremental.
 
 #![allow(non_camel_case_types)]
 
@@ -237,8 +238,8 @@ fn run_build_with_plan(
     };
 
     if !skip_sync {
-        eprintln!("[build] Syncing to {} workers (parallel)...", nodes.len());
-        sync_parallel(&nodes, local)?;
+        eprintln!("[build] Syncing to {} workers (parallel, tar-stream)...", nodes.len());
+        sync_parallel(&nodes, local, true)?;
     }
 
     eprintln!("[build] Broadcasting to {} workers (parallel)...", nodes.len());
@@ -248,8 +249,142 @@ fn run_build_with_plan(
     Ok(())
 }
 
-/// Parallel sync: one thread per node. Each runs rsync to that node.
-fn sync_parallel(nodes: &[String], local: bool) -> anyhow::Result<()> {
+/// Parallel sync. full_sync=true: tar-stream (faster for first sync). full_sync=false: rsync (incremental).
+pub fn sync_parallel(nodes: &[String], local: bool, full_sync: bool) -> anyhow::Result<()> {
+    if full_sync {
+        sync_tar_stream(nodes, local)
+    } else {
+        sync_rsync_parallel(nodes, local)
+    }
+}
+
+/// Tar workspace once, stream to each node in parallel. Best for full sync (dir missing).
+fn sync_tar_stream(nodes: &[String], local: bool) -> anyhow::Result<()> {
+    let root = kova_root();
+    let base = if local {
+        crate::config::hive_local_base()
+    } else {
+        crate::config::hive_shared_base()
+    };
+
+    let tmp = std::env::temp_dir().join(format!("kova-sync-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).map_err(|e| anyhow::anyhow!("Cannot create temp dir: {}", e))?;
+    let _cleanup = TempDirGuard(tmp.clone());
+
+    let projects = tmp.join("projects");
+    let workspace_dir = projects.join("workspace");
+    std::fs::create_dir_all(&workspace_dir)?;
+
+    for crate_name in WORKSPACE_CRATES {
+        let src = root.join(crate_name);
+        if src.is_dir() {
+            let dst = workspace_dir.join(crate_name);
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&src, &dst)
+                .map_err(|e| anyhow::anyhow!("symlink {}: {}", crate_name, e))?;
+            #[cfg(not(unix))]
+            {
+                copy_dir_all(&src, &dst)?;
+            }
+        }
+    }
+    let cargo_toml = root.join("Cargo.toml");
+    if cargo_toml.is_file() {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&cargo_toml, workspace_dir.join("Cargo.toml"))
+            .map_err(|e| anyhow::anyhow!("symlink Cargo.toml: {}", e))?;
+        #[cfg(not(unix))]
+        std::fs::copy(&cargo_toml, workspace_dir.join("Cargo.toml"))?;
+    }
+    for dir in ["ronin-sites", "rogue-repo"] {
+        let src = root.join(dir);
+        if src.is_dir() {
+            let dst = projects.join(dir);
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&src, &dst)
+                .map_err(|e| anyhow::anyhow!("symlink {}: {}", dir, e))?;
+            #[cfg(not(unix))]
+            copy_dir_all(&src, &dst)?;
+        }
+    }
+
+    let tar_path = std::env::temp_dir().join(format!("kova-sync-{}.tar", std::process::id()));
+    let status = Command::new("tar")
+        .args(["-chf", tar_path.to_str().unwrap(), "--exclude", "target", "--exclude", ".git", "--exclude", "node_modules"])
+        .arg("-C")
+        .arg(&tmp)
+        .arg("projects")
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("tar create failed");
+    }
+    let _tar_cleanup = TempFileGuard(tar_path.clone());
+
+    let extract_dir = base;
+    let handles: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            let node = node.clone();
+            let tar_path = tar_path.clone();
+            let extract_dir = extract_dir.clone();
+            thread::spawn(move || {
+                let sh = format!(
+                    "cat {} | ssh -o ConnectTimeout=5 {} \"mkdir -p {} && cat > /tmp/hive-build.tar && cd {} && tar xf /tmp/hive-build.tar && rm -f /tmp/hive-build.tar\"",
+                    tar_path.display(),
+                    node,
+                    extract_dir,
+                    extract_dir
+                );
+                let status = Command::new("sh").args(["-c", &sh]).status();
+                status.map(|s| s.success()).unwrap_or(false)
+            })
+        })
+        .collect();
+
+    let mut all_ok = true;
+    for h in handles {
+        if !h.join().map_err(|_| anyhow::anyhow!("Tar-stream sync thread panicked"))? {
+            all_ok = false;
+        }
+    }
+    if !all_ok {
+        anyhow::bail!("Tar-stream sync failed on at least one node");
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for e in std::fs::read_dir(src)? {
+        let e = e?;
+        let p = e.path();
+        let name = e.file_name();
+        let d = dst.join(&name);
+        if p.is_dir() {
+            copy_dir_all(&p, &d)?;
+        } else {
+            std::fs::copy(&p, &d)?;
+        }
+    }
+    Ok(())
+}
+
+struct TempDirGuard(PathBuf);
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+struct TempFileGuard(PathBuf);
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Parallel rsync: one thread per node. Best for incremental sync.
+fn sync_rsync_parallel(nodes: &[String], local: bool) -> anyhow::Result<()> {
     let (hive_workspace, hive_projects) = hive_paths(local);
     let root = kova_root();
     let rsync_args = vec!["-avz", "--exclude", "target", "--exclude", "node_modules"];
@@ -436,15 +571,21 @@ fn kova_root() -> PathBuf {
 }
 
 /// Sync workspace from c2-core to workers. Replaces sync-hive.sh.
-pub fn run_sync(dry_run: bool, target: &str, local: bool, all: bool) -> anyhow::Result<()> {
+pub fn run_sync(dry_run: bool, target: &str, local: bool, all: bool, full: bool) -> anyhow::Result<()> {
+    let nodes: Vec<String> = if all {
+        default_nodes().into_iter().map(String::from).collect()
+    } else {
+        vec![target.to_string()]
+    };
+
+    if !dry_run && nodes.len() > 0 {
+        eprintln!("[sync] Syncing to {} workers (parallel, {})...", nodes.len(), if full { "tar-stream" } else { "rsync" });
+        return sync_parallel(&nodes, local, full);
+    }
+
     let root = kova_root();
     let (hive_workspace, hive_projects) = hive_paths(local);
-
-    let targets: Vec<&str> = if all {
-        default_nodes().into_iter().collect()
-    } else {
-        vec![target]
-    };
+    let targets: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
 
     let mut rsync_args = vec!["-avz", "--exclude", "target", "--exclude", "node_modules"];
     if dry_run {

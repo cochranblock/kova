@@ -100,6 +100,9 @@ enum C2Cmd {
         /// Sync to all workers (lf gd bt st).
         #[arg(long)]
         all: bool,
+        /// Full sync (tar-stream). Use when workers have no content. Default: incremental rsync.
+        #[arg(long)]
+        full: bool,
     },
     /// SSH host CA: init, sign, setup. No host key churn when IPs change.
     SshCa {
@@ -270,7 +273,8 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             target,
             local,
             all,
-        } => kova::c2::run_sync(dry_run, &target, local, all),
+            full,
+        } => kova::c2::run_sync(dry_run, &target, local, all, full),
         C2Cmd::SshCa { cmd } => match cmd {
             SshCaCmd::Init => kova::ssh_ca::run_init(),
             SshCaCmd::Sign { node } => kova::ssh_ca::run_sign(&node),

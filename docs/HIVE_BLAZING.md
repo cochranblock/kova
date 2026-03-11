@@ -10,12 +10,20 @@
 
 | Phase | Behavior |
 |-------|----------|
-| Sync | One thread per node. Each rsyncs workspace to that node. Parallel. |
+| Sync | **Dynamic:** tar-stream when full sync (dir missing), rsync when incremental. Parallel to all nodes. |
 | Build | One thread per node. Each runs `cargo build --release`. Output streamed with `[node]` prefix. |
 
 **Before:** Sequential — sync to lf, then gd, then bt, then st. Build on lf, then gd, etc.
 
 **After:** Parallel — sync to all nodes concurrently. Build on all nodes concurrently.
+
+### Sync Strategy
+
+| Context | Method | Why |
+|---------|--------|-----|
+| `kova c2 build` (preflight failed) | Tar-stream | Full sync — dir missing on workers |
+| `kova c2 sync` (default) | Rsync | Incremental — workers likely have content |
+| `kova c2 sync --full` | Tar-stream | User requests full refresh |
 
 ---
 
@@ -42,6 +50,6 @@ kova c2 build --broadcast --nodes lf,gd --release
 
 ---
 
-## Future: Tar-Stream Sync
+## Tar-Stream Sync (Implemented)
 
-Current sync uses parallel rsync (one per node). Tar-stream would: create tar once, stream to each node via `cat file | ssh node "..."`. One disk read, N network writes. Possible future optimization.
+Tar-stream: create tar once (symlinks + tar -ch), write to temp file, then `cat file | ssh node "..."` in parallel threads. One disk read, N network writes. Used when `full_sync=true` (build preflight failed, or `kova c2 sync --full`).

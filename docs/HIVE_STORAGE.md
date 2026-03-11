@@ -63,8 +63,8 @@ st:/mnt/hive /mnt/hive nfs rsize=65536,wsize=65536,vers=4,_netdev 0 0
 
 ```bash
 # Sync to local path on workers (instead of /mnt/hive)
-kova c2 sync --local lf
-kova c2 sync --local --all   # all workers
+kova c2 sync --local --all   # incremental rsync to all workers
+kova c2 sync --local --all --full   # full tar-stream (when workers have no content)
 
 # Build on local path (faster)
 kova c2 run f20 --broadcast --local
