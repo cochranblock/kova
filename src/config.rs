@@ -6,9 +6,17 @@
 use std::path::{Path, PathBuf};
 
 #[derive(serde::Deserialize, Default)]
+struct ServeSection {
+    #[serde(default)]
+    bind: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct ConfigFile {
     #[serde(default)]
     paths: PathsSection,
+    #[serde(default)]
+    serve: ServeSection,
     #[serde(default)]
     models: ModelsSection,
     #[serde(default)]
@@ -480,10 +488,11 @@ pub fn infer_preset_name(project: &Path) -> Option<String> {
 pub use T88 as BuildPreset;
 pub use T89 as ModelRole;
 
-/// f108=bind_addr. KOVA_BIND or 127.0.0.1:3002.
+/// f108=bind_addr. KOVA_BIND or config [serve] bind or 127.0.0.1:3002.
 pub fn bind_addr() -> std::net::SocketAddr {
     std::env::var("KOVA_BIND")
         .ok()
+        .or_else(|| load_config().serve.bind.clone())
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| std::net::SocketAddr::from(([127, 0, 0, 1], 3002u16)))
 }

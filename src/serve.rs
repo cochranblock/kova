@@ -92,6 +92,59 @@ struct BacklogRunBody {
     index: usize,
 }
 
+#[derive(Deserialize)]
+struct TestRunQuery {
+    #[serde(default)]
+    project: String,
+    #[serde(default)]
+    node: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TestRunResponse {
+    ok: bool,
+    node: String,
+    output: String,
+}
+
+
+async fn api_webhook_github() -> impl IntoResponse {
+    (StatusCode::OK, Json(serde_json::json!({"received": true}))).into_response()
+}
+
+async fn api_test_run(Query(q): Query<TestRunQuery>) -> impl IntoResponse {
+    let project = if q.project.is_empty() { "cochranblock" } else { q.project.as_str() };
+    let nodes: Vec<String> = if let Some(ref n) = q.node {
+        vec![n.clone()]
+    } else {
+        let all: Vec<String> = crate::c2::default_nodes().into_iter().map(String::from).collect();
+        match crate::node_cmd::pick_idlest(&all) {
+            Some(host) => vec![host],
+            None => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(TestRunResponse {
+                        ok: false,
+                        node: String::new(),
+                        output: "No reachable nodes".into(),
+                    }),
+                )
+                    .into_response()
+            }
+        }
+    };
+    let results = crate::node_cmd::f133_sync(&nodes, project);
+    let (ok, node, output) = results
+        .first()
+        .map(|r| (
+            r.s15,
+            r.s14.clone(),
+            r.s16.iter().find(|(k, _)| *k == "o11").map(|(_, v)| v.clone()).unwrap_or_default(),
+        ))
+        .unwrap_or((false, String::new(), "no results".into()));
+    (StatusCode::OK, Json(TestRunResponse { ok, node, output })).into_response()
+}
+
 /// Validate hint is a safe filename: word.rs only. Returns hint or "lib.rs".
 fn safe_hint(hint: Option<&str>) -> String {
     let h = hint.unwrap_or("lib.rs").trim();
@@ -704,7 +757,9 @@ fn app_router() -> Router<AppState> {
         .route("/api/apply", post(api_apply))
         .route("/api/backlog", get(api_backlog_get).post(api_backlog_post))
         .route("/api/backlog/run", post(api_backlog_run))
-        .route("/api/demo/record", post(api_demo_record));
+        .route("/api/demo/record", post(api_demo_record))
+        .route("/api/test/run", get(api_test_run))
+        .route("/api/webhook/github", post(api_webhook_github));
     #[cfg(feature = "inference")]
     let r = r
         .route("/api/route", post(api_route))

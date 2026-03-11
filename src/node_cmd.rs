@@ -280,7 +280,7 @@ fn f126(nodes: &[String], project: &std::path::Path) -> Vec<t97> {
 }
 
 /// f133=ntest. Remote exopack test run. Worker workspace from env or /home/mcochran.
-fn f133(nodes: &[String], project: &str) -> Vec<t97> {
+pub fn f133_sync(nodes: &[String], project: &str) -> Vec<t97> {
     let workspace = std::env::var("KOVA_WORKER_WORKSPACE").unwrap_or_else(|_| "/home/mcochran".into());
     let bin = format!("{}-test", project);
     let cmd = format!(
@@ -612,7 +612,7 @@ pub fn f132(
         t96::Ci => f131(&node_list),
         t96::Ct => {
             let project = extra.as_deref().unwrap_or("cochranblock");
-            f133(&node_list, project)
+            f133_sync(&node_list, project)
         }
     };
 
