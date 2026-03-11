@@ -69,7 +69,25 @@ enum C2Cmd {
     },
     /// Print placement recommendations based on inspect data.
     Recommend,
-    /// Sync workspace to workers at /mnt/hive/projects/ (replaces sync-hive.sh).
+    /// One-command sync + build. Parallel. Prefer over sync + run.
+    Build {
+        #[arg(long)]
+        broadcast: bool,
+        #[arg(long)]
+        release: bool,
+        /// Skip sync; assume workers already have fresh content.
+        #[arg(long)]
+        no_sync: bool,
+        /// Build on /tmp/hive-build (local) instead of NFS. Faster.
+        #[arg(long)]
+        local: bool,
+        /// Restrict to nodes (e.g. lf,gd). Default: all reachable.
+        #[arg(long)]
+        nodes: Option<String>,
+        #[arg(short, long)]
+        project: Option<std::path::PathBuf>,
+    },
+    /// Sync workspace to workers. Prefer `kova c2 build --broadcast` for one-command sync+build.
     Sync {
         #[arg(long)]
         dry_run: bool,
@@ -239,6 +257,14 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             kova::inspect::print_recommend(&hosts);
             Ok(())
         }
+        C2Cmd::Build {
+            broadcast,
+            release,
+            no_sync,
+            local,
+            nodes,
+            project,
+        } => kova::c2::run_build(broadcast, release, no_sync, local, nodes, project),
         C2Cmd::Sync {
             dry_run,
             target,

@@ -18,6 +18,16 @@ struct ConfigFile {
     cursor: CursorSection,
     #[serde(default)]
     inference: InferenceSection,
+    #[serde(default)]
+    hive: HiveSection,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct HiveSection {
+    #[serde(default)]
+    local_base: Option<String>,
+    #[serde(default)]
+    shared_base: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -261,6 +271,22 @@ pub fn home() -> PathBuf {
 /// f98=kova_dir. ~/.kova.
 pub fn kova_dir() -> PathBuf {
     home().join(".kova")
+}
+
+/// Hive paths from config. Fallback to defaults if not set.
+pub fn hive_local_base() -> String {
+    load_config()
+        .hive
+        .local_base
+        .unwrap_or_else(|| "/tmp/hive-build".to_string())
+}
+
+/// Hive shared (NFS) base path.
+pub fn hive_shared_base() -> String {
+    load_config()
+        .hive
+        .shared_base
+        .unwrap_or_else(|| "/mnt/hive".to_string())
 }
 
 /// f99=prompts_dir. ~/.kova/prompts.
@@ -510,6 +536,10 @@ prompts_enabled = true
 
 [build]
 # workspace_root = "~"  # KOVA_WORKSPACE_ROOT overrides
+
+[hive]
+# local_base = "/tmp/hive-build"   # Sync-to-local path on workers
+# shared_base = "/mnt/hive"        # NFS path on workers
 
 [build.presets.oakilydokily]
 package = "oakilydokily"

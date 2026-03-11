@@ -80,7 +80,36 @@ kova c2 run f20 --broadcast --local
 
 ---
 
-## 5. Related Docs
+## 5. One-Command Build (Preferred)
 
+**Prefer `kova c2 build --broadcast`** over `sync` + `run`. One command does sync (unless `--no-sync`) + parallel broadcast.
+
+```bash
+kova c2 build --broadcast --local --release   # sync + build on all workers, parallel
+kova c2 build --broadcast --no-sync          # skip sync; assume already synced
+```
+
+Sync and build run in parallel across all workers. Output is streamed with `[node]` prefix.
+
+---
+
+## 6. SSH ControlMaster (Connection Reuse)
+
+Reduce SSH handshake overhead by reusing connections. Add to `~/.ssh/config`:
+
+```
+Host lf gd bt st
+  ControlMaster auto
+  ControlPath ~/.kova/ssh-%r@%h:%p
+  ControlPersist 10m
+```
+
+First SSH opens a master; subsequent SSHs reuse it. Zero handshake for sync→build.
+
+---
+
+## 7. Related Docs
+
+- [HIVE_BLAZING.md](HIVE_BLAZING.md) — Parallel design, benchmarks
 - [HIVE_MESH_USAGE_GAP.md](HIVE_MESH_USAGE_GAP.md) — Usage gaps, sync vs broadcast paths
 - [PLAN_EXECUTION_PATH.md](PLAN_EXECUTION_PATH.md) — C2 broadcast flow
