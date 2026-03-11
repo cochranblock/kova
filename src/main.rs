@@ -36,6 +36,10 @@ enum Cmd {
     X(XArgs),
     /// Interactive REPL. Agentic tool loop with local LLM. Like Claude Code but local.
     Chat(ChatArgs),
+    /// Short serve alias. `kova s` = `kova serve --open`. `kova s -d` = demo mode.
+    S(SShortArgs),
+    /// Short GUI alias. `kova g` = `kova gui`. `kova g -d` = demo mode.
+    G(GShortArgs),
 }
 
 #[derive(clap::Args)]
@@ -202,6 +206,20 @@ struct ServeArgs {
 }
 
 #[derive(clap::Args)]
+struct SShortArgs {
+    /// Demo mode.
+    #[arg(short, long)]
+    demo: bool,
+}
+
+#[derive(clap::Args)]
+struct GShortArgs {
+    /// Demo mode.
+    #[arg(short, long)]
+    demo: bool,
+}
+
+#[derive(clap::Args)]
 struct AutopilotArgs {
     /// Prompt to type into Cursor agent composer
     #[arg(required = true)]
@@ -360,7 +378,9 @@ async fn main() -> anyhow::Result<()> {
 
     match cmd {
         Some(Cmd::Gui(args)) => run_gui(args.demo),
+        Some(Cmd::G(args)) => run_gui(args.demo),
         Some(Cmd::Serve(args)) => run_serve(args.open, args.demo).await,
+        Some(Cmd::S(args)) => run_serve(true, args.demo).await,
         Some(Cmd::Node) => run_node(),
         Some(Cmd::C2(args)) => run_c2(args).await,
         Some(Cmd::Model(args)) => match args.cmd {
