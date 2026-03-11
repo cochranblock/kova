@@ -759,6 +759,112 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
 }
 
 /// Run server and open browser after bind.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn test_app() -> Router {
+        crate::bootstrap().unwrap();
+        app_router().layer(CorsLayer::permissive()).with_state(AppState::default())
+    }
+
+    #[tokio::test]
+    async fn api_status_returns_ok() {
+        let app = test_app();
+        let req = Request::builder().uri("/api/status").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn api_project_returns_path() {
+        let app = test_app();
+        let req = Request::builder().uri("/api/project").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["project"].is_string());
+    }
+
+    #[tokio::test]
+    async fn api_projects_returns_array() {
+        let app = test_app();
+        let req = Request::builder().uri("/api/projects").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json.is_array());
+    }
+
+    #[tokio::test]
+    async fn api_prompts_returns_system_and_persona() {
+        let app = test_app();
+        let req = Request::builder().uri("/api/prompts").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 8192).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json.get("system").is_some());
+        assert!(json.get("persona").is_some());
+    }
+
+    #[tokio::test]
+    async fn api_build_presets_returns_map() {
+        let app = test_app();
+        let req = Request::builder().uri("/build/presets").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 8192).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json.is_object());
+    }
+
+    #[tokio::test]
+    async fn api_file_404_for_missing() {
+        let app = test_app();
+        let req = Request::builder().uri("/api/file?hint=nonexistent_xyz.rs").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn root_returns_html() {
+        let app = test_app();
+        let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("<html") || html.contains("<!DOCTYPE"), "got: {}...", &html[..100.min(html.len())]);
+    }
+
+    #[test]
+    fn safe_hint_sanitizes() {
+        assert_eq!(safe_hint(Some("lib.rs")), "lib.rs");
+        assert_eq!(safe_hint(Some("my_module.rs")), "my_module.rs");
+        assert_eq!(safe_hint(Some("../../etc/passwd")), "lib.rs");
+        assert_eq!(safe_hint(Some("/root/.ssh/id_rsa")), "lib.rs");
+        assert_eq!(safe_hint(Some("")), "lib.rs");
+        assert_eq!(safe_hint(None), "lib.rs");
+    }
+
+    #[tokio::test]
+    async fn context_recent_returns_string() {
+        let app = test_app();
+        let req = Request::builder().uri("/context/recent?minutes=1").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+}
+
 pub async fn run_with_open(addr: SocketAddr, url: &str) -> anyhow::Result<()> {
     let state = AppState::default();
     let app = app_router().layer(CorsLayer::permissive()).with_state(state);

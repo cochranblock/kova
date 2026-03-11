@@ -599,3 +599,133 @@ fn parse_cmd_token(s: &str) -> Option<t99> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compress_json_error_with_code() {
+        let json = r#"{"reason":"compiler-message","message":{"level":"error","message":"mismatched types","code":{"code":"E0308"},"spans":[{"file_name":"src/lib.rs","line_start":42,"is_primary":true}]}}"#;
+        let (w, e, out, _) = compress_json_messages(json);
+        assert_eq!(e, 1);
+        assert_eq!(w, 0);
+        assert!(out.contains("E[E0308]"), "got: {}", out);
+        assert!(out.contains("src/lib.rs:42"), "got: {}", out);
+        assert!(out.contains("mismatched types"), "got: {}", out);
+    }
+
+    #[test]
+    fn compress_json_warning_with_code() {
+        let json = r#"{"reason":"compiler-message","message":{"level":"warning","message":"unused variable","code":{"code":"unused_variables"},"spans":[{"file_name":"src/main.rs","line_start":10,"is_primary":true}]}}"#;
+        let (w, e, out, _) = compress_json_messages(json);
+        assert_eq!(w, 1);
+        assert_eq!(e, 0);
+        assert!(out.contains("W[unused_variables]"), "got: {}", out);
+    }
+
+    #[test]
+    fn compress_json_skips_artifacts() {
+        let json = r#"{"reason":"compiler-artifact","target":{"name":"kova"}}"#;
+        let (w, e, out, _) = compress_json_messages(json);
+        assert_eq!(w, 0);
+        assert_eq!(e, 0);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn compress_json_skips_notes() {
+        let json = r#"{"reason":"compiler-message","message":{"level":"note","message":"some help text","code":null,"spans":[]}}"#;
+        let (w, e, out, _) = compress_json_messages(json);
+        assert_eq!(w, 0);
+        assert_eq!(e, 0);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn compress_json_test_results() {
+        let input = "test result: ok. 15 passed; 2 failed; 1 ignored; 0 measured";
+        let (_, e, _, summary) = compress_json_messages(input);
+        assert_eq!(summary, Some("15/2/1".to_string()));
+        assert_eq!(e, 2);
+    }
+
+    #[test]
+    fn compress_json_failed_test_name() {
+        let input = "---- my_module::tests::my_test ----";
+        let (_, _, out, _) = compress_json_messages(input);
+        assert!(out.contains("FAIL:my_module::tests::my_test"), "got: {}", out);
+    }
+
+    #[test]
+    fn compress_json_caps_output() {
+        let mut lines = String::new();
+        for i in 0..20 {
+            lines.push_str(&format!(
+                r#"{{"reason":"compiler-message","message":{{"level":"error","message":"err{}","code":null,"spans":[]}}}}"#,
+                i
+            ));
+            lines.push('\n');
+        }
+        let (_, e, out, _) = compress_json_messages(&lines);
+        assert_eq!(e, 20);
+        assert!(out.contains("...+5"), "should cap at 15, got: {}", out);
+    }
+
+    #[test]
+    fn compress_json_strips_path() {
+        let json = r#"{"reason":"compiler-message","message":{"level":"error","message":"boom","code":{"code":"E0001"},"spans":[{"file_name":"/Users/foo/kova/src/lib.rs","line_start":5,"is_primary":true}]}}"#;
+        let (_, _, out, _) = compress_json_messages(json);
+        // Should not contain absolute path
+        assert!(!out.contains("/Users/foo"), "got: {}", out);
+        assert!(out.contains("src/lib.rs:5"), "got: {}", out);
+    }
+
+    #[test]
+    fn compress_text_fallback() {
+        let stderr = "error[E0308]: mismatched types\nwarning: 3 warnings generated\n";
+        let (w, e, out, _) = compress_output_text(stderr, "");
+        assert_eq!(e, 1);
+        assert_eq!(w, 3);
+        assert!(out.contains("E0308"), "got: {}", out);
+    }
+
+    #[test]
+    fn resolve_project_known() {
+        assert_eq!(resolve_project("p0"), "kova");
+        assert_eq!(resolve_project("p2"), "cochranblock");
+    }
+
+    #[test]
+    fn resolve_project_passthrough() {
+        assert_eq!(resolve_project("unknown-crate"), "unknown-crate");
+    }
+
+    #[test]
+    fn to_project_token_roundtrip() {
+        assert_eq!(to_project_token("kova"), "p0");
+        assert_eq!(to_project_token("approuter"), "p1");
+        assert_eq!(to_project_token("nonexistent"), "nonexistent");
+    }
+
+    #[test]
+    fn parse_cmd_token_valid() {
+        assert!(matches!(parse_cmd_token("x0"), Some(t99::X0)));
+        assert!(matches!(parse_cmd_token("x9"), Some(t99::X9)));
+    }
+
+    #[test]
+    fn parse_cmd_token_invalid() {
+        assert!(parse_cmd_token("x10").is_none());
+        assert!(parse_cmd_token("foo").is_none());
+    }
+
+    #[test]
+    fn supports_json_check() {
+        assert!(supports_json(&t99::X0)); // build
+        assert!(supports_json(&t99::X1)); // check
+        assert!(supports_json(&t99::X3)); // clippy
+        assert!(!supports_json(&t99::X6)); // clean
+        assert!(!supports_json(&t99::X8)); // fmt
+    }
+}

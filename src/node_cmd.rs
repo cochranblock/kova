@@ -575,3 +575,77 @@ pub fn f132(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_node_token() {
+        assert_eq!(resolve_node("n0"), "lf");
+        assert_eq!(resolve_node("n1"), "gd");
+        assert_eq!(resolve_node("n2"), "bt");
+        assert_eq!(resolve_node("n3"), "st");
+    }
+
+    #[test]
+    fn resolve_node_passthrough() {
+        assert_eq!(resolve_node("lf"), "lf");
+        assert_eq!(resolve_node("custom-host"), "custom-host");
+    }
+
+    #[test]
+    fn to_token_reverse() {
+        assert_eq!(to_token("lf"), "n0");
+        assert_eq!(to_token("gd"), "n1");
+        assert_eq!(to_token("bt"), "n2");
+        assert_eq!(to_token("st"), "n3");
+    }
+
+    #[test]
+    fn to_token_unknown_passthrough() {
+        assert_eq!(to_token("unknown"), "unknown");
+    }
+
+    #[test]
+    fn headers_for_commands() {
+        assert_eq!(headers_for(&t96::C1), &["o0", "o1", "o2", "o3"]);
+        assert_eq!(headers_for(&t96::Ci), &["o0", "o4", "o5", "o3", "o1"]);
+    }
+
+    #[test]
+    fn expand_header_known() {
+        assert_eq!(expand_header("o0"), "node");
+        assert_eq!(expand_header("o4"), "cpu");
+        assert_eq!(expand_header("o5"), "mem");
+        assert_eq!(expand_header("o8"), "rust");
+    }
+
+    #[test]
+    fn expand_header_unknown() {
+        assert_eq!(expand_header("o99"), "o99");
+    }
+
+    #[test]
+    fn print_oneline_formats() {
+        let results = vec![
+            t97 {
+                s14: "n0".to_string(),
+                s15: true,
+                s16: vec![("o4", "4".into()), ("o5", "2G".into()), ("o3", "0.5".into())],
+            },
+            t97 {
+                s14: "n1".to_string(),
+                s15: false,
+                s16: vec![],
+            },
+        ];
+        // Just verify it doesn't panic. Output goes to stderr.
+        print_oneline(&results);
+    }
+
+    #[test]
+    fn node_map_has_four_entries() {
+        assert_eq!(NODE_MAP.len(), 4);
+    }
+}
