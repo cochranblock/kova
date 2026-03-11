@@ -61,6 +61,7 @@ pub mod cargo_cmd;
 pub mod cluster;
 pub mod factory;
 pub mod git_cmd;
+pub mod moe;
 pub mod ollama;
 pub mod elicitor;
 pub mod inspect;

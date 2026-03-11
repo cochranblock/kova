@@ -48,6 +48,9 @@ enum Cmd {
     /// Rust Binary Factory. Full pipeline: classify → generate → compile → review → fix.
     #[command(name = "factory")]
     Factory(FactoryArgs),
+    /// Mixture of Experts. Fan-out to N nodes, compile all, score, pick winner.
+    #[command(name = "moe")]
+    Moe(MoeArgs),
 }
 
 #[derive(clap::Args)]
@@ -189,6 +192,30 @@ struct FactoryArgs {
     /// Context window size.
     #[arg(long, default_value = "8192")]
     ctx: u32,
+}
+
+#[derive(clap::Args)]
+struct MoeArgs {
+    /// What to build.
+    prompt: Vec<String>,
+    /// Number of expert variants to generate (default: 3).
+    #[arg(short, long, default_value = "3")]
+    experts: usize,
+    /// Skip code review stage.
+    #[arg(long)]
+    no_review: bool,
+    /// Skip clippy.
+    #[arg(long)]
+    no_clippy: bool,
+    /// Skip tests.
+    #[arg(long)]
+    no_tests: bool,
+    /// Context window size.
+    #[arg(long, default_value = "8192")]
+    ctx: u32,
+    /// Save winning expert to ~/.kova/experts/.
+    #[arg(long)]
+    save: bool,
 }
 
 #[derive(clap::Args)]
@@ -580,7 +607,7 @@ fn main() -> anyhow::Result<()> {
 
     // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
     match &args.cmd {
-        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) => {
+        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -594,6 +621,18 @@ fn main() -> anyhow::Result<()> {
                         ..Default::default()
                     };
                     kova::factory::run_factory(&a.prompt.join(" "), &project, config);
+                    Ok(())
+                }
+                Cmd::Moe(a) => {
+                    let config = kova::moe::MoeConfig {
+                        num_experts: a.experts,
+                        run_clippy: !a.no_clippy,
+                        run_tests: !a.no_tests,
+                        run_review: !a.no_review,
+                        num_ctx: a.ctx,
+                        save_winner: a.save,
+                    };
+                    kova::moe::run_moe(&a.prompt.join(" "), config);
                     Ok(())
                 }
                 _ => unreachable!(),
@@ -723,7 +762,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) => unreachable!("handled before tokio"),
+        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
