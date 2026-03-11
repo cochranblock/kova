@@ -5,13 +5,12 @@
 //! Pipeline stages:
 //!   1. Classify (c2, 3B) — what kind of task?
 //!   2. Generate (lf/bt, 32B) — produce Rust code
-//!   3. Compile (any node) — cargo check + clippy
+//!   3. Compile (local) — cargo check + clippy + test
 //!   4. Review (gd, 14B) — code quality check
 //!   5. Fix (lf/bt, 32B) — fix compile/review errors, retry
 //!   6. Output — final binary or code
 
 use crate::cluster::{Cluster, TaskKind};
-use crate::ollama;
 use std::path::Path;
 use std::process::Command;
 
@@ -48,7 +47,7 @@ pub struct FactoryConfig {
 impl Default for FactoryConfig {
     fn default() -> Self {
         Self {
-            max_fix_retries: 2,
+            max_fix_retries: 4,
             run_clippy: true,
             run_tests: true,
             run_review: true,
@@ -78,7 +77,7 @@ impl Factory {
     }
 
     /// Run the full factory pipeline: classify → generate → compile → review → fix → output.
-    pub fn run(&self, prompt: &str, project_dir: &Path) -> FactoryResult {
+    pub fn run(&self, prompt: &str, _project_dir: &Path) -> FactoryResult {
         let mut result = FactoryResult {
             code: String::new(),
             stages: Vec::new(),
@@ -89,11 +88,20 @@ impl Factory {
         // ── Stage 1: Classify ──
         let task_kind = self.classify(prompt, &mut result);
 
+        // Detect if the prompt wants a binary (CLI tool, main(), executable)
+        let wants_binary = prompt_wants_binary(prompt);
+
         // ── Stage 2: Generate ──
-        let system = self.build_system_prompt(project_dir);
+        let system = self.build_system_prompt(wants_binary);
         let gen_prompt = format!(
-            "{}\n\nGenerate Rust code. Put code in ```rust ... ``` blocks. Be concise. No explanation.",
-            prompt
+            "{}\n\nGenerate Rust code. Put all code in a single ```rust ... ``` block.\n\
+            {}Be concise. No explanation outside the code block.",
+            prompt,
+            if wants_binary {
+                "Include a `fn main()` entry point.\n"
+            } else {
+                ""
+            }
         );
 
         let code = match self.generate(&system, &gen_prompt, task_kind, &mut result) {
@@ -103,7 +111,8 @@ impl Factory {
         result.code = code.clone();
 
         // ── Stage 3: Compile loop ──
-        let (compiled_code, compile_ok) = self.compile_loop(&code, &system, project_dir, &mut result);
+        let (compiled_code, compile_ok) =
+            self.compile_loop(&code, &system, wants_binary, &mut result);
         result.code = compiled_code.clone();
 
         if !compile_ok {
@@ -114,9 +123,24 @@ impl Factory {
         if self.config.run_review {
             let review_result = self.review(&compiled_code, &mut result);
             if let Some(issues) = review_result {
-                // If review found issues, try one fix pass
-                if let Some(fixed) = self.fix_from_review(&compiled_code, &issues, &system, &mut result) {
-                    result.code = fixed;
+                if let Some(fixed) =
+                    self.fix_from_review(&compiled_code, &issues, &system, &mut result)
+                {
+                    // Re-verify the review fix compiles
+                    let tmp = match tempfile::TempDir::new() {
+                        Ok(d) => d,
+                        Err(_) => {
+                            result.code = fixed;
+                            result.success = true;
+                            return result;
+                        }
+                    };
+                    write_temp_project(tmp.path(), &fixed, wants_binary);
+                    let (ok, _) = cargo_check_local(tmp.path());
+                    if ok {
+                        result.code = fixed;
+                    }
+                    // If review fix broke compilation, keep the pre-review code
                 }
             }
         }
@@ -225,16 +249,16 @@ impl Factory {
         &self,
         initial_code: &str,
         system: &str,
-        project_dir: &Path,
+        wants_binary: bool,
         result: &mut FactoryResult,
     ) -> (String, bool) {
         let mut code = initial_code.to_string();
         let mut attempt = 0u32;
+        let mut prev_errors: Vec<String> = Vec::new();
 
         loop {
             let start = std::time::Instant::now();
 
-            // Create temp project
             let tmp = match tempfile::TempDir::new() {
                 Ok(d) => d,
                 Err(e) => {
@@ -249,19 +273,20 @@ impl Factory {
                 }
             };
 
-            write_temp_project(tmp.path(), &code);
+            write_temp_project(tmp.path(), &code, wants_binary);
 
             // cargo check
             eprintln!("[factory] checking (attempt {})...", attempt + 1);
             let (ok, stderr) = cargo_check_local(tmp.path());
             if !ok {
                 attempt += 1;
+                let error_key = extract_error_key(&stderr);
                 result.stages.push(StageResult {
                     stage: format!("compile-{}", attempt),
                     node: "local".into(),
                     duration_ms: start.elapsed().as_millis() as u64,
                     success: false,
-                    output: truncate(&stderr, 200),
+                    output: truncate(&stderr, 500),
                 });
 
                 if attempt > self.config.max_fix_retries {
@@ -269,8 +294,12 @@ impl Factory {
                     return (code, false);
                 }
 
+                // Check if we're stuck on the same error
+                let stuck = prev_errors.last().map(|e| e == &error_key).unwrap_or(false);
+                prev_errors.push(error_key);
+
                 eprintln!("[factory] compile failed, fixing on cluster...");
-                match self.fix_code(&code, &stderr, system, result) {
+                match self.fix_code(&code, &stderr, system, stuck, &prev_errors, result) {
                     Some(fixed) => {
                         code = fixed;
                         continue;
@@ -285,12 +314,13 @@ impl Factory {
                 let (ok, stderr) = cargo_clippy_local(tmp.path());
                 if !ok {
                     attempt += 1;
+                    let error_key = extract_error_key(&stderr);
                     result.stages.push(StageResult {
                         stage: format!("clippy-{}", attempt),
                         node: "local".into(),
                         duration_ms: start.elapsed().as_millis() as u64,
                         success: false,
-                        output: truncate(&stderr, 200),
+                        output: truncate(&stderr, 500),
                     });
 
                     if attempt > self.config.max_fix_retries {
@@ -298,7 +328,10 @@ impl Factory {
                         return (code, false);
                     }
 
-                    match self.fix_code(&code, &stderr, system, result) {
+                    let stuck = prev_errors.last().map(|e| e == &error_key).unwrap_or(false);
+                    prev_errors.push(error_key);
+
+                    match self.fix_code(&code, &stderr, system, stuck, &prev_errors, result) {
                         Some(fixed) => {
                             code = fixed;
                             continue;
@@ -314,19 +347,23 @@ impl Factory {
                 let (ok, stderr) = cargo_test_local(tmp.path());
                 if !ok {
                     attempt += 1;
+                    let error_key = extract_error_key(&stderr);
                     result.stages.push(StageResult {
                         stage: format!("test-{}", attempt),
                         node: "local".into(),
                         duration_ms: start.elapsed().as_millis() as u64,
                         success: false,
-                        output: truncate(&stderr, 200),
+                        output: truncate(&stderr, 500),
                     });
 
                     if attempt > self.config.max_fix_retries {
                         return (code, false);
                     }
 
-                    match self.fix_code(&code, &stderr, system, result) {
+                    let stuck = prev_errors.last().map(|e| e == &error_key).unwrap_or(false);
+                    prev_errors.push(error_key);
+
+                    match self.fix_code(&code, &stderr, system, stuck, &prev_errors, result) {
                         Some(fixed) => {
                             code = fixed;
                             continue;
@@ -349,28 +386,63 @@ impl Factory {
         }
     }
 
-    /// Fix code using a 32B node.
+    /// Fix code using a heavy node. Tracks previous errors to avoid loops.
     fn fix_code(
         &self,
         code: &str,
         error: &str,
         system: &str,
+        stuck: bool,
+        prev_errors: &[String],
         result: &mut FactoryResult,
     ) -> Option<String> {
         let start = std::time::Instant::now();
 
-        let fix_prompt = format!(
-            "Fix this Rust code. The error is:\n```\n{}\n```\n\nCode:\n```rust\n{}\n```\n\n\
-            Return only the fixed code in a ```rust block. No explanation.",
-            truncate(error, 500), code
-        );
+        // Build a smarter fix prompt based on context
+        let fix_prompt = if stuck {
+            // We're hitting the same error — escalate with more context
+            format!(
+                "IMPORTANT: Your previous fix attempt did NOT resolve this error. The same error occurred again.\n\
+                You must use a DIFFERENT approach this time.\n\n\
+                The compiler error is:\n```\n{}\n```\n\n\
+                Previous error history ({} attempts):\n{}\n\n\
+                Current code:\n```rust\n{}\n```\n\n\
+                Think carefully about the root cause. The error type and line number are exact.\n\
+                Return ONLY the complete fixed code in a ```rust block.",
+                error,
+                prev_errors.len(),
+                prev_errors.iter().enumerate()
+                    .map(|(i, e)| format!("  attempt {}: {}", i + 1, truncate(e, 100)))
+                    .collect::<Vec<_>>().join("\n"),
+                code
+            )
+        } else {
+            format!(
+                "Fix this Rust code. The compiler error is:\n```\n{}\n```\n\n\
+                Code:\n```rust\n{}\n```\n\n\
+                Return ONLY the complete fixed code in a ```rust block. No explanation.",
+                error, code
+            )
+        };
 
-        let (node, response) = match self.cluster.dispatch(
-            TaskKind::FixCompile,
-            system,
-            &fix_prompt,
-            Some(self.config.num_ctx),
-        ) {
+        // If stuck, try speculative dispatch (race multiple nodes) for a different answer
+        let dispatch_result = if stuck {
+            self.cluster.speculative_dispatch(
+                TaskKind::FixCompile,
+                system,
+                &fix_prompt,
+                Some(self.config.num_ctx),
+            )
+        } else {
+            self.cluster.dispatch(
+                TaskKind::FixCompile,
+                system,
+                &fix_prompt,
+                Some(self.config.num_ctx),
+            )
+        };
+
+        let (node, response) = match dispatch_result {
             Ok(r) => r,
             Err(e) => {
                 result.stages.push(StageResult {
@@ -391,10 +463,14 @@ impl Factory {
             node: node.clone(),
             duration_ms: start.elapsed().as_millis() as u64,
             success: true,
-            output: format!("fixed on {}", node),
+            output: format!("fixed on {}{}", node, if stuck { " (escalated)" } else { "" }),
         });
 
-        eprintln!("[factory] fixed on {}", node);
+        eprintln!(
+            "[factory] fixed on {}{}",
+            node,
+            if stuck { " (escalated)" } else { "" }
+        );
         Some(fixed)
     }
 
@@ -445,7 +521,7 @@ impl Factory {
             output: if clean {
                 "LGTM".into()
             } else {
-                truncate(&response, 200)
+                truncate(&response, 300)
             },
         });
 
@@ -508,20 +584,24 @@ impl Factory {
         Some(fixed)
     }
 
-    /// Build system prompt with project context.
-    fn build_system_prompt(&self, project_dir: &Path) -> String {
-        let project_name = project_dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown");
+    /// Build system prompt.
+    fn build_system_prompt(&self, wants_binary: bool) -> String {
+        let code_type = if wants_binary {
+            "Write a complete program with `fn main()`. The code will be compiled as src/main.rs."
+        } else {
+            "Write library code. The code will be compiled as src/lib.rs."
+        };
 
         format!(
-            "You are a Rust systems programming expert working on the {} project.\n\
-            Write clean, idiomatic Rust. No filler. No slop words (utilize/leverage/optimize/comprehensive/robust/seamlessly).\n\
-            IMPORTANT: Use only the Rust standard library. No external crates (no tokio, no serde, no thiserror, etc).\n\
+            "You are a Rust systems programming expert.\n\
+            {}\n\
+            Write clean, idiomatic Rust. No filler. No slop words.\n\
+            IMPORTANT: Use only the Rust standard library. No external crates.\n\
             The code will be compiled in an isolated crate with zero dependencies.\n\
-            Put all code in ```rust blocks.",
-            project_name
+            IMPORTANT: All string types must match — don't mix &str with String in if/else or match arms.\n\
+            Use `.to_string()` or `String::from()` to convert &str to String where needed.\n\
+            Put all code in a single ```rust block. No text before or after the block.",
+            code_type
         )
     }
 }
@@ -566,21 +646,56 @@ pub fn run_factory(prompt: &str, project_dir: &Path, config: FactoryConfig) {
 // ── Helpers ──
 
 fn extract_rust_block(s: &str) -> Option<String> {
-    let start = s.find("```rust")?;
-    let after_start = &s[start + 7..];
+    // Try ```rust first, then bare ```
+    let (start_tag, tag_len) = if let Some(pos) = s.find("```rust") {
+        (pos, 7)
+    } else if let Some(pos) = s.find("```\n") {
+        (pos, 4)
+    } else {
+        return None;
+    };
+    let after_start = &s[start_tag + tag_len..];
     let end = after_start.find("```")?;
     Some(after_start[..end].trim().to_string())
 }
 
-fn write_temp_project(dir: &Path, code: &str) {
+/// Detect if the prompt is asking for a binary/CLI tool vs library code.
+fn prompt_wants_binary(prompt: &str) -> bool {
+    let lower = prompt.to_lowercase();
+    lower.contains("cli ")
+        || lower.contains("command line")
+        || lower.contains("command-line")
+        || lower.contains("executable")
+        || lower.contains("binary")
+        || lower.contains("tool that")
+        || lower.contains("program that")
+        || lower.contains("app that")
+        || lower.contains("main()")
+        || lower.contains("fn main")
+        || lower.contains("takes a ")  // "takes a directory path" — CLI tool pattern
+        || lower.contains("prints ")   // "prints a tree view" — implies stdout/main
+        || lower.contains("reads from") // "reads from stdin" — binary
+        || lower.contains("accept") // "accept a --flag" — CLI
+}
+
+fn write_temp_project(dir: &Path, code: &str, is_binary: bool) {
     std::fs::write(
         dir.join("Cargo.toml"),
         "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    ).ok();
+    )
+    .ok();
     std::fs::create_dir_all(dir.join("src")).ok();
-    // Prepend #![allow(dead_code)] so clippy doesn't fail on non-pub items in lib crate
-    let code_with_allow = format!("#![allow(dead_code)]\n{}", code);
-    std::fs::write(dir.join("src/lib.rs"), code_with_allow).ok();
+
+    let file_name = if is_binary { "main.rs" } else { "lib.rs" };
+
+    // For lib crate, suppress dead_code warnings on non-pub items
+    let content = if is_binary {
+        code.to_string()
+    } else {
+        format!("#![allow(dead_code)]\n{}", code)
+    };
+
+    std::fs::write(dir.join("src").join(file_name), content).ok();
 }
 
 fn cargo_check_local(dir: &Path) -> (bool, String) {
@@ -589,7 +704,10 @@ fn cargo_check_local(dir: &Path) -> (bool, String) {
         .current_dir(dir)
         .output();
     match output {
-        Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stderr).into()),
+        Ok(o) => (
+            o.status.success(),
+            String::from_utf8_lossy(&o.stderr).into(),
+        ),
         Err(e) => (false, e.to_string()),
     }
 }
@@ -600,7 +718,10 @@ fn cargo_clippy_local(dir: &Path) -> (bool, String) {
         .current_dir(dir)
         .output();
     match output {
-        Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stderr).into()),
+        Ok(o) => (
+            o.status.success(),
+            String::from_utf8_lossy(&o.stderr).into(),
+        ),
         Err(e) => (false, e.to_string()),
     }
 }
@@ -611,9 +732,35 @@ fn cargo_test_local(dir: &Path) -> (bool, String) {
         .current_dir(dir)
         .output();
     match output {
-        Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stderr).into()),
+        Ok(o) => {
+            let mut out = String::from_utf8_lossy(&o.stderr).into_owned();
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            if !stdout.is_empty() {
+                out.push('\n');
+                out.push_str(&stdout);
+            }
+            (o.status.success(), out)
+        }
         Err(e) => (false, e.to_string()),
     }
+}
+
+/// Extract the core error identifier for loop detection (error code + line number).
+fn extract_error_key(stderr: &str) -> String {
+    // Pull first error[EXXXX] line for dedup
+    for line in stderr.lines() {
+        if line.contains("error[E") {
+            return line.trim().to_string();
+        }
+    }
+    // Fallback: first error line
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("error") {
+            return trimmed.to_string();
+        }
+    }
+    "unknown".into()
 }
 
 fn truncate(s: &str, max: usize) -> String {
