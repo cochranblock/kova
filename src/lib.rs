@@ -59,6 +59,7 @@ pub mod c2;
 pub mod cargo_cmd;
 pub mod cluster;
 pub mod factory;
+pub mod gauntlet;
 pub mod git_cmd;
 pub mod moe;
 pub mod ollama;

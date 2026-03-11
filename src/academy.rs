@@ -640,7 +640,7 @@ fn edit_file(
     config: &AcademyConfig,
     rel_path: &str,
     prompt: &str,
-    context: &ProjectContext,
+    _context: &ProjectContext,
 ) -> Result<(String, Vec<String>), String> {
     let full_path = config.project_dir.join(rel_path);
     let existing = std::fs::read_to_string(&full_path).map_err(|e| e.to_string())?;

@@ -182,10 +182,10 @@ pub fn generate_stream(
             if line.is_empty() { continue; }
 
             if let Ok(chunk) = serde_json::from_str::<GenerateResponse>(&line) {
-                if !chunk.response.is_empty() {
-                    if tx.send(Arc::from(chunk.response.as_str())).is_err() {
-                        break; // receiver dropped
-                    }
+                if !chunk.response.is_empty()
+                    && tx.send(Arc::from(chunk.response.as_str())).is_err()
+                {
+                    break; // receiver dropped
                 }
                 if chunk.done { break; }
             }

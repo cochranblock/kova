@@ -72,10 +72,15 @@ impl Factory {
         }
     }
 
-    pub fn default() -> Self {
+}
+
+impl Default for Factory {
+    fn default() -> Self {
         Self::new(FactoryConfig::default())
     }
+}
 
+impl Factory {
     /// Run the full factory pipeline: classify → generate → compile → review → fix → output.
     pub fn run(&self, prompt: &str, _project_dir: &Path) -> FactoryResult {
         let mut result = FactoryResult {

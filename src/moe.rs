@@ -198,19 +198,18 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
     let compile_results: Vec<(bool, bool, bool, u64)> = {
         let handles: Vec<_> = variants
             .iter()
-            .enumerate()
-            .map(|(_i, v)| {
+            .map(|v| {
                 let code = v.code.clone();
                 let run_clippy = config.run_clippy;
                 let run_tests = config.run_tests;
-                let wants_binary = wants_binary;
+                let wb = wants_binary;
                 std::thread::spawn(move || {
                     let start = Instant::now();
                     let tmp = match tempfile::TempDir::new() {
                         Ok(d) => d,
                         Err(_) => return (false, false, false, 0u64),
                     };
-                    write_temp_project(tmp.path(), &code, wants_binary);
+                    write_temp_project(tmp.path(), &code, wb);
 
                     let (check_ok, _) = cargo_check(tmp.path());
                     if !check_ok {
@@ -358,8 +357,8 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
     // ── Output ──
     println!("\n── MoE Results ──");
     println!(
-        "{:<6} {:<8} {:<8} {:<8} {:<8} {:<8} {:<6} {}",
-        "Node", "Gen(s)", "Compile", "Clippy", "Tests", "Review", "Score", "Status"
+        "{:<6} {:<8} {:<8} {:<8} {:<8} {:<8} {:<6} Status",
+        "Node", "Gen(s)", "Compile", "Clippy", "Tests", "Review", "Score"
     );
     println!("{}", "─".repeat(70));
 
@@ -431,10 +430,11 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
         if nodes.len() >= max {
             break;
         }
-        if matches!(node.tier, ModelTier::Mid) && ollama::health(&node.base_url()) {
-            if !nodes.iter().any(|(id, _)| id == &node.id) {
-                nodes.push((node.id.clone(), node.base_url()));
-            }
+        if matches!(node.tier, ModelTier::Mid)
+            && ollama::health(&node.base_url())
+            && !nodes.iter().any(|(id, _)| id == &node.id)
+        {
+            nodes.push((node.id.clone(), node.base_url()));
         }
     }
 
@@ -445,10 +445,9 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
         }
         if matches!(node.tier, ModelTier::Light | ModelTier::Router)
             && ollama::health(&node.base_url())
+            && !nodes.iter().any(|(id, _)| id == &node.id)
         {
-            if !nodes.iter().any(|(id, _)| id == &node.id) {
-                nodes.push((node.id.clone(), node.base_url()));
-            }
+            nodes.push((node.id.clone(), node.base_url()));
         }
     }
 

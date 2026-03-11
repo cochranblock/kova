@@ -54,6 +54,9 @@ enum Cmd {
     /// Academy. MoE-powered autonomous dev agent. Plan → generate → wire → test → fix → commit.
     #[command(name = "academy")]
     Academy(AcademyArgs),
+    /// Gauntlet. Hell Week stress test for the AI pipeline. 5 phases, no mercy.
+    #[command(name = "gauntlet")]
+    Gauntlet(GauntletArgs),
 }
 
 #[derive(clap::Args)]
@@ -243,6 +246,12 @@ struct AcademyArgs {
     /// Dry run — plan only, don't execute.
     #[arg(long)]
     dry_run: bool,
+}
+
+#[derive(clap::Args)]
+struct GauntletArgs {
+    /// Run only specific phases (e.g. 1 2 3). Default: all.
+    phases: Vec<u8>,
 }
 
 #[derive(clap::Args)]
@@ -634,7 +643,7 @@ fn main() -> anyhow::Result<()> {
 
     // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
     match &args.cmd {
-        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) | Some(Cmd::Academy(_)) => {
+        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) | Some(Cmd::Academy(_)) | Some(Cmd::Gauntlet(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -672,6 +681,15 @@ fn main() -> anyhow::Result<()> {
                         dry_run: a.dry_run,
                     };
                     kova::academy::run_academy(&a.task.join(" "), config);
+                    Ok(())
+                }
+                Cmd::Gauntlet(a) => {
+                    let phases = if a.phases.is_empty() {
+                        None
+                    } else {
+                        Some(a.phases)
+                    };
+                    kova::gauntlet::run_gauntlet(phases);
                     Ok(())
                 }
                 _ => unreachable!(),
@@ -801,7 +819,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) | Some(Cmd::Academy(_)) => unreachable!("handled before tokio"),
+        Some(Cmd::Cluster(_)) | Some(Cmd::Factory(_)) | Some(Cmd::Moe(_)) | Some(Cmd::Academy(_)) | Some(Cmd::Gauntlet(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
