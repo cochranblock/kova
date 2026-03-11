@@ -44,7 +44,7 @@ kalosm-sample = { version = "0.4", optional = true }
 lru = { version = "0.12", optional = true }
 once_cell = { version = "1.19", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"], optional = true }
-exopack = { path = "exopack", optional = true, features = ["triple_sims", "interface", "baked_demo", "demo", "video"] }
+exopack = { git = "https://github.com/cochranblock/exopack", optional = true, features = ["triple_sims", "interface", "baked_demo", "demo", "video"] }
 dirs = "5"
 enigo = { version = "0.2", optional = true, default-features = false, features = ["x11rb"] }
 capnp = { version = "0.25", optional = true }
