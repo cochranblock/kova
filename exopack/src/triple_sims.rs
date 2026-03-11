@@ -103,16 +103,63 @@ fn read_src(project: &Path, rel: &str) -> Option<String> {
     std::fs::read_to_string(project.join(rel)).ok()
 }
 
+/// Resolve module path: src/foo.rs or src/foo/mod.rs
+fn resolve_mod(project: &Path, rel: &str) -> Option<PathBuf> {
+    let direct = project.join(rel);
+    if direct.exists() {
+        return Some(direct);
+    }
+    // Try src/foo/mod.rs for src/foo.rs
+    if rel.ends_with(".rs") {
+        let dir = project.join(rel.trim_end_matches(".rs"));
+        if dir.is_dir() {
+            let mod_rs = dir.join("mod.rs");
+            if mod_rs.exists() {
+                return Some(mod_rs);
+            }
+        }
+    }
+    None
+}
+
+/// Read module source. For directory modules (src/pipeline/), concatenates all .rs files.
+fn read_mod(project: &Path, rel: &str) -> Option<String> {
+    let direct = project.join(rel);
+    if direct.exists() {
+        return std::fs::read_to_string(direct).ok();
+    }
+    if rel.ends_with(".rs") {
+        let dir = project.join(rel.trim_end_matches(".rs"));
+        if dir.is_dir() {
+            let mut combined = String::new();
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for e in entries.flatten() {
+                    if e.path().extension().is_some_and(|x| x == "rs") {
+                        if let Ok(s) = std::fs::read_to_string(e.path()) {
+                            combined.push_str(&s);
+                            combined.push('\n');
+                        }
+                    }
+                }
+            }
+            if !combined.is_empty() {
+                return Some(combined);
+            }
+        }
+    }
+    None
+}
+
 fn src_contains(project: &Path, rel: &str, pattern: &str) -> bool {
-    read_src(project, rel).is_some_and(|s| s.contains(pattern))
+    read_mod(project, rel).is_some_and(|s| s.contains(pattern))
 }
 
 fn src_contains_any(project: &Path, rel: &str, patterns: &[&str]) -> bool {
-    read_src(project, rel).is_some_and(|s| patterns.iter().any(|p| s.contains(p)))
+    read_mod(project, rel).is_some_and(|s| patterns.iter().any(|p| s.contains(p)))
 }
 
 fn file_exists(project: &Path, rel: &str) -> bool {
-    project.join(rel).exists()
+    resolve_mod(project, rel).is_some()
 }
 
 fn finding(sim: u8, ok: bool, area: &str, pass_msg: &str, fail_msg: &str) -> Finding {
@@ -337,8 +384,7 @@ pub fn f171_sim2_feature_gap(project: &Path) -> SimResult {
     let mut findings = Vec::new();
 
     for c in CRITERIA {
-        let file_path = project.join(c.file);
-        let src = std::fs::read_to_string(&file_path).unwrap_or_default();
+        let src = read_mod(project, c.file).unwrap_or_default();
         let met = c.patterns.iter().any(|p| src.contains(p));
         findings.push(Finding {
             sim: 2,
@@ -421,7 +467,29 @@ pub fn f172_sim3_impl_deep_dive(project: &Path) -> SimResult {
     }
 
     // 3B: Pipeline flow correctness (check → clippy → test → fix loop)
-    if let Some(pipeline) = read_src(project, "src/pipeline.rs") {
+    // Pipeline may be src/pipeline.rs or src/pipeline/ directory
+    let pipeline_src = read_mod(project, "src/pipeline.rs")
+        .or_else(|| {
+            // Read all .rs files in src/pipeline/ and concatenate
+            let dir = project.join("src/pipeline");
+            if dir.is_dir() {
+                let mut combined = String::new();
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    for e in entries.flatten() {
+                        if e.path().extension().is_some_and(|x| x == "rs") {
+                            if let Ok(s) = std::fs::read_to_string(e.path()) {
+                                combined.push_str(&s);
+                                combined.push('\n');
+                            }
+                        }
+                    }
+                }
+                if combined.is_empty() { None } else { Some(combined) }
+            } else {
+                None
+            }
+        });
+    if let Some(pipeline) = pipeline_src {
         let has_check = pipeline.contains("cargo_check") || pipeline.contains("cargo check");
         let has_clippy = pipeline.contains("clippy");
         let has_test = pipeline.contains("cargo_test") || pipeline.contains("cargo test");
