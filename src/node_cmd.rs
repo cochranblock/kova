@@ -465,6 +465,21 @@ fn expand_header(token: &str) -> &str {
     }
 }
 
+/// Print ultra-compact single line: n0:4c/2G/0.5 n1:8c/3G/0.2
+fn print_oneline(results: &[t97]) {
+    let parts: Vec<String> = results.iter().map(|r| {
+        if r.s15 {
+            let cpu = r.s16.iter().find(|(k, _)| *k == "o4").map(|(_, v)| v.as_str()).unwrap_or("?");
+            let mem = r.s16.iter().find(|(k, _)| *k == "o5").map(|(_, v)| v.as_str()).unwrap_or("?");
+            let load = r.s16.iter().find(|(k, _)| *k == "o3").map(|(_, v)| v.as_str()).unwrap_or("?");
+            format!("{}:{}c/{}/{}", r.s14, cpu, mem, load)
+        } else {
+            format!("{}:err", r.s14)
+        }
+    }).collect();
+    eprintln!("{}", parts.join(" "));
+}
+
 /// Print compressed table output.
 fn print_compressed(cmd: &t96, results: &[t97], expand: bool) {
     let hdrs = headers_for(cmd);
@@ -513,6 +528,7 @@ pub fn f132(
     release: bool,
     lines: u32,
     expand: bool,
+    oneline: bool,
 ) -> anyhow::Result<()> {
     let node_list = resolve_nodes(nodes.as_deref());
 
@@ -547,7 +563,11 @@ pub fn f132(
         t96::Ci => f131(&node_list),
     };
 
-    print_compressed(&cmd, &results, expand);
+    if oneline && matches!(cmd, t96::Ci) {
+        print_oneline(&results);
+    } else {
+        print_compressed(&cmd, &results, expand);
+    }
 
     let any_err = results.iter().any(|r| !r.s15);
     if any_err && results.iter().all(|r| !r.s15) {

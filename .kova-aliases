@@ -2,6 +2,11 @@
 # Sourced by .zshrc (macOS) and .bashrc (Debian workers)
 # k=kova, ks=serve, kg=gui, kc=chat, kx=cargo, kn=node, kt=test
 
+# Path tokens — shorten output and prompts
+export W="$HOME"
+export K="$HOME/kova"
+export KS="$HOME/kova/src"
+
 # Base
 alias k='kova'
 alias ks='kova s'
@@ -42,6 +47,7 @@ alias kn7='kova c2 ncmd c7'
 alias kn8='kova c2 ncmd c8'
 alias kn9='kova c2 ncmd c9'
 alias kni='kova c2 ncmd ci'
+alias kni1='kova c2 ncmd ci --oneline'
 
 # c2 operations
 alias kc2='kova c2'

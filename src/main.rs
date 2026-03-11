@@ -138,6 +138,9 @@ enum C2Cmd {
         /// Expand oN tokens to human-readable names.
         #[arg(long)]
         expand: bool,
+        /// Ultra-compact single line (ci only): n0:4c/2G/0.5 n1:8c/3G/0.2
+        #[arg(long)]
+        oneline: bool,
     },
 }
 
@@ -368,8 +371,8 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             SshCaCmd::Sign { node } => kova::ssh_ca::run_sign(&node),
             SshCaCmd::Setup => kova::ssh_ca::run_setup(),
         },
-        C2Cmd::Ncmd { cmd, nodes, extra, release, lines, expand } => {
-            kova::node_cmd::f132(cmd, nodes, extra, release, lines, expand)
+        C2Cmd::Ncmd { cmd, nodes, extra, release, lines, expand, oneline } => {
+            kova::node_cmd::f132(cmd, nodes, extra, release, lines, expand, oneline)
         }
     }
 }

@@ -96,6 +96,11 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f149 | format_tool_prompt | tools | Format tool defs for system prompt |
 | f150 | tool_grep | tools | Search file contents |
 | f155 | tool_memory_write | tools | Append to persistent memory |
+| f156 | git_exec | git_cmd | Execute git command, return compressed |
+| f157 | compress_status | git_cmd | M/A/D/? + short path |
+| f158 | compress_diff | git_cmd | +N/-N summary, file:line +/-content |
+| f159 | compress_log | git_cmd | Truncate hashes to 7 chars |
+| f160 | git_cmd_dispatch | git_cmd | Central dispatcher for g0-g9 |
 
 ## Types (tN)
 
@@ -125,6 +130,8 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | t103 | ToolCall |
 | t104 | ToolResult |
 | t106 | AgentAction |
+| t107 | GitCmd |
+| t108 | GitResult |
 
 ## Struct fields (sN) — plan t3
 
@@ -178,6 +185,21 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | o9 | services |
 | o10 | status |
 | o11 | message |
+
+## Git Command Tokens
+
+| Token | Function | Purpose |
+|-------|----------|---------|
+| g0 | f157 | status: M/A/D/? + path |
+| g1 | f158 | diff: +N/-N, file:line changes |
+| g2 | f159 | log --oneline, 7-char hashes |
+| g3 | — | push (silent on success) |
+| g4 | — | pull ("current" or "+N files") |
+| g5 | — | commit -m |
+| g6 | — | branch list, * = current |
+| g7 | — | stash |
+| g8 | — | add (files or -A) |
+| g9 | f158 | diff --staged |
 
 ## Test traceability
 
