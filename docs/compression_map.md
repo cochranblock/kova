@@ -201,6 +201,23 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | g8 | — | add (files or -A) |
 | g9 | f158 | diff --staged |
 
+## Test Coverage by Module
+
+| Module | Tests | What they hit |
+|--------|-------|---------------|
+| cargo_cmd | 13 | JSON parse (E/W/artifact/cap/path), text fallback, project resolve, token parse, supports_json |
+| serve | 9 | /api/status, /project, /projects, /prompts, /build/presets, /api/file 404, / HTML, /context/recent, safe_hint |
+| node_cmd | 8 | resolve_node, to_token, headers_for, expand_header, print_oneline, node_map |
+| git_cmd | 5 | status compress, diff compress, log compress, path strip, status clean |
+| tools | 5 | parse JSON block, bare JSON, no tool calls, read file, edit file |
+| storage | 3 | compressed roundtrip, raw roundtrip, missing key |
+| router | 3 | parse clarification (with/without question), canned |
+| pipeline | 2 | check+clippy+test on valid lib, fix loop syntax error |
+| recent_changes | 3 | empty, includes recent, format |
+| cursor_prompts | 1 | load includes baked |
+| gui | 1 | build system prompt includes baked |
+| **Total** | **88** | |
+
 ## Test traceability
 
 Each test has `/// fN=human_name` doc comment linking to the function under test.
