@@ -151,6 +151,36 @@ alias p9c='cd "${_KH}/wowasticker" && cargo check'
 alias p9t='cd "${_KH}/wowasticker" && cargo test'
 alias p9r='cd "${_KH}/wowasticker" && cargo run'
 
+# dN = deploy tokens: sync source → build on bt → copy binary → restart on gd
+# Pattern: d<project>s = sync, d<project>b = build, d<project>d = deploy (full), d<project>r = restart
+
+# d3 = oakilydokily deploy pipeline (build on bt, deploy to gd)
+d3s() { rsync -avz --exclude target --exclude .git "${_KH}/oakilydokily/" bt:/home/mcochran/oakilydokily/; }
+d3b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p oakilydokily --release --features approuter'; }
+d3c() { scp bt:/home/mcochran/target/release/oakilydokily /tmp/oakilydokily-release && scp /tmp/oakilydokily-release gd:/home/mcochran/bin/oakilydokily; }
+d3r() { ssh gd 'systemctl --user restart oakilydokily'; }
+d3d() { echo "d3: sync→build→copy→restart"; d3s && d3b && d3c && d3r && echo "d3: oakilydokily deployed"; }
+
+# d0 = kova deploy pipeline (build on bt, deploy to all nodes)
+d0s() { rsync -avz --exclude target --exclude .git "${_KH}/kova/" bt:/home/mcochran/kova/; }
+d0b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p kova --release --features serve'; }
+
+# d1 = approuter deploy pipeline
+d1s() { rsync -avz --exclude target --exclude .git "${_KH}/approuter/" bt:/home/mcochran/approuter/; }
+d1b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p approuter --release'; }
+d1c() { scp bt:/home/mcochran/target/release/approuter /tmp/approuter-release && scp /tmp/approuter-release gd:/home/mcochran/bin/approuter; }
+
+# d2 = cochranblock deploy pipeline
+d2s() { rsync -avz --exclude target --exclude .git "${_KH}/cochranblock/" bt:/home/mcochran/cochranblock/; }
+d2b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p cochranblock --release --features approuter'; }
+d2c() { scp bt:/home/mcochran/target/release/cochranblock /tmp/cochranblock-release && scp /tmp/cochranblock-release gd:/home/mcochran/bin/cochranblock; }
+
+# dw = sync workspace (Cargo.toml, lock, vendor) to bt
+dws() { rsync -avz "${_KH}/Cargo.toml" "${_KH}/Cargo.lock" bt:/home/mcochran/ && rsync -avz "${_KH}/vendor/" bt:/home/mcochran/vendor/; }
+
+# dm = build mural-wasm (local only — needs wasm32 target)
+dm() { cargo build --target wasm32-unknown-unknown -p mural-wasm --release && cp "${_KH}/target/wasm32-unknown-unknown/release/mural-wasm.wasm" "${_KH}/oakilydokily/assets/mural-wasm.wasm" && echo "mural-wasm built"; }
+
 # Parallel SSH (kept from original)
 sshall() {
     if [ $# -eq 0 ]; then
