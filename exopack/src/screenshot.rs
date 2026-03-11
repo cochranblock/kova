@@ -23,7 +23,7 @@ pub fn theme_cochranblock() -> Theme {
     Theme { _placeholder: () }
 }
 
-/// f61_capture_project. Fetches each page, renders block diagram, saves PNG.
+/// f61_capture_project. Fetches each page, renders via headless browser (devtools) or placeholder.
 /// Returns true if all captures succeed.
 pub async fn capture_project(
     base: &str,
@@ -36,6 +36,26 @@ pub async fn capture_project(
         eprintln!("screenshot: mkdir {}: {}", dir.display(), e);
         return false;
     }
+
+    #[cfg(feature = "devtools")]
+    {
+        match crate::devtools::capture_screenshots(base, pages, &dir).await {
+            Ok(ok) => return ok,
+            Err(e) => {
+                eprintln!("screenshot: devtools fallback to placeholder: {}", e);
+            }
+        }
+    }
+
+    capture_placeholder(base, project, pages, &dir).await
+}
+
+async fn capture_placeholder(
+    base: &str,
+    _project: &str,
+    pages: &[(&str, &str)],
+    dir: &std::path::Path,
+) -> bool {
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -46,8 +66,9 @@ pub async fn capture_project(
             return false;
         }
     };
+    let base = base.trim_end_matches('/');
     for (name, path) in pages {
-        let url = format!("{}{}", base.trim_end_matches('/'), path);
+        let url = format!("{}{}", base, path);
         match client.get(&url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 let out = dir.join(format!("{}.png", name));
