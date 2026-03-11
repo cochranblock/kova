@@ -57,6 +57,7 @@ pub mod daemon;
 
 pub mod c2;
 pub mod cargo_cmd;
+pub mod git_cmd;
 pub mod elicitor;
 pub mod inspect;
 pub mod node_cmd;

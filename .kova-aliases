@@ -6,8 +6,8 @@
 alias k='kova'
 alias ks='kova s'
 alias ksd='kova s -d'
-alias kg='kova g'
-alias kgd='kova g -d'
+alias kg='kova gui'
+alias kgd='kova gui --demo'
 alias kc='kova chat'
 alias kt='kova test'
 alias kb='kova bootstrap'
@@ -50,6 +50,18 @@ alias kc2i='kova c2 inspect'
 alias kc2r='kova c2 recommend'
 alias kc2b='kova c2 build --broadcast'
 alias kc2s='kova c2 sync --all'
+
+# gN = git tokens
+alias kg0='kova git g0'
+alias kg1='kova git g1'
+alias kg2='kova git g2'
+alias kg3='kova git g3'
+alias kg4='kova git g4'
+alias kg5='kova git g5'
+alias kg6='kova git g6'
+alias kg7='kova git g7'
+alias kg8='kova git g8'
+alias kg9='kova git g9'
 
 # pN = project jump + ops (cd, build, check, test, run)
 # Detect home: /Users/mcochran (macOS) or /home/mcochran (Debian)

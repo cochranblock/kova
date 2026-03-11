@@ -36,10 +36,11 @@ enum Cmd {
     X(XArgs),
     /// Interactive REPL. Agentic tool loop with local LLM. Like Claude Code but local.
     Chat(ChatArgs),
+    /// Tokenized git commands. §13 compressed output. g0=status g1=diff g2=log g3=push g4=pull g5=commit g6=branch g7=stash g8=add g9=staged.
+    #[command(name = "git")]
+    Git(GitArgs),
     /// Short serve alias. `kova s` = `kova serve --open`. `kova s -d` = demo mode.
     S(SShortArgs),
-    /// Short GUI alias. `kova g` = `kova gui`. `kova g -d` = demo mode.
-    G(GShortArgs),
 }
 
 #[derive(clap::Args)]
@@ -206,14 +207,23 @@ struct ServeArgs {
 }
 
 #[derive(clap::Args)]
-struct SShortArgs {
-    /// Demo mode.
+struct GitArgs {
+    /// Command token: g0(status) g1(diff) g2(log) g3(push) g4(pull) g5(commit) g6(branch) g7(stash) g8(add) g9(staged).
+    #[arg(value_enum)]
+    cmd: kova::git_cmd::t107,
+    /// Log count for g2 (default 10).
+    #[arg(short = 'n', long, default_value = "10")]
+    count: u32,
+    /// Commit message for g5.
     #[arg(short, long)]
-    demo: bool,
+    message: Option<String>,
+    /// Files for g8 (add). Empty = add all.
+    #[arg(last = true)]
+    files: Vec<String>,
 }
 
 #[derive(clap::Args)]
-struct GShortArgs {
+struct SShortArgs {
     /// Demo mode.
     #[arg(short, long)]
     demo: bool,
@@ -378,7 +388,6 @@ async fn main() -> anyhow::Result<()> {
 
     match cmd {
         Some(Cmd::Gui(args)) => run_gui(args.demo),
-        Some(Cmd::G(args)) => run_gui(args.demo),
         Some(Cmd::Serve(args)) => run_serve(args.open, args.demo).await,
         Some(Cmd::S(args)) => run_serve(true, args.demo).await,
         Some(Cmd::Node) => run_node(),
@@ -441,6 +450,9 @@ async fn main() -> anyhow::Result<()> {
                 let _ = autopilot_args;
                 anyhow::bail!("Build with --features autopilot for autopilot mode")
             }
+        }
+        Some(Cmd::Git(args)) => {
+            kova::git_cmd::f160(args.cmd, args.count, args.message, args.files, false)
         }
         Some(Cmd::X(args)) => {
             kova::bootstrap()?;

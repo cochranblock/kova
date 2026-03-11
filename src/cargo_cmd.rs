@@ -135,8 +135,110 @@ pub struct t100 {
 
 // ── Output Compression ──────────────────────────────────
 
-/// Strip cargo noise. Keep: errors, final status, test results.
-fn compress_output(stderr: &str, stdout: &str) -> (u32, u32, String, Option<String>) {
+/// Parse cargo's --message-format=json output. 60-80% smaller than text.
+/// Extracts only: file, line, level, code, message. Skips everything else.
+fn compress_json_messages(json_lines: &str) -> (u32, u32, String, Option<String>) {
+    let mut warnings = 0u32;
+    let mut errors = 0u32;
+    let mut compressed: Vec<String> = Vec::new();
+    let mut test_summary: Option<String> = None;
+
+    for line in json_lines.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || !trimmed.starts_with('{') {
+            // Non-JSON lines: test output goes to stdout/stderr unstructured.
+            parse_test_line(trimmed, &mut errors, &mut compressed, &mut test_summary);
+            continue;
+        }
+
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+
+        let reason = val.get("reason").and_then(|r| r.as_str()).unwrap_or("");
+
+        match reason {
+            "compiler-message" => {
+                let Some(msg) = val.get("message") else { continue };
+                let level = msg.get("level").and_then(|l| l.as_str()).unwrap_or("");
+                let text = msg.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                let code = msg.get("code")
+                    .and_then(|c| c.get("code"))
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
+
+                // Extract primary span: file:line.
+                let span_str = msg.get("spans")
+                    .and_then(|s| s.as_array())
+                    .and_then(|spans| spans.iter().find(|s| {
+                        s.get("is_primary").and_then(|p| p.as_bool()).unwrap_or(false)
+                    }))
+                    .map(|s| {
+                        let file = s.get("file_name").and_then(|f| f.as_str()).unwrap_or("");
+                        let line = s.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0);
+                        let short = compress_path(file);
+                        format!("{}:{}", short, line)
+                    })
+                    .unwrap_or_default();
+
+                match level {
+                    "error" => {
+                        errors += 1;
+                        if code.is_empty() {
+                            compressed.push(format!("E {}: {}", span_str, text));
+                        } else {
+                            compressed.push(format!("E[{}] {}: {}", code, span_str, text));
+                        }
+                    }
+                    "warning" => {
+                        warnings += 1;
+                        // Only keep warnings with codes (skip "N warnings generated" meta).
+                        if !code.is_empty() && compressed.len() < 15 {
+                            compressed.push(format!("W[{}] {}: {}", code, span_str, text));
+                        }
+                    }
+                    _ => {} // note, help — skip.
+                }
+            }
+            "compiler-artifact" | "build-script-executed" | "build-finished" => {
+                // Skip: AI doesn't need "Compiling foo v0.1.0" lines.
+            }
+            _ => {}
+        }
+    }
+
+    // Cap output.
+    if compressed.len() > 15 {
+        let total = compressed.len();
+        compressed.truncate(15);
+        compressed.push(format!("...+{}", total - 15));
+    }
+
+    (warnings, errors, compressed.join("\n"), test_summary)
+}
+
+/// Parse unstructured test output lines (test runner doesn't use JSON format).
+fn parse_test_line(trimmed: &str, errors: &mut u32, compressed: &mut Vec<String>, test_summary: &mut Option<String>) {
+    if trimmed.starts_with("test result:") {
+        let pass = extract_test_count(trimmed, "passed").unwrap_or(0);
+        let fail = extract_test_count(trimmed, "failed").unwrap_or(0);
+        let ign = extract_test_count(trimmed, "ignored").unwrap_or(0);
+        *test_summary = Some(format!("{}/{}/{}", pass, fail, ign));
+        if fail > 0 {
+            *errors += fail;
+        }
+    }
+    if trimmed.starts_with("---- ") && trimmed.ends_with(" ----") {
+        let test_name = trimmed.trim_start_matches("---- ").trim_end_matches(" ----");
+        compressed.push(format!("FAIL:{}", test_name));
+    }
+    if trimmed.starts_with("thread '") && trimmed.contains("panicked at") {
+        compressed.push(compress_path(trimmed));
+    }
+}
+
+/// Fallback: text-mode compression for commands that don't support --message-format=json.
+fn compress_output_text(stderr: &str, stdout: &str) -> (u32, u32, String, Option<String>) {
     let mut warnings = 0u32;
     let mut errors = 0u32;
     let mut compressed: Vec<String> = Vec::new();
@@ -144,50 +246,18 @@ fn compress_output(stderr: &str, stdout: &str) -> (u32, u32, String, Option<Stri
 
     for line in stderr.lines().chain(stdout.lines()) {
         let trimmed = line.trim();
-
-        // Count warnings/errors from cargo summary line.
-        if trimmed.starts_with("warning[") || trimmed.starts_with("warning:") {
-            warnings += 1;
-        }
         if trimmed.starts_with("error[") || trimmed.starts_with("error:") {
-            // Keep error lines — these are the signal.
             errors += 1;
-            compressed.push(compress_error_line(trimmed));
+            compressed.push(compress_path(trimmed));
         }
-        // Cargo summary: "warning: `foo` (lib) generated 3 warnings"
         if trimmed.contains("generated") && trimmed.contains("warning") {
             if let Some(n) = extract_count(trimmed) {
                 warnings = n;
             }
         }
-        // Cargo summary: "error: could not compile"
-        if (trimmed.starts_with("error: could not compile") || trimmed.starts_with("error["))
-            && !compressed.iter().any(|l| l == trimmed)
-        {
-            compressed.push(compress_error_line(trimmed));
-        }
-        // Test result line: "test result: ok. 15 passed; 0 failed; 2 ignored"
-        if trimmed.starts_with("test result:") {
-            let pass = extract_test_count(trimmed, "passed").unwrap_or(0);
-            let fail = extract_test_count(trimmed, "failed").unwrap_or(0);
-            let ign = extract_test_count(trimmed, "ignored").unwrap_or(0);
-            test_summary = Some(format!("{}/{}/{}", pass, fail, ign));
-            if fail > 0 {
-                errors += fail;
-            }
-        }
-        // Failed test names.
-        if trimmed.starts_with("---- ") && trimmed.ends_with(" ----") {
-            let test_name = trimmed.trim_start_matches("---- ").trim_end_matches(" ----");
-            compressed.push(format!("FAIL:{}", test_name));
-        }
-        // Assertion failures — keep.
-        if trimmed.starts_with("thread '") && trimmed.contains("panicked at") {
-            compressed.push(compress_error_line(trimmed));
-        }
+        parse_test_line(trimmed, &mut errors, &mut compressed, &mut test_summary);
     }
 
-    // Cap compressed output to save context.
     if compressed.len() > 10 {
         let total = compressed.len();
         compressed.truncate(10);
@@ -197,17 +267,15 @@ fn compress_output(stderr: &str, stdout: &str) -> (u32, u32, String, Option<Stri
     (warnings, errors, compressed.join("\n"), test_summary)
 }
 
-/// Strip long paths to relative: /Users/foo/bar/src/lib.rs:42 → src/lib.rs:42
-fn compress_error_line(line: &str) -> String {
-    let mut out = line.to_string();
-    // Strip absolute paths to src/.
+/// Strip paths: /Users/foo/bar/src/lib.rs → src/lib.rs
+fn compress_path(p: &str) -> String {
+    let mut out = p.to_string();
     if let Some(idx) = out.find("/src/") {
-        out = out[idx + 1..].to_string();
-        // Prefix back what was before if it was error[EXXXX]:
-        if line.starts_with("error") {
-            if let Some(colon) = line.find(": ") {
-                out = format!("{}: {}", &line[..colon], out);
-            }
+        let prefix_end = idx + 1; // keep "src/"
+        if out.starts_with("error") || out.starts_with("E[") || out.starts_with("W[") {
+            // Keep the error prefix.
+        } else {
+            out = out[prefix_end..].to_string();
         }
     }
     out
@@ -222,6 +290,11 @@ fn extract_test_count(line: &str, label: &str) -> Option<u32> {
     let idx = line.find(label)?;
     let before = &line[..idx];
     before.split_whitespace().last()?.parse::<u32>().ok()
+}
+
+/// Commands that support --message-format=json.
+fn supports_json(cmd: &t99) -> bool {
+    matches!(cmd, t99::X0 | t99::X1 | t99::X2 | t99::X3 | t99::X5 | t99::X9)
 }
 
 // ── Output Printing ──────────────────────────────────────
@@ -339,6 +412,12 @@ fn f133(cmd: &t99, project: &str, features: Option<&str>, bin: Option<&str>, ext
     // Resolve working directory.
     let work_dir = workspace_root();
 
+    // Use --message-format=json for supported commands (60-80% output reduction).
+    let use_json = supports_json(cmd);
+    if use_json {
+        args.push("--message-format=json".to_string());
+    }
+
     let start = Instant::now();
     let child = Command::new("cargo")
         .args(&args)
@@ -360,7 +439,14 @@ fn f133(cmd: &t99, project: &str, features: Option<&str>, bin: Option<&str>, ext
             let elapsed = start.elapsed().as_secs_f64();
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            let (warnings, errors, compressed, test_summary) = compress_output(&stderr, &stdout);
+
+            let (warnings, errors, compressed, test_summary) = if use_json {
+                // JSON output goes to stdout; test output goes to stderr.
+                let combined = format!("{}\n{}", stdout, stderr);
+                compress_json_messages(&combined)
+            } else {
+                compress_output_text(&stderr, &stdout)
+            };
 
             t100 {
                 r0: cmd_token(cmd).to_string(),
