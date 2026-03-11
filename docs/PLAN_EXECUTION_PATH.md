@@ -83,7 +83,7 @@ flowchart TB
 
 - src/gui.rs L194–196: `run_intent` (non-FullPipeline)
 - src/serve.rs L522–524: `api_backlog_run` (non-FullPipeline)
-- src/c2.rs L143–197: `run_command` — local: `run_local(&plan)`; broadcast: `run_broadcast(&plan, nodes)` (SSH to workers)
+- src/c2.rs: `run_command` — local: `run_local(&plan)`; broadcast: `run_build_with_plan` (sync_parallel + broadcast_parallel)
 
 ---
 
@@ -117,11 +117,12 @@ flowchart TB
 **Flow:**
 
 1. Same as Plan Path: intent → f14 → plan
-2. **run_broadcast** (src/c2.rs L99–127) — For each plan step (CargoCheck, CargoBuild, CargoTest only):
-   - For each node (lf, gd, bt, st): `ssh node "cd /mnt/hive/... && cargo check|build|test"`
-   - Path mapping: `to_worker_path` maps ~/hive-vault → /mnt/hive
+2. **run_build_with_plan** (src/c2.rs) — Sync (if needed) + parallel broadcast:
+   - `sync_parallel`: rsync to all nodes concurrently
+   - `broadcast_parallel`: for each Cargo* step, `ssh node "cd /path && cargo ..."` on all nodes concurrently; streams output with `[node]` prefix
+   - Path mapping: `to_worker_path` maps ~/hive-vault → /mnt/hive (or `to_worker_path_local` for /tmp/hive-build)
 
-**Note:** run_broadcast does NOT run ApprouterUpdateTunnel or ApprouterSetupRoguerepo on workers (those are local-only). It only runs Cargo* actions.
+**Note:** broadcast does NOT run ApprouterUpdateTunnel or ApprouterSetupRoguerepo on workers (those are local-only). It only runs Cargo* actions.
 
 ---
 
@@ -133,7 +134,7 @@ flowchart TB
 | src/plan.rs | t3, t4, t5; f14 plan_from_intent |
 | src/compute.rs | t6, t7; f15 execute, f16 dispatch |
 | src/pipeline/mod.rs | f81 run_code_gen_pipeline |
-| src/c2.rs | run_local, run_broadcast, run_command |
+| src/c2.rs | run_local, run_build_with_plan, run_command |
 
 ---
 

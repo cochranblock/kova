@@ -108,41 +108,6 @@ fn run_local(plan: &crate::plan::t3) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// f120=kova_c2_broadcast. SSH broadcast to workers.
-fn run_broadcast(plan: &crate::plan::t3, nodes: &[&str], local: bool) -> anyhow::Result<()> {
-    let worker_path = if local {
-        to_worker_path_local(&plan.s4)
-    } else {
-        to_worker_path(&plan.s4)
-    };
-    for step in &plan.s3 {
-        let cmd = match &step.s6 {
-            crate::plan::t5::CargoCheck => "cargo check",
-            crate::plan::t5::CargoTest => "cargo test",
-            crate::plan::t5::CargoBuild { release } => {
-                if *release {
-                    "cargo build --release"
-                } else {
-                    "cargo build"
-                }
-            }
-            _ => continue,
-        };
-        for node in nodes {
-            eprintln!("[ ❯ ] {} → {}", node, cmd);
-            let status = Command::new("ssh")
-                .arg(*node)
-                .arg(format!("cd {} && {}", worker_path.display(), cmd))
-                .status()?;
-            if !status.success() {
-                anyhow::bail!("{} failed on {}", cmd, node);
-            }
-        }
-    }
-    eprintln!("[ ✔ ] Broadcast complete");
-    Ok(())
-}
-
 /// f119=kova_c2_run. CLI orchestration. Local or broadcast.
 pub fn run_command(
     token: Token,
@@ -167,16 +132,15 @@ pub fn run_command(
     if token.is_local_only() {
         run_local(&plan)
     } else if broadcast {
-        // Pre-flight: project must be under hive-vault for broadcast
         if !is_under_hive_vault(&project_path) {
             anyhow::bail!(
-                "Project must be under ~/hive-vault for broadcast (workers see /mnt/hive).\n\
-                 Run: kova c2 sync\n\
-                 Then: kova c2 run {} --project ~/hive-vault/projects/workspace/... --broadcast",
+                "Project must be under ~/hive-vault for broadcast.\n\
+                 Run: ln -s ~ ~/hive-vault/projects/workspace (or equivalent)\n\
+                 Then: kova c2 run {} --broadcast --project ~/hive-vault/projects/workspace/...",
                 token.name()
             );
         }
-
+        // Delegate to run_build for shared sync + parallel broadcast logic.
         let nodes: Vec<String> = if let Some(s) = nodes_override {
             s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
         } else {
@@ -187,35 +151,12 @@ pub fn run_command(
                 .map(|h| h.id.clone())
                 .collect()
         };
-
-        if nodes.is_empty() {
-            anyhow::bail!("No reachable workers. Run: kova c2 inspect");
-        }
-
-        // Pre-flight: hive must be synced on workers
-        let first = &nodes[0];
-        let worker_path = if local {
-            to_worker_path_local(&plan.s4)
+        let nodes_opt = if nodes.is_empty() {
+            None
         } else {
-            to_worker_path(&plan.s4)
+            Some(nodes.join(","))
         };
-        let preflight = Command::new("ssh")
-            .args(["-o", "ConnectTimeout=5", first])
-            .arg(format!("test -d {}", worker_path.display()))
-            .status();
-        if let Ok(status) = preflight {
-            if !status.success() {
-                let sync_cmd = if local { "kova c2 sync --local" } else { "kova c2 sync" };
-                anyhow::bail!(
-                    "Hive not synced on {}. Run: {}",
-                    first,
-                    sync_cmd
-                );
-            }
-        }
-
-        let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
-        run_broadcast(&plan, &node_refs, local)
+        run_build_with_plan(plan, local, false, nodes_opt)
     } else {
         run_local(&plan)
     }
@@ -249,6 +190,22 @@ pub fn run_build(
         );
     }
 
+    let intent = kova_core::t0::f18(release);
+    let approuter_dir = std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join("approuter"));
+    let plan = crate::plan::t3::f14(&intent, project_path.clone(), approuter_dir);
+    run_build_with_plan(plan, local, no_sync, nodes_override)
+        .map(|_| ())
+}
+
+/// Shared sync + broadcast. Used by run_build and run_command --broadcast.
+fn run_build_with_plan(
+    plan: crate::plan::t3,
+    local: bool,
+    force_skip_sync: bool,
+    nodes_override: Option<String>,
+) -> anyhow::Result<()> {
     let nodes: Vec<String> = if let Some(s) = nodes_override {
         s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
     } else {
@@ -264,17 +221,27 @@ pub fn run_build(
         anyhow::bail!("No reachable workers. Run: kova c2 inspect");
     }
 
-    let intent = kova_core::t0::f18(release);
-    let approuter_dir = std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join("approuter"));
-    let plan = crate::plan::t3::f14(&intent, project_path.clone(), approuter_dir);
-    if !no_sync {
+    let skip_sync = if force_skip_sync {
+        true
+    } else {
+        let worker_path = if local {
+            to_worker_path_local(&plan.s4)
+        } else {
+            to_worker_path(&plan.s4)
+        };
+        let preflight = Command::new("ssh")
+            .args(["-o", "ConnectTimeout=5", &nodes[0]])
+            .arg(format!("test -d {}", worker_path.display()))
+            .status();
+        preflight.as_ref().map(|s| s.success()).unwrap_or(false)
+    };
+
+    if !skip_sync {
         eprintln!("[build] Syncing to {} workers (parallel)...", nodes.len());
         sync_parallel(&nodes, local)?;
     }
 
-    eprintln!("[build] Broadcasting cargo build --release to {} workers (parallel)...", nodes.len());
+    eprintln!("[build] Broadcasting to {} workers (parallel)...", nodes.len());
     broadcast_parallel(&plan, &nodes, local)?;
 
     eprintln!("[build] Done.");
