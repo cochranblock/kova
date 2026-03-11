@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/cochranblock/kova/main/assets/logo.png" alt="Kova" width="120">
+</p>
+
 # Kova
 
 Augment engine. Local LLM agentic tool loop, swarm orchestration, tokenized everything.
