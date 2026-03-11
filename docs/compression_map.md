@@ -19,8 +19,11 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f78 | model_path_for_role | config | config::model_role_default_filename |
 | f79 | classify | router | router::parse_*, router::clarification_* |
 | f80 | chat_complete | inference | — |
-| f60 | triple_sims_run | exopack | — |
+| f60 | triple_sims_run | exopack | triple_sims::sim1*, sim2*, sim3*, report* |
 | f61 | run_cargo_test_n | exopack | — |
+| f170 | sim1_user_story | exopack | triple_sims::sim1_runs_without_panic |
+| f171 | sim2_feature_gap | exopack | triple_sims::sim2_runs_without_panic |
+| f172 | sim3_impl_deep_dive | exopack | triple_sims::sim3_modules_exist |
 | f81 | run_code_gen_pipeline | pipeline | pipeline::cargo_check_clippy_test_* |
 | f82 | load_project_context | context_loader | context_loader::f82_* |
 | f86 | recent_changes_snapshot | recent_changes | recent_changes::f86_* |

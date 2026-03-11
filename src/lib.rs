@@ -104,7 +104,14 @@ pub fn run_test_suite() -> anyhow::Result<()> {
         anyhow::bail!("clippy failed:\n{}", stderr);
     }
 
-    println!("kova test: TRIPLE SIMS (cargo test -p kova 3x)...");
+    println!("kova test: TRIPLE SIMS (3 simulations)...");
+    let report = exopack::triple_sims::f60_triple_sims_run(project);
+    print!("{}", report.summary());
+    if !report.ok() {
+        anyhow::bail!("TRIPLE SIMS: one or more simulations failed");
+    }
+
+    println!("kova test: cargo test -p kova 3x...");
     let project_buf = project.to_path_buf();
     let (ok, stderr) = exopack::triple_sims::f61_with_args(
         &project_buf,
