@@ -1,0 +1,160 @@
+# Kova §13 Tokenized Shell Aliases
+# Sourced by .zshrc (macOS) and .bashrc (Debian workers)
+# k=kova, ks=serve, kg=gui, kc=chat, kx=cargo, kn=node, kt=test
+
+# Base
+alias k='kova'
+alias ks='kova s'
+alias ksd='kova s -d'
+alias kg='kova g'
+alias kgd='kova g -d'
+alias kc='kova chat'
+alias kt='kova test'
+alias kb='kova bootstrap'
+alias kr='kova recent'
+alias km='kova model'
+alias kmi='kova model install'
+alias kml='kova model list'
+alias kp='kova prompts'
+
+# xN = cargo tokens
+alias kx='kova x'
+alias kx0='kova x build'
+alias kx1='kova x check'
+alias kx2='kova x test'
+alias kx3='kova x clippy'
+alias kx4='kova x run'
+alias kx5='kova x build-rel'
+alias kx6='kova x clean'
+alias kx7='kova x doc'
+alias kx8='kova x fmt-chk'
+alias kx9='kova x bench'
+
+# cN = node tokens (via c2 ncmd)
+alias kn='kova c2 ncmd'
+alias kn1='kova c2 ncmd c1'
+alias kn2='kova c2 ncmd c2'
+alias kn3='kova c2 ncmd c3'
+alias kn4='kova c2 ncmd c4'
+alias kn5='kova c2 ncmd c5'
+alias kn6='kova c2 ncmd c6'
+alias kn7='kova c2 ncmd c7'
+alias kn8='kova c2 ncmd c8'
+alias kn9='kova c2 ncmd c9'
+alias kni='kova c2 ncmd ci'
+
+# c2 operations
+alias kc2='kova c2'
+alias kc2n='kova c2 nodes'
+alias kc2i='kova c2 inspect'
+alias kc2r='kova c2 recommend'
+alias kc2b='kova c2 build --broadcast'
+alias kc2s='kova c2 sync --all'
+
+# pN = project jump + ops (cd, build, check, test, run)
+# Detect home: /Users/mcochran (macOS) or /home/mcochran (Debian)
+_KH="${HOME}"
+
+# p0=kova
+alias p0='cd "${_KH}/kova"'
+alias p0b='cd "${_KH}/kova" && cargo build'
+alias p0c='cd "${_KH}/kova" && cargo check'
+alias p0t='cd "${_KH}/kova" && cargo test'
+alias p0r='cd "${_KH}/kova" && cargo run --bin kova'
+alias p0x='cd "${_KH}/kova" && cargo clippy'
+
+# p1=approuter
+alias p1='cd "${_KH}/approuter/approuter"'
+alias p1b='cd "${_KH}/approuter/approuter" && cargo build'
+alias p1c='cd "${_KH}/approuter/approuter" && cargo check'
+alias p1t='cd "${_KH}/approuter/approuter" && cargo test'
+alias p1r='cd "${_KH}/approuter/approuter" && cargo run'
+alias p1x='cd "${_KH}/approuter/approuter" && cargo clippy'
+
+# p2=cochranblock
+alias p2='cd "${_KH}/cochranblock"'
+alias p2b='cd "${_KH}/cochranblock" && cargo build'
+alias p2c='cd "${_KH}/cochranblock" && cargo check'
+alias p2t='cd "${_KH}/cochranblock" && cargo test'
+alias p2r='cd "${_KH}/cochranblock" && cargo run'
+alias p2x='cd "${_KH}/cochranblock" && cargo clippy'
+
+# p3=oakilydokily
+alias p3='cd "${_KH}/oakilydokily"'
+alias p3b='cd "${_KH}/oakilydokily" && cargo build'
+alias p3c='cd "${_KH}/oakilydokily" && cargo check'
+alias p3t='cd "${_KH}/oakilydokily" && cargo test'
+alias p3r='cd "${_KH}/oakilydokily" && cargo run'
+alias p3x='cd "${_KH}/oakilydokily" && cargo clippy'
+
+# p4=rogue-repo
+alias p4='cd "${_KH}/rogue-repo"'
+alias p4b='cd "${_KH}/rogue-repo" && cargo build'
+alias p4c='cd "${_KH}/rogue-repo" && cargo check'
+alias p4t='cd "${_KH}/rogue-repo" && cargo test'
+alias p4r='cd "${_KH}/rogue-repo" && cargo run'
+alias p4x='cd "${_KH}/rogue-repo" && cargo clippy'
+
+# p5=ronin-sites (Rust backend + Node frontend)
+alias p5='cd "${_KH}/ronin-sites"'
+alias p5b='cd "${_KH}/ronin-sites/rs" && cargo build'
+alias p5c='cd "${_KH}/ronin-sites/rs" && cargo check'
+alias p5t='cd "${_KH}/ronin-sites/rs" && cargo test'
+alias p5r='cd "${_KH}/ronin-sites/rs" && cargo run'
+alias p5x='cd "${_KH}/ronin-sites/rs" && cargo clippy'
+alias p5f='cd "${_KH}/ronin-sites/frontend"'
+alias p5fi='cd "${_KH}/ronin-sites/frontend" && npm install'
+alias p5fd='cd "${_KH}/ronin-sites/frontend" && npm run dev'
+alias p5fb='cd "${_KH}/ronin-sites/frontend" && npm run build'
+
+# p6=kova-core
+alias p6='cd "${_KH}/kova-core"'
+alias p6b='cd "${_KH}/kova-core" && cargo build'
+alias p6c='cd "${_KH}/kova-core" && cargo check'
+alias p6t='cd "${_KH}/kova-core" && cargo test'
+
+# p7=exopack (inside kova)
+alias p7='cd "${_KH}/kova/exopack"'
+alias p7b='cd "${_KH}/kova/exopack" && cargo build'
+alias p7c='cd "${_KH}/kova/exopack" && cargo check'
+alias p7t='cd "${_KH}/kova/exopack" && cargo test'
+
+# p8=whyyoulying
+alias p8='cd "${_KH}/whyyoulying"'
+alias p8b='cd "${_KH}/whyyoulying" && cargo build'
+alias p8c='cd "${_KH}/whyyoulying" && cargo check'
+alias p8t='cd "${_KH}/whyyoulying" && cargo test'
+alias p8r='cd "${_KH}/whyyoulying" && cargo run'
+
+# p9=wowasticker
+alias p9='cd "${_KH}/wowasticker"'
+alias p9b='cd "${_KH}/wowasticker" && cargo build'
+alias p9c='cd "${_KH}/wowasticker" && cargo check'
+alias p9t='cd "${_KH}/wowasticker" && cargo test'
+alias p9r='cd "${_KH}/wowasticker" && cargo run'
+
+# Parallel SSH (kept from original)
+sshall() {
+    if [ $# -eq 0 ]; then
+        echo -e "\033[38;5;202m[ x ] No command.\033[0m"
+        return 1
+    fi
+    for node in lf gd bt st; do
+        echo -e "\033[38;5;226m[ > ] $node\033[0m"
+        ssh "$node" "$@"
+    done
+    echo -e "\033[38;5;135m[ ok ] done\033[0m"
+}
+
+sshallp() {
+    if [ $# -eq 0 ]; then
+        echo -e "\033[38;5;202m[ x ] No command.\033[0m"
+        return 1
+    fi
+    for node in lf gd bt st; do
+        echo -e "\033[38;5;226m[ > ] $node\033[0m"
+        ssh "$node" "$@" &
+    done
+    wait
+    echo -e "\033[38;5;135m[ ok ] done\033[0m"
+}
