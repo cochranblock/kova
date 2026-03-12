@@ -1,0 +1,37 @@
+[
+  {
+    "timestamp": "1773281597",
+    "competitors": 3,
+    "challenges": 19,
+    "winner": "qwen2.5:3b",
+    "winner_score": 106.74145006839946
+  },
+  {
+    "timestamp": "1773282493",
+    "competitors": 3,
+    "challenges": 35,
+    "winner": "qwen2.5:3b",
+    "winner_score": 107.99014778325125
+  },
+  {
+    "timestamp": "1773287776",
+    "competitors": 18,
+    "challenges": 35,
+    "winner": "qwen2.5:3b",
+    "winner_score": 113.46337636402538
+  },
+  {
+    "timestamp": "1773295255",
+    "competitors": 26,
+    "challenges": 35,
+    "winner": "qwen2.5:3b",
+    "winner_score": 115.50395166817164
+  },
+  {
+    "timestamp": "1773338836",
+    "competitors": 42,
+    "challenges": 41,
+    "winner": "gemma2:2b",
+    "winner_score": 114.91788463465092
+  }
+]

@@ -103,6 +103,16 @@ p0-p9 = cd to project     p0b   = cd + build
 | p3 | oakilydokily | p8 | whyyoulying |
 | p4 | rogue-repo | p9 | wowasticker |
 
+## Micro Olympics
+
+Local LLM tournament across the cluster. 42 competitors, 6 events, 45 challenges.
+
+**Champion: qwen2.5-coder:0.5b** (500M params, 91% accuracy, 6/7 gold medals)
+
+Full results: [`docs/TOURNAMENT_RESULTS.md`](docs/TOURNAMENT_RESULTS.md)
+
+Run: `kova micro tournament`
+
 ## Worker Nodes
 
 | Token | Host | Role |
