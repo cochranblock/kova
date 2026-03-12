@@ -206,27 +206,19 @@ alias kwbt='kova c2 wake bt'
 alias kwall='kova c2 wake lf && kova c2 wake gd && kova c2 wake bt'
 
 # SSH tunnels (autossh to ollama on worker nodes)
-ktun() {
-    pkill -f "autossh.*1143" 2>/dev/null
-    sleep 1
-    AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L 11435:localhost:11434 gd
-    AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L 11436:localhost:11434 bt
-    AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L 11437:localhost:11434 st
-    AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L 11438:localhost:11434 lf
-    echo "tunnels: gd=11435 bt=11436 st=11437 lf=11438"
-}
+# _at = autossh tunnel shorthand
+_at() { AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L "$1:localhost:11434" "$2"; }
+# per-node tunnels
+alias ktgd='_at 11435 gd && echo "gd=11435"'
+alias ktbt='_at 11436 bt && echo "bt=11436"'
+alias ktst='_at 11437 st && echo "st=11437"'
+alias ktlf='_at 11438 lf && echo "lf=11438"'
+# all tunnels
+ktun() { pkill -f "autossh.*1143" 2>/dev/null; sleep 1; _at 11435 gd; _at 11436 bt; _at 11437 st; _at 11438 lf; echo "tunnels: gd=11435 bt=11436 st=11437 lf=11438"; }
 alias ktunk='pkill -f "autossh.*1143" && echo "tunnels killed"'
-ktuns() {
-    for p in 11435 11436 11437 11438; do
-        local n=$(curl -s --max-time 3 "http://localhost:$p/api/tags" 2>/dev/null)
-        if [ -n "$n" ]; then
-            local c=$(echo "$n" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('models',[])))" 2>/dev/null)
-            echo "$p: $c models"
-        else
-            echo "$p: DOWN"
-        fi
-    done
-}
+# status
+_tp() { local n=$(curl -s --max-time 3 "http://localhost:$1/api/tags" 2>/dev/null); [ -n "$n" ] && echo "$1($2): $(echo "$n" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('models',[])))" 2>/dev/null) models" || echo "$1($2): DOWN"; }
+ktuns() { _tp 11435 gd; _tp 11436 bt; _tp 11437 st; _tp 11438 lf; }
 
 # Deploy aliases to all nodes (/etc/profile.d/)
 kad() {
