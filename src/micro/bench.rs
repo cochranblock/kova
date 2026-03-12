@@ -252,8 +252,32 @@ pub fn verify_response(response: &str, check: &str) -> bool {
         return try_compile(trimmed);
     }
 
+    // P12 anti-slop: response must not contain any banned words
+    if check == "no_slop" {
+        return !trimmed.is_empty() && !contains_slop(trimmed);
+    }
+
+    // Combined: must contain something AND be slop-free
+    if let Some(text) = check.strip_prefix("contains_no_slop:") {
+        return trimmed.to_lowercase().contains(&text.to_lowercase()) && !contains_slop(trimmed);
+    }
+
     // Default: non-empty + passes quick_validate
     validate::quick_validate(trimmed)
+}
+
+/// P12 banned words — AI slop that must never appear in generated output.
+const SLOP_WORDS: &[&str] = &[
+    "utilize", "leverage", "optimize", "comprehensive", "robust",
+    "seamlessly", "scalable", "paradigm", "synergy", "cutting-edge",
+    "streamline", "empower", "utilizing", "leveraging", "optimizing",
+    "empowering", "streamlining", "leveraged", "optimized",
+];
+
+/// Returns true if the text contains any P12 banned slop words.
+pub fn contains_slop(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    SLOP_WORDS.iter().any(|w| lower.contains(w))
 }
 
 /// Try to compile a Rust snippet. Returns true if cargo check passes.

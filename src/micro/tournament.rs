@@ -17,6 +17,7 @@
 //!   Technical  — fix_compile (f81), precision matters
 //!   Freestyle  — code_gen (f80), creativity + correctness
 //!   Endurance  — test_write, long-form generation
+//!   Doping     — anti-slop (P12), penalizes AI filler words
 //!   Exhibition — non-coder models doing Rust (cross-weight)
 
 use std::collections::HashMap;
@@ -316,6 +317,29 @@ fn tournament_challenges(_registry: &MicroRegistry) -> Vec<TournamentChallenge> 
         tce("f115", "explain", "judged", "Intent: push to remote\nStage: git push origin main\nOutcome: FAIL\nStderr: ! [rejected] main -> main (non-fast-forward)\nhint: Updates were rejected because the tip of your current branch is behind", "not_empty", "explain: git push rejected"),
         tce("f115", "explain", "judged", "Intent: run integration tests\nStage: cargo test --features tests\nOutcome: FAIL\nStderr: thread 'main' panicked at 'connection refused (os error 61)'\nnote: test requires running sled instance", "not_empty", "explain: missing dependency"),
 
+        // DOPING TEST events — P12 anti-slop (banned words = performance enhancing drugs)
+        // Models must generate useful output WITHOUT slop words.
+        // "Doping" = using AI filler (utilize, leverage, optimize, etc.) to pad responses.
+        // Pass = correct output + zero banned words. Fail = slop detected.
+
+        // Code gen: write code + comments, must be slop-free
+        tce("f80", "code_gen", "doping", "write a function that retries an HTTP request with exponential backoff. Add doc comments explaining the approach.", "contains_no_slop:fn", "doping: code+comments no slop"),
+        tce("f80", "code_gen", "doping", "write a connection pool struct with get and release methods. Include doc comments on each method.", "contains_no_slop:fn", "doping: connection pool docs"),
+        tce("f80", "code_gen", "doping", "write a rate limiter using a token bucket algorithm. Comment each section of the implementation.", "contains_no_slop:fn", "doping: rate limiter commentary"),
+
+        // Code review: review must flag real issues without slop language
+        tce("f_code_review", "code_review", "doping", "fn process_all(items: &[String]) -> Vec<String> { items.iter().map(|s| s.to_uppercase()).collect() }", "no_slop", "doping: review simple code"),
+        tce("f_code_review", "code_review", "doping", "use std::fs;\nfn read_config(path: &str) -> String { fs::read_to_string(path).unwrap() }", "no_slop", "doping: review unwrap in config"),
+        tce("f_code_review", "code_review", "doping", "struct Cache { data: std::collections::HashMap<String, Vec<u8>>, max_size: usize }\nimpl Cache { fn insert(&mut self, key: String, val: Vec<u8>) { self.data.insert(key, val); } fn get(&self, key: &str) -> Option<&Vec<u8>> { self.data.get(key) } }", "no_slop", "doping: review cache no eviction"),
+
+        // Explain: plain English explanation, zero filler
+        tce("f115", "explain", "doping", "Intent: deploy new version\nStage: cargo build --release\nOutcome: SUCCESS\nStage: scp target/release/app server:/opt/\nOutcome: FAIL\nStderr: Permission denied (publickey)", "no_slop", "doping: explain deploy failure"),
+        tce("f115", "explain", "doping", "Intent: add caching layer\nStage: implement LRU cache\nOutcome: SUCCESS\nStage: cargo test\nOutcome: FAIL\nStderr: thread 'cache::tests::test_eviction' panicked at 'assertion `left == right` failed\n  left: Some(\"old\")\n  right: None'", "no_slop", "doping: explain cache test fail"),
+
+        // Rewrite challenge: given sloppy text, clean it up (uses code_gen template as proxy)
+        tce("f80", "code_gen", "doping", "Rewrite this doc comment to remove AI slop words while keeping the meaning:\n/// This function leverages advanced optimization techniques to seamlessly\n/// streamline the data processing pipeline for robust and scalable throughput.\nfn process(data: &[u8]) -> Vec<u8> { data.to_vec() }\nReturn the full function with a clean doc comment.", "contains_no_slop:fn process", "doping: rewrite sloppy docs"),
+        tce("f80", "code_gen", "doping", "Rewrite this doc comment to remove AI slop words while keeping the meaning:\n/// This module utilizes a comprehensive paradigm to empower users\n/// with cutting-edge capabilities that leverage synergy between components.\nReturn just the cleaned doc comment, no code.", "no_slop", "doping: rewrite sloppy module doc"),
+
         // ENDURANCE events — test_write (long-form generation)
         tce("f_test_write", "test_write", "endurance", "fn chunk<T: Clone>(v: &[T], size: usize) -> Vec<Vec<T>> { v.chunks(size).map(|c| c.to_vec()).collect() }", "contains:#[test]", "test: chunk (empty, uneven)"),
         tce("f_test_write", "test_write", "endurance", "fn safe_div(a: i64, b: i64) -> Option<i64> { if b == 0 { None } else { Some(a / b) } }", "contains:#[test]", "test: safe_div"),
@@ -349,7 +373,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
 
     eprintln!("KOVA MICRO OLYMPICS");
     eprintln!("═══════════════════════════════════════════════════════════════════");
-    eprintln!("{} competitors, {} events, {} challenges", competitors.len(), 5, challenges.len());
+    eprintln!("{} competitors, {} events, {} challenges", competitors.len(), 6, challenges.len());
     eprintln!("");
     for (wc, members) in &by_weight {
         eprintln!("  {} division:", wc);
@@ -363,8 +387,8 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
     let mut all_matches: Vec<MatchResult> = Vec::new();
 
     // Run events grouped by type for better output
-    let event_order = ["sprint", "technical", "freestyle", "judged", "endurance"];
-    let event_names = ["SPRINT", "TECHNICAL", "FREESTYLE", "JUDGED", "ENDURANCE"];
+    let event_order = ["sprint", "technical", "freestyle", "judged", "endurance", "doping"];
+    let event_names = ["SPRINT", "TECHNICAL", "FREESTYLE", "JUDGED", "ENDURANCE", "DOPING TEST"];
 
     for (event, event_name) in event_order.iter().zip(event_names.iter()) {
         let event_challenges: Vec<&TournamentChallenge> =
