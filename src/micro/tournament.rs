@@ -80,8 +80,14 @@ impl WeightClass {
     /// Non-coder models in Rust events = exhibition match.
     pub fn is_exhibition(model: &str) -> bool {
         let lower = model.to_lowercase();
-        // Models without "coder" or "starcoder" in the name doing code tasks
-        !lower.contains("coder") && !lower.contains("starcoder")
+        // Code-trained model families
+        let code_model = lower.contains("coder")
+            || lower.contains("starcoder")
+            || lower.contains("codellama")
+            || lower.contains("codegemma")
+            || lower.contains("granite-code")
+            || lower.contains("codestral");
+        !code_model
     }
 }
 

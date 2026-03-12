@@ -61,6 +61,30 @@ pub fn default_nodes() -> Vec<&'static str> {
     vec!["lf", "gd", "bt", "st"]
 }
 
+/// MAC addresses for Wake-on-LAN. st has no WoL support.
+pub fn node_mac(node: &str) -> Option<&'static str> {
+    match node {
+        "lf" | "n0" => Some("6c:24:08:df:7c:39"),
+        "gd" | "n1" => Some("cc:96:e5:bd:01:3a"),
+        "bt" | "n2" => Some("2c:f0:5d:55:3b:d3"),
+        _ => None, // st/n3 has no WoL support
+    }
+}
+
+/// Send Wake-on-LAN magic packet to a node.
+pub fn wake_node(node: &str) -> Result<(), String> {
+    let mac = node_mac(node).ok_or_else(|| format!("{}: no WoL MAC (st has no WoL support)", node))?;
+    let output = std::process::Command::new("wakeonlan")
+        .arg(mac)
+        .output()
+        .map_err(|e| format!("wakeonlan: {}", e))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!("wakeonlan failed: {}", String::from_utf8_lossy(&output.stderr)))
+    }
+}
+
 pub fn resolve_project(project: Option<PathBuf>) -> PathBuf {
     project
         .or_else(|| std::env::var("KOVA_PROJECT").ok().map(PathBuf::from))
