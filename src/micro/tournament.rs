@@ -165,6 +165,9 @@ pub struct MatchResult {
     pub duration_ms: u64,
     pub tokens: u64,
     pub response_len: usize,
+    /// Raw model response text (for training data export).
+    #[serde(default)]
+    pub response: String,
 }
 
 /// Per-model aggregate score.
@@ -220,13 +223,18 @@ pub struct TournamentResult {
 }
 
 /// Held-out challenge for the tournament.
-struct TournamentChallenge {
-    template_id: String,
-    category: String,
-    event_type: &'static str,
-    input: String,
-    verify: String,
-    description: String,
+pub struct TournamentChallenge {
+    pub template_id: String,
+    pub category: String,
+    pub event_type: &'static str,
+    pub input: String,
+    pub verify: String,
+    pub description: String,
+}
+
+/// Get all tournament challenges (for training data export).
+pub fn get_challenges(registry: &MicroRegistry) -> Vec<TournamentChallenge> {
+    tournament_challenges(registry)
 }
 
 // ── JIT Prequalification ─────────────────────────────────────────
@@ -418,7 +426,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
             let comp_key = format!("{}@{}", competitor.model, competitor.node_id);
             if dqd.contains(&comp_key) { continue; }
 
-            for (ci, ch) in event_challenges.iter().enumerate() {
+            for ch in event_challenges.iter() {
                 let tmpl = match registry.get(&ch.template_id) {
                     Some(t) => t,
                     None => continue,
@@ -451,6 +459,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             category: ch.category.clone(),
                             passed, duration_ms, tokens,
                             response_len: r.response.len(),
+                            response: r.response.clone(),
                         });
 
                         // JIT prequal: any challenge exceeding cutoff = DQ from rest of event
@@ -475,6 +484,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             challenge: ch.description.clone(),
                             category: ch.category.clone(),
                             passed: false, duration_ms, tokens: 0, response_len: 0,
+                            response: format!("ERROR: {}", e),
                         });
 
                         // JIT prequal: any challenge exceeding cutoff = DQ from rest of event
@@ -749,7 +759,7 @@ struct TournamentSummary {
     winner_score: f64,
 }
 
-fn tournament_path() -> PathBuf {
+pub fn tournament_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     PathBuf::from(home)
         .join(".kova")
