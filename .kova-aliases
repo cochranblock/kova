@@ -228,6 +228,14 @@ ktuns() {
     done
 }
 
+# Deploy aliases to all nodes (/etc/profile.d/)
+kad() {
+    for h in gd st lf bt; do
+        scp -q "$HOME/.kova-aliases" "$h":~/.kova-aliases 2>/dev/null
+        ssh -o ConnectTimeout=5 "$h" "su -c 'cp /home/mcochran/.kova-aliases /etc/profile.d/kova-aliases.sh'" 2>/dev/null && echo "$h: deployed" || echo "$h: FAILED"
+    done
+}
+
 # Parallel SSH (kept from original)
 sshall() {
     if [ $# -eq 0 ]; then
