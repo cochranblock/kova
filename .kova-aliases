@@ -7,6 +7,9 @@ export W="$HOME"
 export K="$HOME/kova"
 export KS="$HOME/kova/src"
 
+# Reload aliases
+alias ka='. "$HOME/.kova-aliases" && echo "aliases reloaded"'
+
 # Base
 alias k='kova'
 alias ks='kova s'
