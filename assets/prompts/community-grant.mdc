@@ -1,0 +1,52 @@
+---
+description: Cochranblock /community-grant — UI implementation, routes, DB, webhook. Offload context for augment.
+alwaysApply: false
+---
+
+# Community Grant (cochranblock)
+
+Unlisted page at `/community-grant`. Eligibility-audit questionnaire for Dundalk/Baltimore non-profits. Reuses intake pattern.
+
+## Routes
+
+| Method | Path | Handler |
+|--------|------|---------|
+| GET | /community-grant | get_form |
+| POST | /community-grant | post_form |
+| GET | /community-grant/confirmed | confirmed |
+
+## UI Implementation (cosmic theme)
+
+**CSS classes** (in `assets/css/main.css`): `.intake-section`, `.intake-doc`, `.intake-form`, `.intake-steps`, `.intake-step`, `.intake-num`, `.intake-title`, `.intake-intro`, `.intake-sign`, `.intake-sign-label`, `.intake-consent`, `.intake-check`, `.intake-note`, `.intake-hp` (honeypot), `.intake-done`, `.intake-complete`, `.intake-check-icon`.
+
+**Body data-page**: `community-grant` (form), `community-grant-confirmed` (success).
+
+**Form fields**: org_name, ein, contact_name, contact_email, mission, technical_objective, website_url (honeypot), consent_grant.
+
+**Layout**: max-width 720px; card with gradient background, 12px radius, shadow; step indicator (1 Review, 2 Submit, 3 Complete); full-width submit button.
+
+## Database
+
+Table `community_grants`: id, org_name, ein, contact_name, contact_email, mission, technical_objective, submitted_at, ip_address, user_agent, consent_grant. Migration in `intake.rs` migrate().
+
+## Webhook
+
+`INTAKE_WEBHOOK_URL`. Payload: `{"type": "community_grant", "id": "...", "org_name": "...", ...}`.
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| src/web/community_grant.rs | Handlers, form struct |
+| content/community_grant_intro.txt | Intro copy |
+| docs/COMMUNITY_GRANT_INTAKE.md | Questionnaire spec |
+
+## Kova
+
+- **Build**: `cargo build --release -p cochranblock --features approuter`
+- **Test**: `cargo run -p cochranblock --bin cochranblock-test --features tests`
+- **Deploy**: `~/dev/scripts/deploy-gd.sh cochranblock` (build on gd; rsync from Mac won't work — arch mismatch)
+
+## Unlisted
+
+No nav/footer link. Not in sitemap. Discoverable via direct URL or external links.
