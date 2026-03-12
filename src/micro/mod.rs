@@ -24,4 +24,6 @@ pub mod runner;
 pub mod stats;
 pub mod template;
 pub mod tournament;
+pub mod train;
+pub mod train_harness;
 pub mod validate;

@@ -194,10 +194,15 @@ dws() { rsync -avz "${_KH}/Cargo.toml" "${_KH}/Cargo.lock" bt:/home/mcochran/ &&
 # dm = build mural-wasm (local only — needs wasm32 target)
 dm() { cargo build --target wasm32-unknown-unknown -p mural-wasm --release && cp "${_KH}/target/wasm32-unknown-unknown/release/mural-wasm.wasm" "${_KH}/oakilydokily/assets/mural-wasm.wasm" && echo "mural-wasm built"; }
 
-# micro = tournament + bench
+# micro = tournament + bench + training
 alias kmt='kova micro tournament'
 alias kmb='kova micro bench'
 alias kmbr='kova micro bench --registry'
+alias kme='kova micro export'
+alias kmed='kova micro export --format dpo'
+alias kmes='kova micro export --format sft'
+alias kmts='kova micro train-stats'
+alias kmtn='kova micro train'
 
 # c2 wake (Wake-on-LAN)
 alias kwlf='kova c2 wake lf'

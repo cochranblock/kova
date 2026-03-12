@@ -311,6 +311,26 @@ enum MicroCmd {
     Stats,
     /// Tournament: pit every model on every node against each other.
     Tournament,
+    /// Export training data from tournament results.
+    Export {
+        /// Format: dpo, sft, or all.
+        #[arg(long, default_value = "all")]
+        format: String,
+    },
+    /// Show training data stats from last tournament.
+    TrainStats,
+    /// Run LoRA fine-tuning via mlx_lm (Apple Silicon).
+    Train {
+        /// Format: sft or dpo (default: sft).
+        #[arg(long, default_value = "sft")]
+        format: String,
+        /// Training iterations.
+        #[arg(long)]
+        iters: Option<u32>,
+        /// Print command, don't run.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(clap::Args)]
@@ -809,6 +829,38 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             }
             let _ = st.save(&sp);
             Ok(())
+        }
+        MicroCmd::Export { format } => {
+            use kova::micro::{tournament, train};
+            let tp = tournament::tournament_path();
+            if !tp.exists() {
+                anyhow::bail!("no tournament results found — run `kova micro tournament` first");
+            }
+            let json = std::fs::read_to_string(&tp)?;
+            let result: tournament::TournamentResult = serde_json::from_str(&json)?;
+            train::export_training_data(&result, &registry, &format)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            Ok(())
+        }
+        MicroCmd::TrainStats => {
+            use kova::micro::{tournament, train};
+            let tp = tournament::tournament_path();
+            if !tp.exists() {
+                anyhow::bail!("no tournament results found — run `kova micro tournament` first");
+            }
+            let json = std::fs::read_to_string(&tp)?;
+            let result: tournament::TournamentResult = serde_json::from_str(&json)?;
+            train::training_stats(&result, &registry);
+            Ok(())
+        }
+        MicroCmd::Train { format, iters, dry_run } => {
+            use kova::micro::train_harness::{run_train, TrainFormat};
+            let fmt = match format.as_str() {
+                "sft" => TrainFormat::Sft,
+                "dpo" => TrainFormat::Dpo,
+                _ => anyhow::bail!("format must be sft or dpo"),
+            };
+            run_train(fmt, iters, dry_run).map_err(anyhow::Error::msg)
         }
     }
 }
