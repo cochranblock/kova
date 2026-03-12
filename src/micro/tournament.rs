@@ -3,7 +3,8 @@
 //! tournament — Olympic-style model competition across cluster nodes.
 //!
 //! Weight classes (wrestling):
-//!   Flyweight   ≤3B    — fast, light, sprint events
+//!   Atomweight   ≤1B   — sub-billion, the tiniest contenders
+//!   Flyweight    1-3B   — fast, light, sprint events
 //!   Bantamweight 3-7B  — balanced speed/quality
 //!   Middleweight 7-15B — quality-focused
 //!
@@ -33,7 +34,9 @@ use crate::ollama;
 /// Weight class for a model based on parameter count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum WeightClass {
-    /// ≤3B parameters
+    /// ≤1B parameters — sub-billion tinies
+    Atomweight,
+    /// 1-3B parameters
     Flyweight,
     /// 3-7B parameters
     Bantamweight,
@@ -45,9 +48,11 @@ impl WeightClass {
     /// Classify a model by its name tag.
     pub fn from_model(model: &str) -> Self {
         let lower = model.to_lowercase();
-        // Extract size from model name patterns like ":3b", ":7b", ":14b"
+        // Extract size from model name patterns like ":0.5b", ":1b", ":3b", ":7b", ":14b"
         if let Some(size) = extract_param_size(&lower) {
-            if size <= 3.0 {
+            if size <= 1.0 {
+                WeightClass::Atomweight
+            } else if size <= 3.0 {
                 WeightClass::Flyweight
             } else if size <= 7.5 {
                 WeightClass::Bantamweight
@@ -55,14 +60,21 @@ impl WeightClass {
                 WeightClass::Middleweight
             }
         } else {
-            // Default: assume bantamweight for unknown sizes
-            WeightClass::Bantamweight
+            // Models with no explicit size tag — check known families
+            if lower.contains("tinyllama") || lower.contains("smollm2") {
+                WeightClass::Atomweight
+            } else if lower.contains("phi4-mini") {
+                WeightClass::Bantamweight  // phi4-mini = 3.8B
+            } else {
+                WeightClass::Bantamweight
+            }
         }
     }
 
     pub fn label(&self) -> &'static str {
         match self {
-            WeightClass::Flyweight => "Flyweight (<=3B)",
+            WeightClass::Atomweight => "Atomweight (<=1B)",
+            WeightClass::Flyweight => "Flyweight (1-3B)",
             WeightClass::Bantamweight => "Bantamweight (3-7B)",
             WeightClass::Middleweight => "Middleweight (7-15B)",
         }
@@ -70,6 +82,7 @@ impl WeightClass {
 
     pub fn short(&self) -> &'static str {
         match self {
+            WeightClass::Atomweight => "ATM",
             WeightClass::Flyweight => "FLY",
             WeightClass::Bantamweight => "BAN",
             WeightClass::Middleweight => "MID",
@@ -87,20 +100,27 @@ impl WeightClass {
             || lower.contains("codegemma")
             || lower.contains("granite-code")
             || lower.contains("codestral");
+        // Everything else is exhibition: gemma2, tinyllama, llama3.2, phi4-mini,
+        // smollm2, qwen2.5 (non-coder), mistral, orca-mini, etc.
         !code_model
     }
 }
 
 /// Extract parameter size in billions from model name.
 fn extract_param_size(model: &str) -> Option<f64> {
-    // Match patterns like ":3b", ":7b", ":14b", ":0.5b", ":7b-instruct-q5_K_M"
+    // Match patterns like ":3b", ":7b", ":14b", ":0.5b", ":7b-instruct-q5_K_M", ":135m", ":360m"
     for part in model.split(':') {
-        // Take only the first segment before any '-' that isn't part of the number
-        // "7b-instruct-q5_K_M" → "7b", "14b" → "14b", "0.5b" → "0.5b"
         let size_part = part.split('-').next().unwrap_or(part);
+        // Check for billions (e.g. "3b", "0.5b", "14b")
         if let Some(num_str) = size_part.strip_suffix('b').or_else(|| size_part.strip_suffix('B')) {
             if let Ok(n) = num_str.parse::<f64>() {
                 return Some(n);
+            }
+        }
+        // Check for millions (e.g. "135m", "360m") — convert to billions
+        if let Some(num_str) = size_part.strip_suffix('m').or_else(|| size_part.strip_suffix('M')) {
+            if let Ok(n) = num_str.parse::<f64>() {
+                return Some(n / 1000.0); // 135m → 0.135B, 360m → 0.36B
             }
         }
     }
@@ -112,7 +132,7 @@ fn extract_param_size(model: &str) -> Option<f64> {
 /// Max weight class allowed on a node (arena restriction).
 fn arena_max_weight(node_id: &str) -> WeightClass {
     match node_id {
-        "c2" => WeightClass::Bantamweight, // Local machine — ≤7B only
+        "c2" => WeightClass::Flyweight,    // Local Mac — ≤3B only (Atomweight arena)
         _ => WeightClass::Middleweight,    // Remote nodes — open weight
     }
 }
@@ -443,7 +463,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
 
     // Weight class winners (best non-exhibition model per weight class)
     let mut weight_class_winners = Vec::new();
-    for wc in [WeightClass::Flyweight, WeightClass::Bantamweight, WeightClass::Middleweight] {
+    for wc in [WeightClass::Atomweight, WeightClass::Flyweight, WeightClass::Bantamweight, WeightClass::Middleweight] {
         if let Some(best) = scores.iter().filter(|s| s.weight_class == wc && !s.exhibition).max_by(|a, b| {
             a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal)
         }) {
@@ -586,7 +606,7 @@ pub fn print_results(r: &TournamentResult) {
     // Cross-weight analysis
     println!("\nCROSS-WEIGHT ANALYSIS");
     println!("───────────────────────────────────────────────────────────────────────");
-    let wc_order = [WeightClass::Flyweight, WeightClass::Bantamweight, WeightClass::Middleweight];
+    let wc_order = [WeightClass::Atomweight, WeightClass::Flyweight, WeightClass::Bantamweight, WeightClass::Middleweight];
     for wc in &wc_order {
         let class_scores: Vec<&ModelScore> = r.scores.iter()
             .filter(|s| s.weight_class == *wc && !s.exhibition).collect();
