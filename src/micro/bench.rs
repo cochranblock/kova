@@ -335,7 +335,7 @@ pub fn run_bench(registry: &MicroRegistry, cluster: &Cluster) -> Vec<BenchResult
         match run_micro(tmpl, ch.input, cluster, &breaker, &budget) {
             Ok(result) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
-                let passed = verify(&result.response, ch.verify);
+                let passed = verify_response(&result.response, ch.verify);
 
                 if passed {
                     eprintln!("  PASS  {:>5}ms  {}", duration_ms, ch.description);
@@ -377,7 +377,7 @@ pub fn run_bench(registry: &MicroRegistry, cluster: &Cluster) -> Vec<BenchResult
 }
 
 /// Verify a response against a check string.
-fn verify(response: &str, check: &str) -> bool {
+pub fn verify_response(response: &str, check: &str) -> bool {
     let trimmed = response.trim();
 
     if check == "not_empty" {

@@ -300,10 +300,12 @@ enum MicroCmd {
         /// Input text.
         input: Vec<String>,
     },
-    /// Benchmark all templates against their few-shot examples.
+    /// Benchmark all templates against held-out challenges.
     Bench,
     /// Show historical per-template run statistics.
     Stats,
+    /// Tournament: pit every model on every node against each other.
+    Tournament,
 }
 
 #[derive(clap::Args)]
@@ -769,6 +771,29 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             } else {
                 st.print();
             }
+            Ok(())
+        }
+        MicroCmd::Tournament => {
+            use kova::micro::tournament;
+            let cluster = kova::cluster::Cluster::default_hive();
+            let result = tournament::run_tournament(&registry, &cluster);
+            tournament::print_results(&result);
+
+            // Save results + feed stats
+            let _ = tournament::save_results(&result);
+            let sp = stats::stats_path();
+            let mut st = stats::MicroStats::load(&sp);
+            for m in &result.matches {
+                let key = format!("{}:{}", m.competitor.model, m.category);
+                if m.passed {
+                    st.record_pass(&key, m.duration_ms, m.tokens);
+                } else if m.tokens == 0 && m.response_len == 0 {
+                    st.record_error(&key, m.duration_ms);
+                } else {
+                    st.record_fail(&key, m.duration_ms, m.tokens);
+                }
+            }
+            let _ = st.save(&sp);
             Ok(())
         }
     }

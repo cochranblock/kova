@@ -23,4 +23,5 @@ pub mod router;
 pub mod runner;
 pub mod stats;
 pub mod template;
+pub mod tournament;
 pub mod validate;
