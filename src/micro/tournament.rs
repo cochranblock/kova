@@ -453,10 +453,10 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             response_len: r.response.len(),
                         });
 
-                        // JIT prequal: if first challenge exceeds cutoff, DQ for rest of event
-                        if ci == 0 && duration_ms > prequal_cutoff_ms(competitor.weight_class) {
+                        // JIT prequal: any challenge exceeding cutoff = DQ from rest of event
+                        if duration_ms > prequal_cutoff_ms(competitor.weight_class) {
                             eprintln!(
-                                "  DQ   {}{:<3} {:<24} — prequal exceeded ({}ms > {}ms limit)",
+                                "  DQ   {}{:<3} {:<24} — too slow ({}ms > {}ms limit)",
                                 exh, competitor.weight_class.short(), competitor.model,
                                 duration_ms, prequal_cutoff_ms(competitor.weight_class)
                             );
@@ -477,10 +477,10 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             passed: false, duration_ms, tokens: 0, response_len: 0,
                         });
 
-                        // JIT prequal: connection errors on first challenge = DQ
-                        if ci == 0 && duration_ms > prequal_cutoff_ms(competitor.weight_class) {
+                        // JIT prequal: any challenge exceeding cutoff = DQ from rest of event
+                        if duration_ms > prequal_cutoff_ms(competitor.weight_class) {
                             eprintln!(
-                                "  DQ   {}{:<3} {:<24} — prequal exceeded ({}ms > {}ms limit)",
+                                "  DQ   {}{:<3} {:<24} — too slow ({}ms > {}ms limit)",
                                 exh, competitor.weight_class.short(), competitor.model,
                                 duration_ms, prequal_cutoff_ms(competitor.weight_class)
                             );
