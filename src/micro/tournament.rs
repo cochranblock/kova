@@ -229,6 +229,20 @@ struct TournamentChallenge {
     description: String,
 }
 
+// ── JIT Prequalification ─────────────────────────────────────────
+
+/// Max time (ms) a model gets on the first challenge of an event.
+/// If it exceeds this, it's DQ'd from the rest of that event —
+/// "wasn't supposed to make it to the event."
+fn prequal_cutoff_ms(weight_class: WeightClass) -> u64 {
+    match weight_class {
+        WeightClass::Atomweight   => 30_000,   // 30s — tiny models should be fast
+        WeightClass::Flyweight    => 60_000,   // 60s
+        WeightClass::Bantamweight => 120_000,  // 2min
+        WeightClass::Middleweight => 180_000,  // 3min
+    }
+}
+
 // ── Discovery ───────────────────────────────────────────────────
 
 /// Models too slow for tournament.
@@ -397,8 +411,14 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
 
         eprintln!("\n--- {} EVENT ({} challenges) ---", event_name, event_challenges.len());
 
+        // JIT prequalification: track which competitors are DQ'd for this event
+        let mut dqd: std::collections::HashSet<String> = std::collections::HashSet::new();
+
         for competitor in &competitors {
-            for ch in &event_challenges {
+            let comp_key = format!("{}@{}", competitor.model, competitor.node_id);
+            if dqd.contains(&comp_key) { continue; }
+
+            for (ci, ch) in event_challenges.iter().enumerate() {
                 let tmpl = match registry.get(&ch.template_id) {
                     Some(t) => t,
                     None => continue,
@@ -432,6 +452,17 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             passed, duration_ms, tokens,
                             response_len: r.response.len(),
                         });
+
+                        // JIT prequal: if first challenge exceeds cutoff, DQ for rest of event
+                        if ci == 0 && duration_ms > prequal_cutoff_ms(competitor.weight_class) {
+                            eprintln!(
+                                "  DQ   {}{:<3} {:<24} — prequal exceeded ({}ms > {}ms limit)",
+                                exh, competitor.weight_class.short(), competitor.model,
+                                duration_ms, prequal_cutoff_ms(competitor.weight_class)
+                            );
+                            dqd.insert(comp_key.clone());
+                            break;
+                        }
                     }
                     Err(e) => {
                         eprintln!(
@@ -445,9 +476,24 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             category: ch.category.clone(),
                             passed: false, duration_ms, tokens: 0, response_len: 0,
                         });
+
+                        // JIT prequal: connection errors on first challenge = DQ
+                        if ci == 0 && duration_ms > prequal_cutoff_ms(competitor.weight_class) {
+                            eprintln!(
+                                "  DQ   {}{:<3} {:<24} — prequal exceeded ({}ms > {}ms limit)",
+                                exh, competitor.weight_class.short(), competitor.model,
+                                duration_ms, prequal_cutoff_ms(competitor.weight_class)
+                            );
+                            dqd.insert(comp_key.clone());
+                            break;
+                        }
                     }
                 }
             }
+        }
+
+        if !dqd.is_empty() {
+            eprintln!("  --- {} competitors DQ'd from {} event ---", dqd.len(), event_name);
         }
     }
 
