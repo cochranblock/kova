@@ -191,6 +191,40 @@ dws() { rsync -avz "${_KH}/Cargo.toml" "${_KH}/Cargo.lock" bt:/home/mcochran/ &&
 # dm = build mural-wasm (local only — needs wasm32 target)
 dm() { cargo build --target wasm32-unknown-unknown -p mural-wasm --release && cp "${_KH}/target/wasm32-unknown-unknown/release/mural-wasm.wasm" "${_KH}/oakilydokily/assets/mural-wasm.wasm" && echo "mural-wasm built"; }
 
+# micro = tournament + bench
+alias kmt='kova micro tournament'
+alias kmb='kova micro bench'
+alias kmbr='kova micro bench --registry'
+
+# c2 wake (Wake-on-LAN)
+alias kwlf='kova c2 wake lf'
+alias kwgd='kova c2 wake gd'
+alias kwbt='kova c2 wake bt'
+alias kwall='kova c2 wake lf && kova c2 wake gd && kova c2 wake bt'
+
+# SSH tunnels (autossh to ollama on worker nodes)
+ktun() {
+    pkill -f "autossh.*1143" 2>/dev/null
+    sleep 1
+    AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L 11435:localhost:11434 gd
+    AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L 11436:localhost:11434 bt
+    AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L 11437:localhost:11434 st
+    AUTOSSH_GATETIME=0 autossh -M 0 -f -N -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -L 11438:localhost:11434 lf
+    echo "tunnels: gd=11435 bt=11436 st=11437 lf=11438"
+}
+alias ktunk='pkill -f "autossh.*1143" && echo "tunnels killed"'
+ktuns() {
+    for p in 11435 11436 11437 11438; do
+        local n=$(curl -s --max-time 3 "http://localhost:$p/api/tags" 2>/dev/null)
+        if [ -n "$n" ]; then
+            local c=$(echo "$n" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('models',[])))" 2>/dev/null)
+            echo "$p: $c models"
+        else
+            echo "$p: DOWN"
+        fi
+    done
+}
+
 # Parallel SSH (kept from original)
 sshall() {
     if [ $# -eq 0 ]; then
