@@ -1,0 +1,28 @@
+---
+description: Post-AI header writer. Run after AI edits to ensure Unlicense + Contributors in source files.
+alwaysApply: false
+---
+
+# header-writer
+
+Rust tool for injecting/updating file headers (Unlicense + Contributors) in `.rs`, `.toml`, `.md`, `.sh`.
+
+## When to run
+
+- **Pre-AI**: Before AI starts — run so the codebase has correct headers (AI sees contributor context)
+- **Post-AI**: After AI generates or edits files — run to fix any files created without headers
+- **New contributor**: Update default in `header-writer/src/main.rs` or use `--config`, then run
+
+## Commands
+
+```bash
+# Dry run (see what would change)
+cargo run -p header-writer -- --dry-run oakilydokily cochranblock approuter
+
+# Apply
+cargo run -p header-writer -- oakilydokily cochranblock approuter
+```
+
+## Config
+
+`HEADER_WRITER_CONFIG` or `--config` → path to file with `CONTRIBUTORS="..."` line.
