@@ -745,20 +745,17 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             let results = bench::run_bench(&registry, &cluster);
             bench::print_bench_results(&results);
 
-            // Record all bench results into stats
+            // Record bench results into stats
             let sp = stats::stats_path();
             let mut st = stats::MicroStats::load(&sp);
             for r in &results {
-                for d in &r.details {
-                    let dur = d.duration_ms;
-                    let tokens = (d.got.len() / 4) as u64;
-                    if d.matched {
-                        st.record_pass(&r.template_id, dur, tokens);
-                    } else if d.got.starts_with("ERROR:") {
-                        st.record_error(&r.template_id, dur);
-                    } else {
-                        st.record_fail(&r.template_id, dur, tokens);
-                    }
+                let tokens = (r.response.len() / 4) as u64;
+                if r.error.is_some() {
+                    st.record_error(&r.template_id, r.duration_ms);
+                } else if r.passed {
+                    st.record_pass(&r.template_id, r.duration_ms, tokens);
+                } else {
+                    st.record_fail(&r.template_id, r.duration_ms, tokens);
                 }
             }
             let _ = st.save(&sp);
