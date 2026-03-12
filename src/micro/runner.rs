@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use super::template::MicroTemplate;
-use crate::cluster::{Cluster, TaskKind};
+use crate::cluster::Cluster;
 use crate::ollama;
 
 /// Result of running a micro-model.
@@ -122,20 +122,10 @@ impl Budget {
     }
 }
 
-/// Map template name to TaskKind for cluster dispatch.
-fn template_to_task(name: &str) -> TaskKind {
-    match name {
-        "classify_intent" => TaskKind::Classify,
-        "fix_compile" => TaskKind::FixCompile,
-        "clippy_fix" => TaskKind::ClippyFix,
-        "code_review" => TaskKind::CodeReview,
-        "test_write" => TaskKind::TestWrite,
-        "code_gen" => TaskKind::CodeGen,
-        _ => TaskKind::General,
-    }
-}
-
-/// Run a micro-model template. Dispatches to the cluster, respecting circuit breaker and budget.
+/// Run a micro-model template against the cluster.
+/// Unlike cluster.dispatch(), this does NOT enforce factory-level tier minimums.
+/// Micro-models are intentionally small — a 3B fix_compile template should run
+/// on any online node, not require a 32B Heavy node.
 pub fn run_micro(
     template: &MicroTemplate,
     input: &str,
@@ -164,27 +154,43 @@ pub fn run_micro(
     let prompt = template.build_prompt(input);
     let start = Instant::now();
 
-    // Try cluster dispatch first (routes to best available node)
-    let task = template_to_task(&template.name);
-    let result = cluster.dispatch(
-        task,
+    // Find any online, non-busy node — micro-models don't need tier enforcement
+    let node = cluster
+        .online_nodes()
+        .into_iter()
+        .find(|n| !n.is_busy())
+        .ok_or_else(|| format!("[{}] no available nodes", template.id))?;
+
+    let node_id = node.id.clone();
+    let url = node.base_url();
+
+    // Use the template's preferred model. If not available on this node, try to find
+    // a compatible model: same family, any size (e.g. qwen2.5-coder:3b → qwen2.5-coder:7b).
+    let model = match pick_model(&url, &template.model) {
+        Some(m) => m,
+        None => template.model.clone(),
+    };
+
+    let result = ollama::generate_with_temp(
+        &url,
+        &model,
         &template.system_prompt,
         &prompt,
         Some(template.num_ctx),
+        Some(template.temperature),
     );
 
     match result {
-        Ok((node_id, response)) => {
+        Ok(response) => {
             let duration = start.elapsed();
             breaker.record_success();
-            // Estimate tokens from response length (rough: 1 token ≈ 4 chars)
             let est_tokens = (response.len() / 4) as u64;
             budget.record(est_tokens);
 
             Ok(MicroResult {
                 template_id: template.id.clone(),
                 node_id,
-                model: template.model.clone(),
+                model,
                 response,
                 duration,
                 tokens: Some(est_tokens),
@@ -195,6 +201,28 @@ pub fn run_micro(
             Err(format!("[{}] {}", template.id, e))
         }
     }
+}
+
+/// Pick the best available model on a node for a template's preferred model.
+/// If the exact model exists, use it. Otherwise, find a model from the same family
+/// (e.g. qwen2.5-coder:3b → qwen2.5-coder:7b).
+fn pick_model(base_url: &str, preferred: &str) -> Option<String> {
+    let models = ollama::list_models(base_url).ok()?;
+    let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
+
+    // Exact match
+    if model_names.iter().any(|m| *m == preferred) {
+        return Some(preferred.to_string());
+    }
+
+    // Family match: strip the size tag (e.g. "qwen2.5-coder:3b" → "qwen2.5-coder")
+    let family = preferred.split(':').next().unwrap_or(preferred);
+
+    // Find any model from the same family
+    model_names
+        .iter()
+        .find(|m| m.starts_with(family))
+        .map(|m| m.to_string())
 }
 
 /// Run a micro-model directly against a specific node URL (bypass cluster routing).

@@ -16,8 +16,11 @@
 //!
 //! MIT-licensed concepts from github.com/Mattbusel adapted with attribution.
 
+pub mod bench;
+pub mod pipe;
 pub mod registry;
 pub mod router;
 pub mod runner;
+pub mod stats;
 pub mod template;
 pub mod validate;

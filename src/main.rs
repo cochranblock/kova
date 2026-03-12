@@ -295,6 +295,15 @@ enum MicroCmd {
         /// Input text to classify.
         input: Vec<String>,
     },
+    /// Full pipeline: classify → route → run → validate. One command.
+    Pipe {
+        /// Input text.
+        input: Vec<String>,
+    },
+    /// Benchmark all templates against their few-shot examples.
+    Bench,
+    /// Show historical per-template run statistics.
+    Stats,
 }
 
 #[derive(clap::Args)]
@@ -581,9 +590,21 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
 }
 
 fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
-    use kova::micro::{registry::MicroRegistry, router::MicroRouter, runner, validate};
+    use kova::micro::{
+        bench, pipe, registry::MicroRegistry, router::MicroRouter, runner, stats, validate,
+    };
 
-    let registry = MicroRegistry::new();
+    let mut registry = MicroRegistry::new();
+
+    // Load user templates from ~/.kova/micro/
+    let micro_dir = kova::kova_dir().join("micro");
+    if micro_dir.is_dir() {
+        if let Ok(n) = registry.load_dir(&micro_dir) {
+            if n > 0 {
+                eprintln!("[micro] loaded {} user templates from {:?}", n, micro_dir);
+            }
+        }
+    }
 
     match args.cmd {
         MicroCmd::List => {
@@ -611,28 +632,35 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 input.join(" ")
             };
 
-            if let Some(url) = node {
-                // Direct mode: hit specific node
-                let result = runner::run_micro_direct(tmpl, &input_text, &url, model.as_deref())
-                    .map_err(|e| anyhow::anyhow!("{}", e))?;
-                println!("{}", result.response);
-                eprintln!(
-                    "[micro] {} on {} ({:?})",
-                    result.template_id, result.node_id, result.duration
-                );
+            let result = if let Some(url) = node {
+                runner::run_micro_direct(tmpl, &input_text, &url, model.as_deref())
+                    .map_err(|e| anyhow::anyhow!("{}", e))?
             } else {
-                // Cluster mode
                 let cluster = kova::cluster::Cluster::default_hive();
                 let breaker = runner::CircuitBreaker::new(3);
                 let budget = runner::Budget::new(100_000);
-                let result = runner::run_micro(tmpl, &input_text, &cluster, &breaker, &budget)
-                    .map_err(|e| anyhow::anyhow!("{}", e))?;
-                println!("{}", result.response);
-                eprintln!(
-                    "[micro] {} on {} ({:?})",
-                    result.template_id, result.node_id, result.duration
-                );
+                runner::run_micro(tmpl, &input_text, &cluster, &breaker, &budget)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?
+            };
+
+            println!("{}", result.response);
+            eprintln!(
+                "[micro] {} on {} ({:?})",
+                result.template_id, result.node_id, result.duration
+            );
+
+            // Record stats
+            let sp = stats::stats_path();
+            let mut st = stats::MicroStats::load(&sp);
+            let dur_ms = result.duration.as_millis() as u64;
+            let tokens = result.tokens.unwrap_or(0);
+            if validate::quick_validate(&result.response) {
+                st.record_pass(&result.template_id, dur_ms, tokens);
+            } else {
+                st.record_fail(&result.template_id, dur_ms, tokens);
             }
+            let _ = st.save(&sp);
+
             Ok(())
         }
         MicroCmd::Validate {
@@ -684,6 +712,65 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 println!("  name: {}", t.name);
                 println!("  tier: {} ({})", t.tier, t.model);
                 println!("  purpose: {}", t.purpose);
+            }
+            Ok(())
+        }
+        MicroCmd::Pipe { input } => {
+            let input_text = input.join(" ");
+            if input_text.is_empty() {
+                anyhow::bail!("pipe requires input text");
+            }
+            let cluster = kova::cluster::Cluster::default_hive();
+            match pipe::run_pipe(&input_text, &registry, &cluster) {
+                Ok(result) => {
+                    pipe::print_pipe_result(&result);
+
+                    // Record stats
+                    let sp = stats::stats_path();
+                    let mut st = stats::MicroStats::load(&sp);
+                    let dur_ms = result.total_duration.as_millis() as u64;
+                    if result.validation.passed {
+                        st.record_pass(&result.template_id, dur_ms, 0);
+                    } else {
+                        st.record_fail(&result.template_id, dur_ms, 0);
+                    }
+                    let _ = st.save(&sp);
+                    Ok(())
+                }
+                Err(e) => anyhow::bail!("pipe failed: {}", e),
+            }
+        }
+        MicroCmd::Bench => {
+            let cluster = kova::cluster::Cluster::default_hive();
+            let results = bench::run_bench(&registry, &cluster);
+            bench::print_bench_results(&results);
+
+            // Record all bench results into stats
+            let sp = stats::stats_path();
+            let mut st = stats::MicroStats::load(&sp);
+            for r in &results {
+                for d in &r.details {
+                    let dur = d.duration_ms;
+                    let tokens = (d.got.len() / 4) as u64;
+                    if d.matched {
+                        st.record_pass(&r.template_id, dur, tokens);
+                    } else if d.got.starts_with("ERROR:") {
+                        st.record_error(&r.template_id, dur);
+                    } else {
+                        st.record_fail(&r.template_id, dur, tokens);
+                    }
+                }
+            }
+            let _ = st.save(&sp);
+            Ok(())
+        }
+        MicroCmd::Stats => {
+            let sp = stats::stats_path();
+            let st = stats::MicroStats::load(&sp);
+            if st.templates.is_empty() {
+                println!("No stats yet. Run `kova micro run` or `kova micro bench` first.");
+            } else {
+                st.print();
             }
             Ok(())
         }

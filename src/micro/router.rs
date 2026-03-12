@@ -131,7 +131,7 @@ impl MicroRouter {
 }
 
 /// Classify input into a category via keyword matching.
-fn classify_keywords(input: &str) -> String {
+pub fn classify_keywords(input: &str) -> String {
     let lower = input.to_lowercase();
 
     if lower.contains("fix") || lower.contains("compile") || lower.contains("error") {
@@ -158,7 +158,7 @@ fn classify_keywords(input: &str) -> String {
 }
 
 /// Map a category name to its default template ID.
-fn category_to_template(category: &str) -> String {
+pub fn category_to_template(category: &str) -> String {
     match category {
         "fix_compile" => "f81".into(),
         "clippy_fix" => "f_clippy_fix".into(),
