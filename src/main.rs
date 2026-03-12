@@ -137,6 +137,11 @@ enum C2Cmd {
         #[command(subcommand)]
         cmd: SshCaCmd,
     },
+    /// Wake-on-LAN: power on a worker node (lf, gd, bt). st has no WoL.
+    Wake {
+        /// Node to wake: lf, gd, or bt.
+        node: String,
+    },
     /// Tokenized node commands (c1-c9, ci, ct). §13 compressed output.
     Ncmd {
         /// Command token: c1(nstat) c2(nspec) c3(nsvc) c4(nrust) c5(nsync) c6(nbuild) c7(nlog) c8(nkill) c9(ndeploy) ci(inspect) ct(ntest).
@@ -559,6 +564,15 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             all,
             full,
         } => kova::c2::run_sync(dry_run, &target, local, all, full),
+        C2Cmd::Wake { node } => {
+            match kova::c2::wake_node(&node) {
+                Ok(()) => {
+                    println!("WoL sent to {}", node);
+                    Ok(())
+                }
+                Err(e) => anyhow::bail!("{}", e),
+            }
+        }
         C2Cmd::SshCa { cmd } => match cmd {
             SshCaCmd::Init => kova::ssh_ca::run_init(),
             SshCaCmd::Sign { node } => kova::ssh_ca::run_sign(&node),
