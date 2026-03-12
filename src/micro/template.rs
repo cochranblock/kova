@@ -178,7 +178,16 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             tier: "light".into(),
             model: "qwen2.5-coder:3b".into(),
             system_prompt: "You fix Rust clippy warnings. Return ONLY the fixed code in a ```rust block. No explanation.".into(),
-            few_shot: vec![],
+            few_shot: vec![
+                (
+                    "Warning: unnecessary `let` binding\nCode: fn area(w: f64, h: f64) -> f64 { let result = w * h; result }".into(),
+                    "```rust\nfn area(w: f64, h: f64) -> f64 { w * h }\n```".into(),
+                ),
+                (
+                    "Warning: this expression creates a reference which is immediately dereferenced\nCode: fn first(v: &Vec<i32>) -> i32 { *&v[0] }".into(),
+                    "```rust\nfn first(v: &Vec<i32>) -> i32 { v[0] }\n```".into(),
+                ),
+            ],
             input_schema: "Warning: <clippy warning>\nCode: ```rust\n<code>\n```".into(),
             output_schema: "```rust\n<fixed code>\n```".into(),
             num_ctx: 4096,
@@ -192,7 +201,12 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             tier: "light".into(),
             model: "qwen2.5:3b".into(),
             system_prompt: "Explain this execution trace. What did the user want? What failed? Why? How to fix it? Be concise. 2-3 sentences max.".into(),
-            few_shot: vec![],
+            few_shot: vec![
+                (
+                    "Intent: build project\nStage: cargo build\nOutcome: FAIL\nStderr: error[E0433]: failed to resolve: use of undeclared crate `serde`".into(),
+                    "User tried to build but serde is missing. Add `serde = { version = \"1\", features = [\"derive\"] }` to Cargo.toml dependencies.".into(),
+                ),
+            ],
             input_schema: "Intent: <intent>\nStage: <stage>\nOutcome: <outcome>\nStderr: <error>".into(),
             output_schema: "Plain English explanation, 2-3 sentences".into(),
             num_ctx: 2048,
@@ -208,7 +222,16 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             tier: "mid".into(),
             model: "qwen2.5-coder:7b".into(),
             system_prompt: "You are a senior Rust code reviewer. Flag only real issues: correctness bugs, memory safety, logic errors, missing error handling at boundaries. If the code is fine, reply: LGTM. No style nits. No slop words (utilize/leverage/optimize/comprehensive/robust/seamlessly).".into(),
-            few_shot: vec![],
+            few_shot: vec![
+                (
+                    "fn add(a: i32, b: i32) -> i32 { a + b }".into(),
+                    "LGTM".into(),
+                ),
+                (
+                    "fn get_index(v: &[i32], i: usize) -> i32 { v[i] }".into(),
+                    "Panics if i >= v.len(). Return Option<i32> or check bounds.".into(),
+                ),
+            ],
             input_schema: "```rust\n<code to review>\n```".into(),
             output_schema: "LGTM or list of real issues".into(),
             num_ctx: 8192,
@@ -222,7 +245,12 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             tier: "mid".into(),
             model: "qwen2.5-coder:7b".into(),
             system_prompt: "Write Rust unit tests for the given function. Use #[test] functions in a #[cfg(test)] mod tests block. Test: happy path, edge cases, error cases. Use assert_eq! and assert!. No external test frameworks.".into(),
-            few_shot: vec![],
+            few_shot: vec![
+                (
+                    "fn abs(x: i32) -> i32 { if x < 0 { -x } else { x } }".into(),
+                    "```rust\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn test_positive() { assert_eq!(abs(5), 5); }\n    #[test]\n    fn test_negative() { assert_eq!(abs(-3), 3); }\n    #[test]\n    fn test_zero() { assert_eq!(abs(0), 0); }\n}\n```".into(),
+                ),
+            ],
             input_schema: "```rust\n<function to test>\n```".into(),
             output_schema: "```rust\n#[cfg(test)]\nmod tests { ... }\n```".into(),
             num_ctx: 4096,
