@@ -100,7 +100,12 @@ impl WeightClass {
             || lower.contains("codellama")
             || lower.contains("codegemma")
             || lower.contains("granite-code")
-            || lower.contains("codestral");
+            || lower.contains("codestral")
+            || lower.contains("stable-code")
+            || lower.contains("mellum")
+            || lower.contains("tessa-rust")
+            || lower.contains("rust-coder")
+            || lower.contains("code-llama");
         // Everything else is exhibition: gemma2, tinyllama, llama3.2, phi4-mini,
         // smollm2, qwen2.5 (non-coder), mistral, orca-mini, etc.
         !code_model
