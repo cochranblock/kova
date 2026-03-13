@@ -56,7 +56,7 @@ impl RouterResult {
                             "Could you clarify what you need?"
                         }
                     });
-                if let Some(ref ch) = choices {
+                if let Some(ch) = choices {
                     if !ch.is_empty() {
                         return crate::elicitor::format_question(q, Some(ch));
                     }

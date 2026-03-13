@@ -10,7 +10,7 @@ use std::thread;
 use kalosm::language::{ChatModelExt, Parse};
 
 #[cfg(feature = "inference")]
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 #[cfg(feature = "inference")]
 use std::num::NonZeroUsize;
 #[cfg(feature = "inference")]
@@ -20,7 +20,7 @@ use std::sync::Mutex;
 type CachedModel = Arc<kalosm::language::Llama>;
 
 #[cfg(feature = "inference")]
-static MODEL_CACHE: Lazy<Mutex<lru::LruCache<PathBuf, CachedModel>>> = Lazy::new(|| {
+static MODEL_CACHE: LazyLock<Mutex<lru::LruCache<PathBuf, CachedModel>>> = LazyLock::new(|| {
     let cap = NonZeroUsize::new(crate::config::model_cache_size()).unwrap_or(NonZeroUsize::MIN);
     Mutex::new(lru::LruCache::new(cap))
 });

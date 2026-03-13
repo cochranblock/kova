@@ -835,9 +835,9 @@ mod tests {
     #[test]
     fn gui_build_system_prompt_includes_baked() {
         let tmp = tempfile::TempDir::new().unwrap();
-        std::env::set_var("KOVA_PROJECTS_ROOT", tmp.path());
+        unsafe { std::env::set_var("KOVA_PROJECTS_ROOT", tmp.path()) };
         let out = build_system_prompt_impl("System", "Persona", tmp.path());
-        std::env::remove_var("KOVA_PROJECTS_ROOT");
+        unsafe { std::env::remove_var("KOVA_PROJECTS_ROOT") };
         if crate::cursor_prompts_enabled() {
             assert!(
                 out.contains("--- Cursor rules ---"),

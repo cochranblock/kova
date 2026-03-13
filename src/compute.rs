@@ -55,7 +55,7 @@ impl t6 {
                 }
             }
             t5::ApprouterUpdateTunnel => {
-                let Some(ref ad) = approuter_dir else {
+                let Some(ad) = approuter_dir else {
                     return t7 {
                         s10: "approuter --update-tunnel".into(),
                         s11: false,
@@ -84,7 +84,7 @@ impl t6 {
                 }
             }
             t5::ApprouterSetupRoguerepo => {
-                let Some(ref ad) = approuter_dir else {
+                let Some(ad) = approuter_dir else {
                     return t7 {
                         s10: "approuter --setup-roguerepo".into(),
                         s11: false,

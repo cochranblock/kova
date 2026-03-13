@@ -122,19 +122,19 @@ pub fn generate(
         ));
     }
 
-    let gen: GenerateResponse = resp
+    let resp_body: GenerateResponse = resp
         .json()
         .map_err(|e| format!("ollama response parse: {}", e))?;
 
     // Log performance if available
-    if let (Some(count), Some(dur)) = (gen.eval_count, gen.eval_duration) {
+    if let (Some(count), Some(dur)) = (resp_body.eval_count, resp_body.eval_duration) {
         if dur > 0 {
             let tps = count as f64 / (dur as f64 / 1_000_000_000.0);
             eprintln!("[ollama] {} tokens, {:.1} tok/s", count, tps);
         }
     }
 
-    Ok(gen.response)
+    Ok(resp_body.response)
 }
 
 /// Generate with explicit temperature and num_ctx. For micro-model dispatch.
@@ -177,18 +177,18 @@ pub fn generate_with_temp(
         ));
     }
 
-    let gen: GenerateResponse = resp
+    let resp_body: GenerateResponse = resp
         .json()
         .map_err(|e| format!("ollama response parse: {}", e))?;
 
-    if let (Some(count), Some(dur)) = (gen.eval_count, gen.eval_duration) {
+    if let (Some(count), Some(dur)) = (resp_body.eval_count, resp_body.eval_duration) {
         if dur > 0 {
             let tps = count as f64 / (dur as f64 / 1_000_000_000.0);
             eprintln!("[micro] {} tokens, {:.1} tok/s", count, tps);
         }
     }
 
-    Ok(gen.response)
+    Ok(resp_body.response)
 }
 
 /// Streaming generation. Returns receiver for token chunks.

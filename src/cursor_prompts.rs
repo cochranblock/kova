@@ -238,9 +238,9 @@ mod tests {
     #[test]
     fn load_cursor_prompts_includes_baked_when_enabled() {
         let tmp = tempfile::TempDir::new().unwrap();
-        std::env::set_var("KOVA_PROJECTS_ROOT", tmp.path());
+        unsafe { std::env::set_var("KOVA_PROJECTS_ROOT", tmp.path()) };
         let out = load_cursor_prompts(tmp.path());
-        std::env::remove_var("KOVA_PROJECTS_ROOT");
+        unsafe { std::env::remove_var("KOVA_PROJECTS_ROOT") };
         if crate::cursor_prompts_enabled() {
             assert!(
                 !out.is_empty(),

@@ -3,14 +3,14 @@
 [package]
 name = "kova"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 description = "Kova — augment engine. Hybrid: native egui + web client, shared API."
 
 [features]
 default = ["gui", "serve", "inference"]
 serve = ["dep:axum", "dep:futures-util", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:similar"]
 gui = ["dep:eframe", "dep:egui", "dep:similar"]
-inference = ["dep:kalosm", "dep:kalosm-sample", "dep:lru", "dep:once_cell"]
+inference = ["dep:kalosm", "dep:kalosm-sample", "dep:lru"]
 autopilot = ["dep:enigo"]
 daemon = ["dep:capnp", "dep:capnpc"]  # Requires capnp compiler: brew install capnp
 tests = ["exopack"]
@@ -43,7 +43,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = tr
 kalosm = { version = "0.4", features = ["language", "llama"], optional = true }
 kalosm-sample = { version = "0.4", optional = true }
 lru = { version = "0.12", optional = true }
-once_cell = { version = "1.19", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "blocking", "json"] }
 exopack = { git = "https://github.com/cochranblock/exopack", optional = true, features = ["triple_sims", "interface", "baked_demo", "demo", "video"] }
 dirs = "5"
