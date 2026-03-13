@@ -203,6 +203,9 @@ alias kmed='kova micro export --format dpo'
 alias kmes='kova micro export --format sft'
 alias kmts='kova micro train-stats'
 alias kmtn='kova micro train'
+alias kma='kova micro academy'
+alias kmm='kova micro mine'
+alias kmme='kova micro mine-export'
 
 # c2 wake (Wake-on-LAN)
 alias kwlf='kova c2 wake lf'

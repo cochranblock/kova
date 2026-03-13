@@ -131,10 +131,13 @@ fn extract_param_size(model: &str) -> Option<f64> {
 // ── Arena (node weight restrictions) ────────────────────────────
 
 /// Max weight class allowed on a node (arena restriction).
+/// Hardware-aware: nodes with weaker GPUs get weight caps to keep
+/// generation times fast and avoid thermal/memory issues.
 fn arena_max_weight(node_id: &str) -> WeightClass {
     match node_id {
-        "c2" => WeightClass::Flyweight,    // Local Mac — ≤3B only (Atomweight arena)
-        _ => WeightClass::Middleweight,    // Remote nodes — open weight
+        "c2" => WeightClass::Flyweight,      // Local Mac — ≤3B only
+        "n2" => WeightClass::Middleweight,    // bt (RX 6700 XT, 150W muzzle) — open weight, hardware-limited by power cap
+        _ => WeightClass::Middleweight,       // gd, st, lf — open weight
     }
 }
 

@@ -16,7 +16,9 @@
 //!
 //! MIT-licensed concepts from github.com/Mattbusel adapted with attribution.
 
+pub mod academy;
 pub mod bench;
+pub mod logmine;
 pub mod pipe;
 pub mod registry;
 pub mod router;

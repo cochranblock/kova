@@ -319,6 +319,12 @@ enum MicroCmd {
     },
     /// Show training data stats from last tournament.
     TrainStats,
+    /// Academy: analyze tournament results, detect gaps, recommend curriculum changes.
+    Academy,
+    /// Mine conversation logs for training data.
+    Mine,
+    /// Mine and export conversation logs as training JSONL.
+    MineExport,
     /// Run LoRA fine-tuning via mlx_lm (Apple Silicon).
     Train {
         /// Format: sft or dpo (default: sft).
@@ -851,6 +857,33 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             let json = std::fs::read_to_string(&tp)?;
             let result: tournament::TournamentResult = serde_json::from_str(&json)?;
             train::training_stats(&result, &registry);
+            Ok(())
+        }
+        MicroCmd::Academy => {
+            use kova::micro::{tournament, academy};
+            let tp = tournament::tournament_path();
+            if !tp.exists() {
+                anyhow::bail!("no tournament results found — run `kova micro tournament` first");
+            }
+            let json = std::fs::read_to_string(&tp)?;
+            let result: tournament::TournamentResult = serde_json::from_str(&json)?;
+            let report = academy::analyze(&result);
+            academy::print_report(&report);
+            let path = academy::save_report(&report).map_err(|e| anyhow::anyhow!("{}", e))?;
+            eprintln!("Report saved: {}", path.display());
+            Ok(())
+        }
+        MicroCmd::Mine => {
+            use kova::micro::logmine;
+            let (examples, stats) = logmine::mine_logs().map_err(|e| anyhow::anyhow!("{}", e))?;
+            logmine::print_mine_stats(&stats, &examples);
+            Ok(())
+        }
+        MicroCmd::MineExport => {
+            use kova::micro::logmine;
+            let (examples, stats) = logmine::mine_logs().map_err(|e| anyhow::anyhow!("{}", e))?;
+            logmine::print_mine_stats(&stats, &examples);
+            logmine::export_mined(&examples).map_err(|e| anyhow::anyhow!("{}", e))?;
             Ok(())
         }
         MicroCmd::Train { format, iters, dry_run } => {
