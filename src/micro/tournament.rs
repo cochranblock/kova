@@ -414,7 +414,17 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
     }
     eprintln!("═══════════════════════════════════════════════════════════════════");
 
-    let mut all_matches: Vec<MatchResult> = Vec::new();
+    // Resume from checkpoint if available
+    let mut checkpoint = load_checkpoint().unwrap_or(Checkpoint {
+        matches: Vec::new(),
+        completed: Vec::new(),
+    });
+    let mut all_matches: Vec<MatchResult> = checkpoint.matches.clone();
+    let resuming = !checkpoint.completed.is_empty();
+    if resuming {
+        eprintln!("RESUMING — {} matches from checkpoint, {} competitor/events done",
+            all_matches.len(), checkpoint.completed.len());
+    }
 
     // Run events grouped by type for better output
     let event_order = ["sprint", "technical", "freestyle", "judged", "endurance", "doping"];
@@ -433,6 +443,11 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
         for competitor in &competitors {
             let comp_key = format!("{}@{}", competitor.model, competitor.node_id);
             if dqd.contains(&comp_key) { continue; }
+
+            // Skip if already completed in checkpoint
+            if checkpoint.is_done(&competitor.model, &competitor.node_id, event) {
+                continue;
+            }
 
             for ch in event_challenges.iter() {
                 let tmpl = match registry.get(&ch.template_id) {
@@ -508,12 +523,20 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                     }
                 }
             }
+
+            // Checkpoint after each competitor finishes an event
+            checkpoint.mark_done(&competitor.model, &competitor.node_id, event);
+            checkpoint.matches = all_matches.clone();
+            save_checkpoint(&checkpoint);
         }
 
         if !dqd.is_empty() {
             eprintln!("  --- {} competitors DQ'd from {} event ---", dqd.len(), event_name);
         }
     }
+
+    // Tournament complete — clear checkpoint
+    clear_checkpoint();
 
     // Aggregate scores
     let mut score_map: HashMap<String, ModelScore> = HashMap::new();
@@ -781,6 +804,61 @@ fn history_path() -> PathBuf {
         .join(".kova")
         .join("micro")
         .join("tournament_history.json")
+}
+
+pub fn checkpoint_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    PathBuf::from(home)
+        .join(".kova")
+        .join("micro")
+        .join("tournament_checkpoint.json")
+}
+
+/// In-progress tournament state for resume support.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct Checkpoint {
+    /// Completed matches so far.
+    matches: Vec<MatchResult>,
+    /// Set of "model@node::event" keys already finished.
+    completed: Vec<String>,
+}
+
+impl Checkpoint {
+    fn is_done(&self, model: &str, node_id: &str, event: &str) -> bool {
+        let key = format!("{}@{}::{}", model, node_id, event);
+        self.completed.contains(&key)
+    }
+
+    fn mark_done(&mut self, model: &str, node_id: &str, event: &str) {
+        let key = format!("{}@{}::{}", model, node_id, event);
+        if !self.completed.contains(&key) {
+            self.completed.push(key);
+        }
+    }
+}
+
+fn load_checkpoint() -> Option<Checkpoint> {
+    let path = checkpoint_path();
+    if !path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+fn save_checkpoint(cp: &Checkpoint) {
+    let path = checkpoint_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string(cp) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+fn clear_checkpoint() {
+    let path = checkpoint_path();
+    let _ = std::fs::remove_file(path);
 }
 
 fn chrono_now() -> String {

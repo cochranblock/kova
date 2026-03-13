@@ -309,8 +309,10 @@ enum MicroCmd {
     Bench,
     /// Show historical per-template run statistics.
     Stats,
-    /// Tournament: pit every model on every node against each other.
+    /// Tournament: pit every model on every node against each other. Auto-resumes from checkpoint.
     Tournament,
+    /// Clear a stale tournament checkpoint (start fresh next run).
+    TournamentClear,
     /// Export training data from tournament results.
     Export {
         /// Format: dpo, sft, or all.
@@ -834,6 +836,17 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 }
             }
             let _ = st.save(&sp);
+            Ok(())
+        }
+        MicroCmd::TournamentClear => {
+            use kova::micro::tournament;
+            let cp = tournament::checkpoint_path();
+            if cp.exists() {
+                std::fs::remove_file(&cp)?;
+                println!("Checkpoint cleared. Next tournament starts fresh.");
+            } else {
+                println!("No checkpoint found.");
+            }
             Ok(())
         }
         MicroCmd::Export { format } => {
