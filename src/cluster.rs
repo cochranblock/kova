@@ -96,8 +96,8 @@ impl Cluster {
             nodes: vec![
                 InferNode {
                     id: "n0".into(),
-                    host: "localhost".into(),
-                    port: 11438, // SSH tunnel from lf
+                    host: "192.168.1.47".into(),
+                    port: 11434, // lf — direct LAN
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:7b".into()),
                     role: NodeRole::PrimaryGen,
@@ -106,8 +106,8 @@ impl Cluster {
                 },
                 InferNode {
                     id: "n1".into(),
-                    host: "localhost".into(),
-                    port: 11435, // SSH tunnel from gd
+                    host: "192.168.1.44".into(),
+                    port: 11434, // gd — direct LAN
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:7b".into()),
                     role: NodeRole::Reviewer,
@@ -116,8 +116,8 @@ impl Cluster {
                 },
                 InferNode {
                     id: "n2".into(),
-                    host: "localhost".into(),
-                    port: 11436, // SSH tunnel from bt
+                    host: "192.168.1.45".into(),
+                    port: 11434, // bt — direct LAN (150W muzzle)
                     model: "qwen2.5-coder:32b".into(),
                     general_model: Some("starcoder2:15b".into()),
                     role: NodeRole::SecondaryGen,
@@ -126,8 +126,8 @@ impl Cluster {
                 },
                 InferNode {
                     id: "n3".into(),
-                    host: "localhost".into(),
-                    port: 11437, // SSH tunnel from st
+                    host: "192.168.1.43".into(),
+                    port: 11434, // st — direct LAN
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:14b".into()),
                     role: NodeRole::Batch,
