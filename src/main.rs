@@ -60,6 +60,37 @@ enum Cmd {
     /// Micro-model registry. List, run, and validate tiny purpose-built AI units.
     #[command(name = "micro")]
     Micro(MicroArgs),
+    /// RAG: index code, search semantically, retrieve context for LLM.
+    #[command(name = "rag")]
+    Rag(RagArgs),
+}
+
+#[derive(clap::Args)]
+struct RagArgs {
+    #[command(subcommand)]
+    cmd: RagCmd,
+}
+
+#[derive(clap::Subcommand)]
+enum RagCmd {
+    /// Index a directory (default: current dir). Embeds all .rs files.
+    Index {
+        /// Directory to index.
+        #[arg(default_value = ".")]
+        dir: String,
+    },
+    /// Search the index with a natural language query.
+    Search {
+        /// Query string.
+        query: String,
+        /// Number of results.
+        #[arg(short = 'k', default_value = "5")]
+        k: usize,
+    },
+    /// Show index stats.
+    Stats,
+    /// Clear the entire index.
+    Clear,
 }
 
 #[derive(clap::Args)]
@@ -1064,7 +1095,8 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Moe(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
-        | Some(Cmd::Micro(_)) => {
+        | Some(Cmd::Micro(_))
+        | Some(Cmd::Rag(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -1118,6 +1150,8 @@ fn main() -> anyhow::Result<()> {
                     Ok(())
                 }
                 Cmd::Micro(a) => run_micro(a),
+                #[cfg(feature = "rag")]
+                Cmd::Rag(a) => run_rag(a),
                 _ => unreachable!(),
             };
         }
@@ -1260,7 +1294,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Moe(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
-        | Some(Cmd::Micro(_)) => unreachable!("handled before tokio"),
+        | Some(Cmd::Micro(_))
+        | Some(Cmd::Rag(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
@@ -1282,4 +1317,55 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
         }
     }
+}
+
+#[cfg(feature = "rag")]
+fn run_rag(args: RagArgs) -> anyhow::Result<()> {
+    use kova::rag;
+
+    match args.cmd {
+        RagCmd::Index { dir } => {
+            let dir = std::path::Path::new(&dir).canonicalize()?;
+            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let count = rag::index_directory(&store, &dir)?;
+            println!("{} chunks indexed from {}", count, dir.display());
+        }
+        RagCmd::Search { query, k } => {
+            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let results = rag::search(&store, &query, k)?;
+            if results.is_empty() {
+                println!("No results. Run `kova rag index` first.");
+            } else {
+                for (i, r) in results.iter().enumerate() {
+                    println!(
+                        "{}. [score: {:.3}] {}:{}-{}",
+                        i + 1,
+                        r.score,
+                        r.chunk.file,
+                        r.chunk.lines.0,
+                        r.chunk.lines.1
+                    );
+                    // Show first 3 lines of content
+                    let preview: String = r.chunk.text.lines().take(3).collect::<Vec<_>>().join("\n");
+                    println!("   {}", preview.replace('\n', "\n   "));
+                    println!();
+                }
+            }
+        }
+        RagCmd::Stats => {
+            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let stats = store.stats()?;
+            println!("RAG Index Stats:");
+            println!("  Chunks: {}", stats.total_chunks);
+            println!("  Files:  {}", stats.total_files);
+            println!("  Dim:    {}", stats.embedding_dim);
+        }
+        RagCmd::Clear => {
+            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            store.clear()?;
+            println!("Index cleared.");
+        }
+    }
+
+    Ok(())
 }

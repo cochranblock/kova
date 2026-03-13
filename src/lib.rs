@@ -70,6 +70,8 @@ pub mod micro;
 pub mod moe;
 pub mod node_cmd;
 pub mod ollama;
+#[cfg(feature = "rag")]
+pub mod rag;
 #[cfg(feature = "inference")]
 pub mod repl;
 pub mod ssh_ca;
