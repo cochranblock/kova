@@ -2,6 +2,7 @@
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! RAG — Retrieval-Augmented Generation. Sled-backed vector store + fastembed.
 //! Embeds code chunks locally, stores in sled, retrieves via cosine similarity.
+//! Research: vectorize-io (chunking strategy, RAG pipeline design), fastembed-rs, SahomeDB (sled vector patterns).
 
 use std::path::{Path, PathBuf};
 

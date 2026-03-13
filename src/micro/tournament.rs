@@ -1,5 +1,5 @@
 // Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6
+// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! tournament — Olympic-style model competition across cluster nodes.
 //!
 //! Weight classes (wrestling):
@@ -437,11 +437,13 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
 
         eprintln!("\n--- {} EVENT ({} challenges) ---", event_name, event_challenges.len());
 
-        // JIT prequalification: track which competitors are DQ'd for this event
+        // Per-event DQ list: errors or too-slow models skip rest of this event
         let mut dqd: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for competitor in &competitors {
             let comp_key = format!("{}@{}", competitor.model, competitor.node_id);
+
+            // Skip if DQ'd from this event
             if dqd.contains(&comp_key) { continue; }
 
             // Skip if already completed in checkpoint
@@ -485,7 +487,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             response: r.response.clone(),
                         });
 
-                        // JIT prequal: any challenge exceeding cutoff = DQ from rest of event
+                        // JIT prequal: too slow = DQ from this event
                         if duration_ms > prequal_cutoff_ms(competitor.weight_class) {
                             eprintln!(
                                 "  DQ   {}{:<3} {:<24} — too slow ({}ms > {}ms limit)",
@@ -510,16 +512,13 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             response: format!("ERROR: {}", e),
                         });
 
-                        // JIT prequal: any challenge exceeding cutoff = DQ from rest of event
-                        if duration_ms > prequal_cutoff_ms(competitor.weight_class) {
-                            eprintln!(
-                                "  DQ   {}{:<3} {:<24} — too slow ({}ms > {}ms limit)",
-                                exh, competitor.weight_class.short(), competitor.model,
-                                duration_ms, prequal_cutoff_ms(competitor.weight_class)
-                            );
-                            dqd.insert(comp_key.clone());
-                            break;
-                        }
+                        // Error = DQ from this event
+                        eprintln!(
+                            "  DQ   {}{:<3} {:<24} — error, skipping rest of event",
+                            exh, competitor.weight_class.short(), competitor.model
+                        );
+                        dqd.insert(comp_key.clone());
+                        break;
                     }
                 }
             }
