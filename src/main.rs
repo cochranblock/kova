@@ -94,6 +94,8 @@ enum RagCmd {
     Stats,
     /// Clear the entire index.
     Clear,
+    /// Index all discovered projects (from config).
+    IndexAll,
 }
 
 #[derive(clap::Args)]
@@ -1388,6 +1390,29 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
             let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
             store.clear()?;
             println!("Index cleared.");
+        }
+        RagCmd::IndexAll => {
+            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let projects = kova::discover_projects();
+            if projects.is_empty() {
+                println!("No projects found. Run `kova bootstrap` first.");
+            } else {
+                let mut total = 0;
+                for p in &projects {
+                    if p.exists() {
+                        match rag::index_directory(&store, p) {
+                            Ok(n) => {
+                                println!("{}: {} chunks", p.display(), n);
+                                total += n;
+                            }
+                            Err(e) => eprintln!("{}: error: {}", p.display(), e),
+                        }
+                    } else {
+                        eprintln!("{}: not found, skipping", p.display());
+                    }
+                }
+                println!("Total: {} chunks across {} projects", total, projects.len());
+            }
         }
     }
 

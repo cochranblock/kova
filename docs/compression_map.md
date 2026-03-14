@@ -109,6 +109,7 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f163 | llm_stats | trace | Aggregate LLM stats |
 | f164 | print_llm_stats | trace | Print formatted LLM stats |
 | f165 | print_recent_traces | trace | Print recent traces table |
+| f166 | tool_rag_search | tools | RAG search tool for agent loop |
 
 ## Types (tN)
 

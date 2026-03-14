@@ -187,6 +187,25 @@ pub static TOOLS: &[t101] = &[
             description: "Content to append.",
         }],
     },
+    #[cfg(feature = "rag")]
+    t101 {
+        name: "rag_search",
+        description: "Search indexed codebase for relevant code chunks. Returns file paths, line ranges, and code snippets.",
+        params: &[
+            t102 {
+                name: "query",
+                param_type: "string",
+                required: true,
+                description: "Natural language query (e.g. 'error handling in storage module').",
+            },
+            t102 {
+                name: "k",
+                param_type: "number",
+                required: false,
+                description: "Number of results (default: 5).",
+            },
+        ],
+    },
 ];
 
 // ── Tool Call Parsing (f140) ─────────────────────────────
@@ -332,6 +351,8 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
         "glob" => f146(call, project_dir),
         "grep" => f150(call, project_dir),
         "memory_write" => f155(call),
+        #[cfg(feature = "rag")]
+        "rag_search" => f166(call),
         _ => t104 {
             tool: call.tool.clone(),
             success: false,
@@ -696,6 +717,56 @@ fn f155(call: &t103) -> t104 {
             tool: call.tool.clone(),
             success: false,
             output: format!("write: {}", e),
+        },
+    }
+}
+
+// ── f166: rag_search ────────────────────────────────────
+
+#[cfg(feature = "rag")]
+fn f166(call: &t103) -> t104 {
+    let query = match require_arg(call, "query") {
+        Ok(q) => q,
+        Err(e) => return e,
+    };
+    let k: usize = call
+        .args
+        .get("k")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
+
+    let store_path = crate::rag::VectorStore::default_path();
+    let store = match crate::rag::VectorStore::open(&store_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("rag store: {}", e),
+            }
+        }
+    };
+
+    match crate::rag::search(&store, &query, k) {
+        Ok(results) => {
+            if results.is_empty() {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: true,
+                    output: "No results. Run `kova rag index` first.".into(),
+                };
+            }
+            let context = crate::rag::format_context(&results, 4000);
+            t104 {
+                tool: call.tool.clone(),
+                success: true,
+                output: context,
+            }
+        }
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("rag search: {}", e),
         },
     }
 }
