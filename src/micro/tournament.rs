@@ -309,22 +309,22 @@ fn tournament_challenges(_registry: &MicroRegistry) -> Vec<TournamentChallenge> 
         tce("f79", "classify", "sprint", "split the monolithic handle_request into smaller functions and add tests for each", "single_word", "classify: ambiguous refactor+test"),
         tce("f79", "classify", "sprint", "the borrow checker says I can't do this but I think I should be able to", "single_word", "classify: explain+fix ambiguity"),
 
-        // TECHNICAL events — fix compile (escalating difficulty)
-        tce("f81", "fix_compile", "technical", "Error: mismatched types: expected `Vec<String>`, found `Vec<&str>`\nCode: fn names() -> Vec<String> { vec![\"alice\", \"bob\"] }", "contains:fn names", "fix: Vec<String> vs Vec<&str>"),
-        tce("f81", "fix_compile", "technical", "Error: cannot borrow `v` as mutable because it is also borrowed as immutable\nCode: fn f(v: &mut Vec<i32>) { let first = &v[0]; v.push(1); println!(\"{}\", first); }", "contains:fn f", "fix: borrow checker"),
-        tce("f81", "fix_compile", "technical", "Error: `s` does not live long enough\nCode: fn get_first_word(text: &str) -> &str { let s = text.to_string(); &s[..s.find(' ').unwrap_or(s.len())] }", "contains:fn get_first_word", "fix: dangling reference"),
-        tce("f81", "fix_compile", "technical", "Error: lifetime may not live long enough\nCode: struct Wrapper<'a> { data: &'a str }\nimpl Wrapper<'_> { fn get(&self) -> &str { self.data } }", "contains_any:impl,Wrapper,lifetime", "fix: lifetime elision"),
-        tce("f81", "fix_compile", "technical", "Error: the trait bound `T: Clone` is not satisfied\nCode: fn dup<T>(x: T) -> (T, T) { (x.clone(), x) }", "contains_any:Clone,where,bound", "fix: missing trait bound"),
-        tce("f81", "fix_compile", "technical", "Error: cannot move out of `*self` which is behind a shared reference\nCode: struct Node { val: String, next: Option<Box<Node>> }\nimpl Node { fn take_val(self) -> String { self.val } fn borrow_take(&self) -> String { self.take_val() } }", "contains_any:clone,&self,Node", "fix: move behind shared ref"),
+        // TECHNICAL events — fix compile (compile-verified: the fix must actually compile)
+        tce("f81", "fix_compile", "technical", "Error: mismatched types: expected `Vec<String>`, found `Vec<&str>`\nCode: fn names() -> Vec<String> { vec![\"alice\", \"bob\"] }", "compiles_and:contains:fn names", "fix: Vec<String> vs Vec<&str>"),
+        tce("f81", "fix_compile", "technical", "Error: cannot borrow `v` as mutable because it is also borrowed as immutable\nCode: fn f(v: &mut Vec<i32>) { let first = &v[0]; v.push(1); println!(\"{}\", first); }", "compiles", "fix: borrow checker"),
+        tce("f81", "fix_compile", "technical", "Error: `s` does not live long enough\nCode: fn get_first_word(text: &str) -> &str { let s = text.to_string(); &s[..s.find(' ').unwrap_or(s.len())] }", "compiles", "fix: dangling reference"),
+        tce("f81", "fix_compile", "technical", "Error: lifetime may not live long enough\nCode: struct Wrapper<'a> { data: &'a str }\nimpl Wrapper<'_> { fn get(&self) -> &str { self.data } }", "compiles", "fix: lifetime elision"),
+        tce("f81", "fix_compile", "technical", "Error: the trait bound `T: Clone` is not satisfied\nCode: fn dup<T>(x: T) -> (T, T) { (x.clone(), x) }", "compiles", "fix: missing trait bound"),
+        tce("f81", "fix_compile", "technical", "Error: cannot move out of `*self` which is behind a shared reference\nCode: struct Node { val: String, next: Option<Box<Node>> }\nimpl Node { fn take_val(self) -> String { self.val } fn borrow_take(&self) -> String { self.take_val() } }", "compiles", "fix: move behind shared ref"),
 
-        // FREESTYLE events — code gen (creativity + correctness)
-        tce("f80", "code_gen", "freestyle", "write a function that merges two sorted slices into a new sorted Vec", "contains:fn", "gen: merge sorted"),
-        tce("f80", "code_gen", "freestyle", "write a function that counts the frequency of each word in a &str and returns a HashMap<String, usize>", "contains:HashMap", "gen: word freq"),
-        tce("f80", "code_gen", "freestyle", "write a generic LRU cache struct with get and put methods. Use a HashMap and a VecDeque. Capacity set at construction.", "contains_any:struct,LRU,Lru,Cache,cache", "gen: LRU cache"),
-        tce("f80", "code_gen", "freestyle", "write a trait called Summarize with a method summary() -> String, then implement it for a struct Article with title and body fields", "contains_any:trait Summarize,impl Summarize", "gen: trait + impl"),
-        tce("f80", "code_gen", "freestyle", "write a function that takes &[&str] and returns the longest common prefix as a String", "contains:fn", "gen: longest common prefix"),
-        tce("f80", "code_gen", "freestyle", "write a binary search function that returns Result<usize, usize> like the standard library's binary_search", "contains_any:Result,binary", "gen: binary search"),
-        tce("f80", "code_gen", "freestyle", "write an iterator adapter struct called StepBy that wraps any iterator and yields every nth element. Implement Iterator for it.", "contains_any:struct StepBy,impl Iterator,impl<", "gen: custom iterator"),
+        // FREESTYLE events — code gen (compile-verified: generated code must compile)
+        tce("f80", "code_gen", "freestyle", "write a function that merges two sorted slices into a new sorted Vec", "compiles_and:contains:fn", "gen: merge sorted"),
+        tce("f80", "code_gen", "freestyle", "write a function that counts the frequency of each word in a &str and returns a HashMap<String, usize>", "compiles_and:contains:HashMap", "gen: word freq"),
+        tce("f80", "code_gen", "freestyle", "write a generic LRU cache struct with get and put methods. Use a HashMap and a VecDeque. Capacity set at construction.", "compiles_and:contains_any:struct,LRU,Lru,Cache,cache", "gen: LRU cache"),
+        tce("f80", "code_gen", "freestyle", "write a trait called Summarize with a method summary() -> String, then implement it for a struct Article with title and body fields", "compiles_and:contains_any:trait Summarize,impl Summarize", "gen: trait + impl"),
+        tce("f80", "code_gen", "freestyle", "write a function that takes &[&str] and returns the longest common prefix as a String", "compiles_and:contains:fn", "gen: longest common prefix"),
+        tce("f80", "code_gen", "freestyle", "write a binary search function that returns Result<usize, usize> like the standard library's binary_search", "compiles_and:contains_any:Result,binary", "gen: binary search"),
+        tce("f80", "code_gen", "freestyle", "write an iterator adapter struct called StepBy that wraps any iterator and yields every nth element. Implement Iterator for it.", "compiles_and:contains_any:struct StepBy,impl Iterator,impl<", "gen: custom iterator"),
 
         // JUDGED events — code review (subjective quality)
         tce("f_code_review", "code_review", "judged", "fn find_dup(nums: &[i32]) -> Option<i32> { let mut seen = std::collections::HashSet::new(); for &n in nums { if !seen.insert(n) { return Some(n); } } None }", "contains_any:LGTM,lgtm,looks good", "review: correct HashSet dedup"),
@@ -337,10 +337,10 @@ fn tournament_challenges(_registry: &MicroRegistry) -> Vec<TournamentChallenge> 
         tce("f_validate", "validate", "judged", "Request: binary search returning index\nCode: fn bsearch(v: &[i32], target: i32) -> Option<usize> { let mut lo = 0; let mut hi = v.len(); while lo < hi { let mid = (lo + hi) / 2; if v[mid] == target { return Some(mid); } else if v[mid] < target { lo = mid + 1; } else { hi = mid; } } None }", "contains:PASS", "validate: correct bsearch"),
         tce("f_validate", "validate", "judged", "Request: safe division returning Result\nCode: fn safe_div(a: f64, b: f64) -> Result<f64, String> { Ok(a / b) }", "contains:FAIL", "validate: missing zero check"),
 
-        // CLIPPY events
-        tce("f_clippy_fix", "clippy_fix", "technical", "Warning: redundant clone\nCode: fn greet(name: String) { let n = name.clone(); println!(\"hi {}\", n); }", "contains:fn greet", "clippy: redundant clone"),
-        tce("f_clippy_fix", "clippy_fix", "technical", "Warning: called `.iter().nth(0)` on a Vec\nCode: fn first(v: &Vec<i32>) -> Option<&i32> { v.iter().nth(0) }", "contains:fn first", "clippy: iter().nth(0)"),
-        tce("f_clippy_fix", "clippy_fix", "technical", "Warning: length comparison to zero\nCode: fn is_nonempty(v: &Vec<String>) -> bool { v.len() > 0 }", "contains:fn is_nonempty", "clippy: len() > 0"),
+        // CLIPPY events (compile-verified)
+        tce("f_clippy_fix", "clippy_fix", "technical", "Warning: redundant clone\nCode: fn greet(name: String) { let n = name.clone(); println!(\"hi {}\", n); }", "compiles_and:contains:fn greet", "clippy: redundant clone"),
+        tce("f_clippy_fix", "clippy_fix", "technical", "Warning: called `.iter().nth(0)` on a Vec\nCode: fn first(v: &Vec<i32>) -> Option<&i32> { v.iter().nth(0) }", "compiles_and:contains:fn first", "clippy: iter().nth(0)"),
+        tce("f_clippy_fix", "clippy_fix", "technical", "Warning: length comparison to zero\nCode: fn is_nonempty(v: &Vec<String>) -> bool { v.len() > 0 }", "compiles_and:contains:fn is_nonempty", "clippy: len() > 0"),
 
         // EXPLAIN events
         tce("f115", "explain", "judged", "Intent: run test suite\nStage: cargo test\nOutcome: FAIL\nStderr: thread 'tests::test_parse' panicked at 'assertion failed: result.is_ok()'", "not_empty", "explain: test panic"),
@@ -352,10 +352,10 @@ fn tournament_challenges(_registry: &MicroRegistry) -> Vec<TournamentChallenge> 
         // "Doping" = using AI filler (utilize, leverage, optimize, etc.) to pad responses.
         // Pass = correct output + zero banned words. Fail = slop detected.
 
-        // Code gen: write code + comments, must be slop-free
-        tce("f80", "code_gen", "doping", "write a function that retries an HTTP request with exponential backoff. Add doc comments explaining the approach.", "contains_no_slop:fn", "doping: code+comments no slop"),
-        tce("f80", "code_gen", "doping", "write a connection pool struct with get and release methods. Include doc comments on each method.", "contains_no_slop:fn", "doping: connection pool docs"),
-        tce("f80", "code_gen", "doping", "write a rate limiter using a token bucket algorithm. Comment each section of the implementation.", "contains_no_slop:fn", "doping: rate limiter commentary"),
+        // Code gen: write code + comments, must compile AND be slop-free
+        tce("f80", "code_gen", "doping", "write a function that retries an HTTP request with exponential backoff. Add doc comments explaining the approach.", "compiles_no_slop", "doping: code+comments no slop"),
+        tce("f80", "code_gen", "doping", "write a connection pool struct with get and release methods. Include doc comments on each method.", "compiles_no_slop", "doping: connection pool docs"),
+        tce("f80", "code_gen", "doping", "write a rate limiter using a token bucket algorithm. Comment each section of the implementation.", "compiles_no_slop", "doping: rate limiter commentary"),
 
         // Code review: review must flag real issues without slop language
         tce("f_code_review", "code_review", "doping", "fn process_all(items: &[String]) -> Vec<String> { items.iter().map(|s| s.to_uppercase()).collect() }", "no_slop", "doping: review simple code"),
@@ -367,13 +367,13 @@ fn tournament_challenges(_registry: &MicroRegistry) -> Vec<TournamentChallenge> 
         tce("f115", "explain", "doping", "Intent: add caching layer\nStage: implement LRU cache\nOutcome: SUCCESS\nStage: cargo test\nOutcome: FAIL\nStderr: thread 'cache::tests::test_eviction' panicked at 'assertion `left == right` failed\n  left: Some(\"old\")\n  right: None'", "no_slop", "doping: explain cache test fail"),
 
         // Rewrite challenge: given sloppy text, clean it up (uses code_gen template as proxy)
-        tce("f80", "code_gen", "doping", "Rewrite this doc comment to remove AI slop words while keeping the meaning:\n/// This function leverages advanced optimization techniques to seamlessly\n/// streamline the data processing pipeline for robust and scalable throughput.\nfn process(data: &[u8]) -> Vec<u8> { data.to_vec() }\nReturn the full function with a clean doc comment.", "contains_no_slop:fn process", "doping: rewrite sloppy docs"),
+        tce("f80", "code_gen", "doping", "Rewrite this doc comment to remove AI slop words while keeping the meaning:\n/// This function leverages advanced optimization techniques to seamlessly\n/// streamline the data processing pipeline for robust and scalable throughput.\nfn process(data: &[u8]) -> Vec<u8> { data.to_vec() }\nReturn the full function with a clean doc comment.", "compiles_no_slop", "doping: rewrite sloppy docs"),
         tce("f80", "code_gen", "doping", "Rewrite this doc comment to remove AI slop words while keeping the meaning:\n/// This module utilizes a comprehensive paradigm to empower users\n/// with cutting-edge capabilities that leverage synergy between components.\nReturn just the cleaned doc comment, no code.", "no_slop", "doping: rewrite sloppy module doc"),
 
-        // ENDURANCE events — test_write (long-form generation)
-        tce("f_test_write", "test_write", "endurance", "fn chunk<T: Clone>(v: &[T], size: usize) -> Vec<Vec<T>> { v.chunks(size).map(|c| c.to_vec()).collect() }", "contains:#[test]", "test: chunk (empty, uneven)"),
-        tce("f_test_write", "test_write", "endurance", "fn safe_div(a: i64, b: i64) -> Option<i64> { if b == 0 { None } else { Some(a / b) } }", "contains:#[test]", "test: safe_div"),
-        tce("f_test_write", "test_write", "endurance", "fn levenshtein(a: &str, b: &str) -> usize { let (a, b) = (a.as_bytes(), b.as_bytes()); let mut dp = (0..=b.len()).collect::<Vec<_>>(); for i in 1..=a.len() { let mut prev = dp[0]; dp[0] = i; for j in 1..=b.len() { let tmp = dp[j]; dp[j] = if a[i-1] == b[j-1] { prev } else { 1 + prev.min(dp[j]).min(dp[j-1]) }; prev = tmp; } } dp[b.len()] }", "contains:#[test]", "test: levenshtein"),
+        // ENDURANCE events — test_write (compile-verified: tests must compile)
+        tce("f_test_write", "test_write", "endurance", "fn chunk<T: Clone>(v: &[T], size: usize) -> Vec<Vec<T>> { v.chunks(size).map(|c| c.to_vec()).collect() }", "compiles_and:contains:#[test]", "test: chunk (empty, uneven)"),
+        tce("f_test_write", "test_write", "endurance", "fn safe_div(a: i64, b: i64) -> Option<i64> { if b == 0 { None } else { Some(a / b) } }", "compiles_and:contains:#[test]", "test: safe_div"),
+        tce("f_test_write", "test_write", "endurance", "fn levenshtein(a: &str, b: &str) -> usize { let (a, b) = (a.as_bytes(), b.as_bytes()); let mut dp = (0..=b.len()).collect::<Vec<_>>(); for i in 1..=a.len() { let mut prev = dp[0]; dp[0] = i; for j in 1..=b.len() { let tmp = dp[j]; dp[j] = if a[i-1] == b[j-1] { prev } else { 1 + prev.min(dp[j]).min(dp[j-1]) }; prev = tmp; } } dp[b.len()] }", "compiles_and:contains:#[test]", "test: levenshtein"),
     ]
 }
 

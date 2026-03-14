@@ -50,39 +50,39 @@ fn challenges() -> Vec<Challenge> {
         // FIX COMPILE (f81) — 10 challenges
         // Mined from: f81 few-shot (String/&str pattern) + real rustc errors
         // ══════════════════════════════════════════════════════════════
-        // EASY — simple fixes
-        Challenge { template_id: "f81", input: "Error: cannot find value `x` in this scope\nCode: fn foo() { println!(\"{}\", x); }", verify: "contains:fn foo", description: "fix: undefined variable" },
-        Challenge { template_id: "f81", input: "Error: expected `;`\nCode: fn bar() -> i32 { 42 }", verify: "contains:fn bar", description: "fix: missing semicolon" },
-        // MEDIUM — type system
-        Challenge { template_id: "f81", input: "Error: mismatched types: expected `Vec<String>`, found `Vec<&str>`\nCode: fn names() -> Vec<String> { vec![\"alice\", \"bob\"] }", verify: "contains:fn names", description: "fix: Vec<String> vs Vec<&str>" },
-        Challenge { template_id: "f81", input: "Error: the trait `Display` is not implemented for `MyStruct`\nCode: struct MyStruct { x: i32 }\nfn show(s: MyStruct) { println!(\"{}\", s); }", verify: "contains_any:Display,fmt,impl", description: "fix: missing Display impl" },
-        Challenge { template_id: "f81", input: "Error: type annotations needed\nCode: fn parse_it(s: &str) { let n = s.parse().unwrap(); println!(\"{}\", n + 1); }", verify: "contains:parse", description: "fix: type annotation needed" },
-        // HARD — ownership/lifetime puzzles
-        Challenge { template_id: "f81", input: "Error: cannot borrow `v` as mutable because it is also borrowed as immutable\nCode: fn f(v: &mut Vec<i32>) { let first = &v[0]; v.push(1); println!(\"{}\", first); }", verify: "contains:fn f", description: "fix: borrow checker violation" },
-        Challenge { template_id: "f81", input: "Error: `s` does not live long enough\nCode: fn get_first_word(text: &str) -> &str { let s = text.to_string(); &s[..s.find(' ').unwrap_or(s.len())] }", verify: "contains:fn get_first_word", description: "fix: dangling reference" },
-        Challenge { template_id: "f81", input: "Error: lifetime may not live long enough\nCode: struct Wrapper<'a> { data: &'a str }\nimpl Wrapper<'_> { fn get(&self) -> &str { self.data } }", verify: "contains_any:impl,Wrapper,lifetime", description: "fix: lifetime elision in impl" },
-        Challenge { template_id: "f81", input: "Error: the trait bound `T: Clone` is not satisfied\nCode: fn dup<T>(x: T) -> (T, T) { (x.clone(), x) }", verify: "contains_any:Clone,where,bound", description: "fix: missing trait bound" },
-        Challenge { template_id: "f81", input: "Error: cannot move out of `*self` which is behind a shared reference\nCode: struct Node { val: String, next: Option<Box<Node>> }\nimpl Node { fn take_val(self) -> String { self.val } fn borrow_take(&self) -> String { self.take_val() } }", verify: "contains_any:clone,&self,Node", description: "fix: move behind shared ref" },
+        // EASY — simple fixes (compile-verified: the fix must actually compile)
+        Challenge { template_id: "f81", input: "Error: cannot find value `x` in this scope\nCode: fn foo() { println!(\"{}\", x); }", verify: "compiles_and:contains:fn foo", description: "fix: undefined variable" },
+        Challenge { template_id: "f81", input: "Error: expected `;`\nCode: fn bar() -> i32 { 42 }", verify: "compiles_and:contains:fn bar", description: "fix: missing semicolon" },
+        // MEDIUM — type system (compile-verified)
+        Challenge { template_id: "f81", input: "Error: mismatched types: expected `Vec<String>`, found `Vec<&str>`\nCode: fn names() -> Vec<String> { vec![\"alice\", \"bob\"] }", verify: "compiles_and:contains:fn names", description: "fix: Vec<String> vs Vec<&str>" },
+        Challenge { template_id: "f81", input: "Error: the trait `Display` is not implemented for `MyStruct`\nCode: struct MyStruct { x: i32 }\nfn show(s: MyStruct) { println!(\"{}\", s); }", verify: "compiles", description: "fix: missing Display impl" },
+        Challenge { template_id: "f81", input: "Error: type annotations needed\nCode: fn parse_it(s: &str) { let n = s.parse().unwrap(); println!(\"{}\", n + 1); }", verify: "compiles_and:contains:parse", description: "fix: type annotation needed" },
+        // HARD — ownership/lifetime puzzles (compile-verified)
+        Challenge { template_id: "f81", input: "Error: cannot borrow `v` as mutable because it is also borrowed as immutable\nCode: fn f(v: &mut Vec<i32>) { let first = &v[0]; v.push(1); println!(\"{}\", first); }", verify: "compiles", description: "fix: borrow checker violation" },
+        Challenge { template_id: "f81", input: "Error: `s` does not live long enough\nCode: fn get_first_word(text: &str) -> &str { let s = text.to_string(); &s[..s.find(' ').unwrap_or(s.len())] }", verify: "compiles", description: "fix: dangling reference" },
+        Challenge { template_id: "f81", input: "Error: lifetime may not live long enough\nCode: struct Wrapper<'a> { data: &'a str }\nimpl Wrapper<'_> { fn get(&self) -> &str { self.data } }", verify: "compiles", description: "fix: lifetime elision in impl" },
+        Challenge { template_id: "f81", input: "Error: the trait bound `T: Clone` is not satisfied\nCode: fn dup<T>(x: T) -> (T, T) { (x.clone(), x) }", verify: "compiles", description: "fix: missing trait bound" },
+        Challenge { template_id: "f81", input: "Error: cannot move out of `*self` which is behind a shared reference\nCode: struct Node { val: String, next: Option<Box<Node>> }\nimpl Node { fn take_val(self) -> String { self.val } fn borrow_take(&self) -> String { self.take_val() } }", verify: "compiles", description: "fix: move behind shared ref" },
 
         // ══════════════════════════════════════════════════════════════
         // CODE GEN (f80) — 12 challenges
         // Mined from: real kova pipeline requests + escalating difficulty
         // ══════════════════════════════════════════════════════════════
-        // EASY — single function
-        Challenge { template_id: "f80", input: "write a function that checks if a number is prime", verify: "contains:fn", description: "gen: is_prime" },
-        Challenge { template_id: "f80", input: "write a function that computes the nth fibonacci number iteratively", verify: "contains:fn", description: "gen: fibonacci" },
-        Challenge { template_id: "f80", input: "write a function that flattens a Vec<Vec<i32>> into a Vec<i32>", verify: "contains:fn", description: "gen: flatten nested vec" },
-        // MEDIUM — structs, enums, traits
-        Challenge { template_id: "f80", input: "write a struct called Stack with push, pop, and is_empty methods using a Vec", verify: "contains:struct Stack", description: "gen: stack struct" },
-        Challenge { template_id: "f80", input: "write a function that merges two sorted slices into a new sorted Vec", verify: "contains:fn", description: "gen: merge sorted" },
-        Challenge { template_id: "f80", input: "write an enum called Color with Red Green Blue variants and a method to_hex returning a &str", verify: "contains:enum Color", description: "gen: enum with method" },
-        Challenge { template_id: "f80", input: "write a function that counts the frequency of each word in a &str and returns a HashMap<String, usize>", verify: "contains:HashMap", description: "gen: word frequency" },
-        // HARD — generics, traits, lifetimes, async
-        Challenge { template_id: "f80", input: "write a generic LRU cache struct with get and put methods. Use a HashMap and a VecDeque. Capacity set at construction.", verify: "contains_any:struct,LRU,Lru,Cache,cache", description: "gen: LRU cache" },
-        Challenge { template_id: "f80", input: "write a trait called Summarize with a method summary() -> String, then implement it for a struct Article with title and body fields", verify: "contains_any:trait Summarize,impl Summarize", description: "gen: trait + impl" },
-        Challenge { template_id: "f80", input: "write a function that takes &[&str] and returns the longest common prefix as a String", verify: "contains:fn", description: "gen: longest common prefix" },
-        Challenge { template_id: "f80", input: "write a binary search function that returns Result<usize, usize> like the standard library's binary_search", verify: "contains_any:Result,binary", description: "gen: binary search with Result" },
-        Challenge { template_id: "f80", input: "write an iterator adapter struct called StepBy that wraps any iterator and yields every nth element. Implement Iterator for it.", verify: "contains_any:struct StepBy,impl Iterator,impl<", description: "gen: custom iterator adapter" },
+        // EASY — single function (compile-verified)
+        Challenge { template_id: "f80", input: "write a function that checks if a number is prime", verify: "compiles_and:contains:fn", description: "gen: is_prime" },
+        Challenge { template_id: "f80", input: "write a function that computes the nth fibonacci number iteratively", verify: "compiles_and:contains:fn", description: "gen: fibonacci" },
+        Challenge { template_id: "f80", input: "write a function that flattens a Vec<Vec<i32>> into a Vec<i32>", verify: "compiles_and:contains:fn", description: "gen: flatten nested vec" },
+        // MEDIUM — structs, enums, traits (compile-verified)
+        Challenge { template_id: "f80", input: "write a struct called Stack with push, pop, and is_empty methods using a Vec", verify: "compiles_and:contains:struct Stack", description: "gen: stack struct" },
+        Challenge { template_id: "f80", input: "write a function that merges two sorted slices into a new sorted Vec", verify: "compiles_and:contains:fn", description: "gen: merge sorted" },
+        Challenge { template_id: "f80", input: "write an enum called Color with Red Green Blue variants and a method to_hex returning a &str", verify: "compiles_and:contains:enum Color", description: "gen: enum with method" },
+        Challenge { template_id: "f80", input: "write a function that counts the frequency of each word in a &str and returns a HashMap<String, usize>", verify: "compiles_and:contains:HashMap", description: "gen: word frequency" },
+        // HARD — generics, traits, lifetimes, async (compile-verified)
+        Challenge { template_id: "f80", input: "write a generic LRU cache struct with get and put methods. Use a HashMap and a VecDeque. Capacity set at construction.", verify: "compiles_and:contains_any:struct,LRU,Lru,Cache,cache", description: "gen: LRU cache" },
+        Challenge { template_id: "f80", input: "write a trait called Summarize with a method summary() -> String, then implement it for a struct Article with title and body fields", verify: "compiles_and:contains_any:trait Summarize,impl Summarize", description: "gen: trait + impl" },
+        Challenge { template_id: "f80", input: "write a function that takes &[&str] and returns the longest common prefix as a String", verify: "compiles_and:contains:fn", description: "gen: longest common prefix" },
+        Challenge { template_id: "f80", input: "write a binary search function that returns Result<usize, usize> like the standard library's binary_search", verify: "compiles_and:contains_any:Result,binary", description: "gen: binary search with Result" },
+        Challenge { template_id: "f80", input: "write an iterator adapter struct called StepBy that wraps any iterator and yields every nth element. Implement Iterator for it.", verify: "compiles_and:contains_any:struct StepBy,impl Iterator,impl<", description: "gen: custom iterator adapter" },
 
         // ══════════════════════════════════════════════════════════════
         // CODE REVIEW (f_code_review) — 10 challenges
@@ -120,13 +120,13 @@ fn challenges() -> Vec<Challenge> {
         // CLIPPY FIX (f_clippy_fix) — 6 challenges
         // Mined from: real clippy warnings in kova + cochranblock
         // ══════════════════════════════════════════════════════════════
-        Challenge { template_id: "f_clippy_fix", input: "Warning: redundant clone\nCode: fn greet(name: String) { let n = name.clone(); println!(\"hi {}\", n); }", verify: "contains:fn greet", description: "clippy: redundant clone" },
-        Challenge { template_id: "f_clippy_fix", input: "Warning: this `if` has identical blocks\nCode: fn check(x: i32) -> &'static str { if x > 0 { \"yes\" } else { \"yes\" } }", verify: "contains:fn check", description: "clippy: identical if/else" },
-        Challenge { template_id: "f_clippy_fix", input: "Warning: manual implementation of `Iterator::any`\nCode: fn has_zero(v: &[i32]) -> bool { for x in v { if *x == 0 { return true; } } false }", verify: "contains:fn has_zero", description: "clippy: manual any()" },
-        // HARD — less common warnings
-        Challenge { template_id: "f_clippy_fix", input: "Warning: useless conversion to the same type: `String`\nCode: fn ident(s: String) -> String { String::from(s) }", verify: "contains:fn ident", description: "clippy: useless conversion" },
-        Challenge { template_id: "f_clippy_fix", input: "Warning: called `.iter().nth(0)` on a Vec\nCode: fn first(v: &Vec<i32>) -> Option<&i32> { v.iter().nth(0) }", verify: "contains:fn first", description: "clippy: iter().nth(0)" },
-        Challenge { template_id: "f_clippy_fix", input: "Warning: length comparison to zero\nCode: fn is_nonempty(v: &Vec<String>) -> bool { v.len() > 0 }", verify: "contains:fn is_nonempty", description: "clippy: len() > 0 vs is_empty" },
+        Challenge { template_id: "f_clippy_fix", input: "Warning: redundant clone\nCode: fn greet(name: String) { let n = name.clone(); println!(\"hi {}\", n); }", verify: "compiles_and:contains:fn greet", description: "clippy: redundant clone" },
+        Challenge { template_id: "f_clippy_fix", input: "Warning: this `if` has identical blocks\nCode: fn check(x: i32) -> &'static str { if x > 0 { \"yes\" } else { \"yes\" } }", verify: "compiles_and:contains:fn check", description: "clippy: identical if/else" },
+        Challenge { template_id: "f_clippy_fix", input: "Warning: manual implementation of `Iterator::any`\nCode: fn has_zero(v: &[i32]) -> bool { for x in v { if *x == 0 { return true; } } false }", verify: "compiles_and:contains:fn has_zero", description: "clippy: manual any()" },
+        // HARD — less common warnings (compile-verified)
+        Challenge { template_id: "f_clippy_fix", input: "Warning: useless conversion to the same type: `String`\nCode: fn ident(s: String) -> String { String::from(s) }", verify: "compiles_and:contains:fn ident", description: "clippy: useless conversion" },
+        Challenge { template_id: "f_clippy_fix", input: "Warning: called `.iter().nth(0)` on a Vec\nCode: fn first(v: &Vec<i32>) -> Option<&i32> { v.iter().nth(0) }", verify: "compiles_and:contains:fn first", description: "clippy: iter().nth(0)" },
+        Challenge { template_id: "f_clippy_fix", input: "Warning: length comparison to zero\nCode: fn is_nonempty(v: &Vec<String>) -> bool { v.len() > 0 }", verify: "compiles_and:contains:fn is_nonempty", description: "clippy: len() > 0 vs is_empty" },
 
         // ══════════════════════════════════════════════════════════════
         // EXPLAIN TRACE (f115) — 6 challenges
@@ -144,13 +144,13 @@ fn challenges() -> Vec<Challenge> {
         // TEST WRITE (f_test_write) — 6 challenges
         // Mined from: real kova functions + escalating complexity
         // ══════════════════════════════════════════════════════════════
-        Challenge { template_id: "f_test_write", input: "fn clamp(val: i32, min: i32, max: i32) -> i32 { if val < min { min } else if val > max { max } else { val } }", verify: "contains:#[test]", description: "test: clamp" },
-        Challenge { template_id: "f_test_write", input: "fn is_palindrome(s: &str) -> bool { let bytes = s.as_bytes(); let len = bytes.len(); for i in 0..len / 2 { if bytes[i] != bytes[len - 1 - i] { return false; } } true }", verify: "contains:#[test]", description: "test: is_palindrome" },
-        Challenge { template_id: "f_test_write", input: "fn celsius_to_fahrenheit(c: f64) -> f64 { c * 9.0 / 5.0 + 32.0 }", verify: "contains:#[test]", description: "test: temperature conversion" },
-        // HARD — functions with edge cases that matter
-        Challenge { template_id: "f_test_write", input: "fn chunk<T: Clone>(v: &[T], size: usize) -> Vec<Vec<T>> { v.chunks(size).map(|c| c.to_vec()).collect() }", verify: "contains:#[test]", description: "test: chunk (empty, uneven)" },
-        Challenge { template_id: "f_test_write", input: "fn safe_div(a: i64, b: i64) -> Option<i64> { if b == 0 { None } else { Some(a / b) } }", verify: "contains:#[test]", description: "test: safe_div (zero, overflow)" },
-        Challenge { template_id: "f_test_write", input: "fn levenshtein(a: &str, b: &str) -> usize { let (a, b) = (a.as_bytes(), b.as_bytes()); let mut dp = (0..=b.len()).collect::<Vec<_>>(); for i in 1..=a.len() { let mut prev = dp[0]; dp[0] = i; for j in 1..=b.len() { let tmp = dp[j]; dp[j] = if a[i-1] == b[j-1] { prev } else { 1 + prev.min(dp[j]).min(dp[j-1]) }; prev = tmp; } } dp[b.len()] }", verify: "contains:#[test]", description: "test: levenshtein (hard algo)" },
+        Challenge { template_id: "f_test_write", input: "fn clamp(val: i32, min: i32, max: i32) -> i32 { if val < min { min } else if val > max { max } else { val } }", verify: "compiles_and:contains:#[test]", description: "test: clamp" },
+        Challenge { template_id: "f_test_write", input: "fn is_palindrome(s: &str) -> bool { let bytes = s.as_bytes(); let len = bytes.len(); for i in 0..len / 2 { if bytes[i] != bytes[len - 1 - i] { return false; } } true }", verify: "compiles_and:contains:#[test]", description: "test: is_palindrome" },
+        Challenge { template_id: "f_test_write", input: "fn celsius_to_fahrenheit(c: f64) -> f64 { c * 9.0 / 5.0 + 32.0 }", verify: "compiles_and:contains:#[test]", description: "test: temperature conversion" },
+        // HARD — functions with edge cases that matter (compile-verified)
+        Challenge { template_id: "f_test_write", input: "fn chunk<T: Clone>(v: &[T], size: usize) -> Vec<Vec<T>> { v.chunks(size).map(|c| c.to_vec()).collect() }", verify: "compiles_and:contains:#[test]", description: "test: chunk (empty, uneven)" },
+        Challenge { template_id: "f_test_write", input: "fn safe_div(a: i64, b: i64) -> Option<i64> { if b == 0 { None } else { Some(a / b) } }", verify: "compiles_and:contains:#[test]", description: "test: safe_div (zero, overflow)" },
+        Challenge { template_id: "f_test_write", input: "fn levenshtein(a: &str, b: &str) -> usize { let (a, b) = (a.as_bytes(), b.as_bytes()); let mut dp = (0..=b.len()).collect::<Vec<_>>(); for i in 1..=a.len() { let mut prev = dp[0]; dp[0] = i; for j in 1..=b.len() { let tmp = dp[j]; dp[j] = if a[i-1] == b[j-1] { prev } else { 1 + prev.min(dp[j]).min(dp[j-1]) }; prev = tmp; } } dp[b.len()] }", verify: "compiles_and:contains:#[test]", description: "test: levenshtein (hard algo)" },
     ]
 }
 
@@ -252,6 +252,17 @@ pub fn verify_response(response: &str, check: &str) -> bool {
         return try_compile(trimmed);
     }
 
+    // Combined: must compile AND pass a secondary check.
+    // Format: "compiles_and:<sub-check>" e.g. "compiles_and:contains:fn"
+    if let Some(sub) = check.strip_prefix("compiles_and:") {
+        return try_compile(trimmed) && verify_response(response, sub);
+    }
+
+    // Combined: must compile AND be slop-free
+    if check == "compiles_no_slop" {
+        return try_compile(trimmed) && !contains_slop(trimmed);
+    }
+
     // P12 anti-slop: response must not contain any banned words
     if check == "no_slop" {
         return !trimmed.is_empty() && !contains_slop(trimmed);
@@ -306,7 +317,7 @@ fn try_compile(code: &str) -> bool {
     let _ = std::fs::write(src.join("lib.rs"), clean);
     let _ = std::fs::write(
         tmp.path().join("Cargo.toml"),
-        "[package]\nname = \"bench_check\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "[package]\nname = \"bench_check\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     );
 
     Command::new("cargo")
