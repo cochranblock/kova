@@ -103,6 +103,7 @@ pub fn generate(
         }),
     };
 
+    let t0 = std::time::Instant::now();
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
         .build()
@@ -112,29 +113,83 @@ pub fn generate(
         .post(&url)
         .json(&body)
         .send()
-        .map_err(|e| format!("ollama generate: {}", e))?;
+        .map_err(|e| {
+            let elapsed = t0.elapsed().as_millis() as u64;
+            crate::trace::log_llm(crate::trace::LlmTrace {
+                ts: crate::trace::now_ms(),
+                backend: "ollama".into(),
+                model: model.into(),
+                node: base_url.into(),
+                call_type: "generate".into(),
+                latency_ms: elapsed,
+                tokens_out: None,
+                tok_per_sec: None,
+                prompt_bytes: prompt.len() + system.len(),
+                response_bytes: 0,
+                status: format!("send: {}", e),
+            });
+            format!("ollama generate: {}", e)
+        })?;
 
     if !resp.status().is_success() {
-        return Err(format!(
-            "ollama http {}: {}",
-            resp.status(),
-            resp.text().unwrap_or_default()
-        ));
+        let elapsed = t0.elapsed().as_millis() as u64;
+        let status_code = resp.status();
+        let body_text = resp.text().unwrap_or_default();
+        crate::trace::log_llm(crate::trace::LlmTrace {
+            ts: crate::trace::now_ms(),
+            backend: "ollama".into(),
+            model: model.into(),
+            node: base_url.into(),
+            call_type: "generate".into(),
+            latency_ms: elapsed,
+            tokens_out: None,
+            tok_per_sec: None,
+            prompt_bytes: prompt.len() + system.len(),
+            response_bytes: 0,
+            status: format!("http {}", status_code),
+        });
+        return Err(format!("ollama http {}: {}", status_code, body_text));
     }
 
     let resp_body: GenerateResponse = resp
         .json()
         .map_err(|e| format!("ollama response parse: {}", e))?;
 
+    let elapsed = t0.elapsed().as_millis() as u64;
+    let (tokens_out, tok_per_sec) = eval_stats(&resp_body);
+
     // Log performance if available
-    if let (Some(count), Some(dur)) = (resp_body.eval_count, resp_body.eval_duration) {
-        if dur > 0 {
-            let tps = count as f64 / (dur as f64 / 1_000_000_000.0);
-            eprintln!("[ollama] {} tokens, {:.1} tok/s", count, tps);
-        }
+    if let (Some(count), Some(tps)) = (tokens_out, tok_per_sec) {
+        eprintln!("[ollama] {} tokens, {:.1} tok/s", count, tps);
     }
 
+    crate::trace::log_llm(crate::trace::LlmTrace {
+        ts: crate::trace::now_ms(),
+        backend: "ollama".into(),
+        model: model.into(),
+        node: base_url.into(),
+        call_type: "generate".into(),
+        latency_ms: elapsed,
+        tokens_out,
+        tok_per_sec,
+        prompt_bytes: prompt.len() + system.len(),
+        response_bytes: resp_body.response.len(),
+        status: "ok".into(),
+    });
+
     Ok(resp_body.response)
+}
+
+/// Extract eval_count and tok/s from ollama response.
+fn eval_stats(resp: &GenerateResponse) -> (Option<u64>, Option<f64>) {
+    match (resp.eval_count, resp.eval_duration) {
+        (Some(count), Some(dur)) if dur > 0 => {
+            let tps = count as f64 / (dur as f64 / 1_000_000_000.0);
+            (Some(count), Some(tps))
+        }
+        (Some(count), _) => (Some(count), None),
+        _ => (None, None),
+    }
 }
 
 /// Generate with explicit temperature and num_ctx. For micro-model dispatch.
@@ -158,6 +213,7 @@ pub fn generate_with_temp(
         }),
     };
 
+    let t0 = std::time::Instant::now();
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
         .build()
@@ -167,26 +223,68 @@ pub fn generate_with_temp(
         .post(&url)
         .json(&body)
         .send()
-        .map_err(|e| format!("ollama generate: {}", e))?;
+        .map_err(|e| {
+            let elapsed = t0.elapsed().as_millis() as u64;
+            crate::trace::log_llm(crate::trace::LlmTrace {
+                ts: crate::trace::now_ms(),
+                backend: "ollama".into(),
+                model: model.into(),
+                node: base_url.into(),
+                call_type: "generate".into(),
+                latency_ms: elapsed,
+                tokens_out: None,
+                tok_per_sec: None,
+                prompt_bytes: prompt.len() + system.len(),
+                response_bytes: 0,
+                status: format!("send: {}", e),
+            });
+            format!("ollama generate: {}", e)
+        })?;
 
     if !resp.status().is_success() {
-        return Err(format!(
-            "ollama http {}: {}",
-            resp.status(),
-            resp.text().unwrap_or_default()
-        ));
+        let elapsed = t0.elapsed().as_millis() as u64;
+        let status_code = resp.status();
+        let body_text = resp.text().unwrap_or_default();
+        crate::trace::log_llm(crate::trace::LlmTrace {
+            ts: crate::trace::now_ms(),
+            backend: "ollama".into(),
+            model: model.into(),
+            node: base_url.into(),
+            call_type: "generate".into(),
+            latency_ms: elapsed,
+            tokens_out: None,
+            tok_per_sec: None,
+            prompt_bytes: prompt.len() + system.len(),
+            response_bytes: 0,
+            status: format!("http {}", status_code),
+        });
+        return Err(format!("ollama http {}: {}", status_code, body_text));
     }
 
     let resp_body: GenerateResponse = resp
         .json()
         .map_err(|e| format!("ollama response parse: {}", e))?;
 
-    if let (Some(count), Some(dur)) = (resp_body.eval_count, resp_body.eval_duration) {
-        if dur > 0 {
-            let tps = count as f64 / (dur as f64 / 1_000_000_000.0);
-            eprintln!("[micro] {} tokens, {:.1} tok/s", count, tps);
-        }
+    let elapsed = t0.elapsed().as_millis() as u64;
+    let (tokens_out, tok_per_sec) = eval_stats(&resp_body);
+
+    if let (Some(count), Some(tps)) = (tokens_out, tok_per_sec) {
+        eprintln!("[micro] {} tokens, {:.1} tok/s", count, tps);
     }
+
+    crate::trace::log_llm(crate::trace::LlmTrace {
+        ts: crate::trace::now_ms(),
+        backend: "ollama".into(),
+        model: model.into(),
+        node: base_url.into(),
+        call_type: "generate".into(),
+        latency_ms: elapsed,
+        tokens_out,
+        tok_per_sec,
+        prompt_bytes: prompt.len() + system.len(),
+        response_bytes: resp_body.response.len(),
+        status: "ok".into(),
+    });
 
     Ok(resp_body.response)
 }
@@ -289,6 +387,9 @@ pub fn chat(
         }
     });
 
+    let prompt_bytes = system.len() + user_input.len() + messages.iter().map(|(u, a)| u.len() + a.len()).sum::<usize>();
+    let t0 = std::time::Instant::now();
+
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
         .build()
@@ -298,14 +399,40 @@ pub fn chat(
         .post(&url)
         .json(&body)
         .send()
-        .map_err(|e| format!("ollama chat: {}", e))?;
+        .map_err(|e| {
+            crate::trace::log_llm(crate::trace::LlmTrace {
+                ts: crate::trace::now_ms(),
+                backend: "ollama".into(),
+                model: model.into(),
+                node: base_url.into(),
+                call_type: "chat".into(),
+                latency_ms: t0.elapsed().as_millis() as u64,
+                tokens_out: None,
+                tok_per_sec: None,
+                prompt_bytes,
+                response_bytes: 0,
+                status: format!("send: {}", e),
+            });
+            format!("ollama chat: {}", e)
+        })?;
 
     if !resp.status().is_success() {
-        return Err(format!(
-            "ollama http {}: {}",
-            resp.status(),
-            resp.text().unwrap_or_default()
-        ));
+        let status_code = resp.status();
+        let body_text = resp.text().unwrap_or_default();
+        crate::trace::log_llm(crate::trace::LlmTrace {
+            ts: crate::trace::now_ms(),
+            backend: "ollama".into(),
+            model: model.into(),
+            node: base_url.into(),
+            call_type: "chat".into(),
+            latency_ms: t0.elapsed().as_millis() as u64,
+            tokens_out: None,
+            tok_per_sec: None,
+            prompt_bytes,
+            response_bytes: 0,
+            status: format!("http {}", status_code),
+        });
+        return Err(format!("ollama http {}: {}", status_code, body_text));
     }
 
     #[derive(serde::Deserialize)]
@@ -320,6 +447,21 @@ pub fn chat(
     let chat_resp: ChatResponse = resp
         .json()
         .map_err(|e| format!("ollama chat parse: {}", e))?;
+
+    let elapsed = t0.elapsed().as_millis() as u64;
+    crate::trace::log_llm(crate::trace::LlmTrace {
+        ts: crate::trace::now_ms(),
+        backend: "ollama".into(),
+        model: model.into(),
+        node: base_url.into(),
+        call_type: "chat".into(),
+        latency_ms: elapsed,
+        tokens_out: None,
+        tok_per_sec: None,
+        prompt_bytes,
+        response_bytes: chat_resp.message.content.len(),
+        status: "ok".into(),
+    });
 
     Ok(chat_resp.message.content)
 }

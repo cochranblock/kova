@@ -63,6 +63,9 @@ enum Cmd {
     /// RAG: index code, search semantically, retrieve context for LLM.
     #[command(name = "rag")]
     Rag(RagArgs),
+    /// LLM call traces. Observability for every inference call.
+    #[command(name = "traces")]
+    Traces(TracesArgs),
 }
 
 #[derive(clap::Args)]
@@ -91,6 +94,24 @@ enum RagCmd {
     Stats,
     /// Clear the entire index.
     Clear,
+}
+
+#[derive(clap::Args)]
+struct TracesArgs {
+    #[command(subcommand)]
+    cmd: TracesCmd,
+}
+
+#[derive(clap::Subcommand)]
+enum TracesCmd {
+    /// Show recent LLM call traces.
+    Recent {
+        /// Number of traces to show.
+        #[arg(short = 'n', default_value = "20")]
+        limit: usize,
+    },
+    /// Show aggregate LLM stats.
+    Stats,
 }
 
 #[derive(clap::Args)]
@@ -1096,7 +1117,8 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
         | Some(Cmd::Micro(_))
-        | Some(Cmd::Rag(_)) => {
+        | Some(Cmd::Rag(_))
+        | Some(Cmd::Traces(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -1152,6 +1174,7 @@ fn main() -> anyhow::Result<()> {
                 Cmd::Micro(a) => run_micro(a),
                 #[cfg(feature = "rag")]
                 Cmd::Rag(a) => run_rag(a),
+                Cmd::Traces(a) => run_traces(a),
                 _ => unreachable!(),
             };
         }
@@ -1295,7 +1318,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
         | Some(Cmd::Micro(_))
-        | Some(Cmd::Rag(_)) => unreachable!("handled before tokio"),
+        | Some(Cmd::Rag(_))
+        | Some(Cmd::Traces(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
@@ -1367,5 +1391,13 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn run_traces(args: TracesArgs) -> anyhow::Result<()> {
+    match args.cmd {
+        TracesCmd::Recent { limit } => kova::trace::print_recent_traces(limit),
+        TracesCmd::Stats => kova::trace::print_llm_stats(),
+    }
     Ok(())
 }

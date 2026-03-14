@@ -104,6 +104,11 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f158 | compress_diff | git_cmd | +N/-N summary, file:line +/-content |
 | f159 | compress_log | git_cmd | Truncate hashes to 7 chars |
 | f160 | git_cmd_dispatch | git_cmd | Central dispatcher for g0-g9 |
+| f161 | log_llm | trace | Log LLM call to sled |
+| f162 | recent_llm_traces | trace | Query recent LLM traces |
+| f163 | llm_stats | trace | Aggregate LLM stats |
+| f164 | print_llm_stats | trace | Print formatted LLM stats |
+| f165 | print_recent_traces | trace | Print recent traces table |
 
 ## Types (tN)
 
@@ -135,6 +140,8 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | t106 | AgentAction |
 | t107 | GitCmd |
 | t108 | GitResult |
+| t109 | LlmTrace |
+| t110 | LlmStats |
 
 ## Struct fields (sN) — plan t3
 
