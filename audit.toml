@@ -1,0 +1,30 @@
+# Cargo audit config — workspace-level
+# Tracks known transitive vulnerabilities we cannot fix (upstream must update).
+# Re-evaluate each entry when upgrading the noted dependency.
+
+[advisories]
+# Vulnerabilities in transitive deps with no available fix
+ignore = [
+    # idna 0.2.3 via trust-dns-proto 0.22 → lers 0.4 (cochranblock)
+    # idna 0.3.0 via cookie_store → reqwest 0.11 → kalosm 0.4
+    # Punycode label confusion — low risk for our use case (no user-controlled IDN input)
+    "RUSTSEC-2024-0421",
+
+    # rsa 0.9.10 (Marvin Attack) via sqlx-mysql → sqlx 0.8 (cochranblock, oakilydokily)
+    # No fix available upstream. sqlx MySQL TLS depends on rsa crate.
+    "RUSTSEC-2023-0071",
+
+    # time 0.1.45 (segfault) via xml5ever → kalosm 0.4
+    # Kalosm pins old xml5ever chain. We never call time 0.1 directly.
+    "RUSTSEC-2020-0071",
+
+    # macroquad 0.4.14 soundness issues — mural-wasm dep, no newer version
+    "RUSTSEC-2025-0035",
+
+    # glib unsoundness (VariantStrIter) — transitive from macroquad GTK chain
+    "RUSTSEC-2024-0438",
+]
+
+[advisories.unmaintained]
+# Warn but don't fail on unmaintained crates (all transitive, we can't fix)
+severity = "warn"
