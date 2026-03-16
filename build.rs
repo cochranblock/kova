@@ -14,7 +14,12 @@ fn main() {
     }
 
     #[cfg(feature = "serve")]
-    build_kova_web();
+    {
+        // KOVA_SKIP_WASM=1 skips kova-web build (deploy to nodes with pre-built dist/)
+        if std::env::var("KOVA_SKIP_WASM").as_deref() != Ok("1") {
+            build_kova_web();
+        }
+    }
 }
 
 #[cfg(feature = "serve")]
