@@ -171,8 +171,12 @@ pub fn run_micro(
         None => template.model.clone(),
     };
 
-    // Remote node → Ollama provider.
-    let provider = Provider::Ollama { url: url.clone() };
+    // Remote node → kova serve (OpenAI-compat).
+    let provider = Provider::OpenAiCompat {
+        url: url.clone(),
+        api_key: String::new(),
+        model: model.clone(),
+    };
     let result = provider_generate(&provider, &model, &template.system_prompt, &prompt);
 
     match result {
@@ -202,8 +206,10 @@ pub fn run_micro(
 /// If the exact model exists, use it. Otherwise, find a model from the same family
 /// (e.g. qwen2.5-coder:3b → qwen2.5-coder:7b).
 fn pick_model(base_url: &str, preferred: &str) -> Option<String> {
-    let provider = Provider::Ollama {
+    let provider = Provider::OpenAiCompat {
         url: base_url.to_string(),
+        api_key: String::new(),
+        model: preferred.to_string(),
     };
     let models = provider_list_models(&provider).ok()?;
     let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
@@ -235,7 +241,11 @@ pub fn run_micro_direct(
     let model = model_override.unwrap_or(&template.model);
     let start = Instant::now();
 
-    let provider = Provider::Ollama { url: base_url.to_string() };
+    let provider = Provider::OpenAiCompat {
+        url: base_url.to_string(),
+        api_key: String::new(),
+        model: model.to_string(),
+    };
     let resp = provider_generate(&provider, model, &template.system_prompt, &prompt)?;
 
     let duration = start.elapsed();

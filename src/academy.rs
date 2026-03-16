@@ -757,7 +757,11 @@ fn moe_generate(
                 .unwrap_or_default();
 
             std::thread::spawn(move || {
-                let provider = Provider::Ollama { url: base_url };
+                let provider = Provider::OpenAiCompat {
+                    url: base_url,
+                    api_key: String::new(),
+                    model: model.clone(),
+                };
                 let result = providers::provider_generate(&provider, &model, &system, &prompt)
                     .map(|r| r.text);
                 let _ = tx.send((node_id, result));

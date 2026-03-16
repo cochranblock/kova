@@ -7,3 +7,5 @@
 
 # Claude Code worktrees
 .claude/worktrees/
+# kova-web build output (built by kova's build script)
+kova-web/target/

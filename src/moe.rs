@@ -136,7 +136,11 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
 
             std::thread::spawn(move || {
                 let start = Instant::now();
-                let provider = Provider::Ollama { url: base_url };
+                let provider = Provider::OpenAiCompat {
+                    url: base_url,
+                    api_key: String::new(),
+                    model: model.clone(),
+                };
                 let result = providers::provider_generate(&provider, &model, &system, &gen_prompt)
                     .map(|r| r.text);
                 let elapsed = start.elapsed().as_millis() as u64;

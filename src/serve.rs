@@ -132,6 +132,203 @@ async fn api_webhook_github() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({"received": true}))).into_response()
 }
 
+// ── OpenAI-compatible inference endpoints ────────────────────────
+// Lets kova act as an inference server on bare metal nodes.
+// Cluster routes Provider::OpenAiCompat requests here.
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct OaiChatRequest {
+    #[serde(default)]
+    model: String,
+    messages: Vec<OaiMessage>,
+    #[serde(default = "default_temperature")]
+    temperature: f32,
+    #[serde(default)]
+    stream: bool,
+    #[serde(default)]
+    max_tokens: Option<u32>,
+}
+
+fn default_temperature() -> f32 {
+    0.2
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+struct OaiMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Serialize)]
+struct OaiChatResponse {
+    id: String,
+    object: &'static str,
+    created: u64,
+    model: String,
+    choices: Vec<OaiChatChoice>,
+    usage: OaiUsageOut,
+}
+
+#[derive(Serialize)]
+struct OaiChatChoice {
+    index: u32,
+    message: OaiMessage,
+    finish_reason: &'static str,
+}
+
+#[derive(Serialize)]
+struct OaiUsageOut {
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    total_tokens: u64,
+}
+
+#[derive(Serialize)]
+struct OaiModelsResponse {
+    object: &'static str,
+    data: Vec<OaiModelEntry>,
+}
+
+#[derive(Serialize)]
+struct OaiModelEntry {
+    id: String,
+    object: &'static str,
+    owned_by: &'static str,
+}
+
+#[cfg(feature = "inference")]
+async fn v1_chat_completions(Json(req): Json<OaiChatRequest>) -> impl IntoResponse {
+    let model_path = match crate::config::inference_model_path() {
+        Some(p) if p.exists() => p,
+        _ => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": {"message": "no model loaded", "type": "server_error"}})),
+            ).into_response()
+        }
+    };
+
+    // Extract system prompt and user message from messages array
+    let system = req.messages.iter()
+        .filter(|m| m.role == "system")
+        .map(|m| m.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let user = req.messages.iter()
+        .filter(|m| m.role == "user")
+        .map(|m| m.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let t0 = std::time::Instant::now();
+    let system_len = system.len();
+    let user_len = user.len();
+    let result = tokio::task::spawn_blocking(move || {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| format!("tokio: {}", e))?;
+        rt.block_on(async {
+            crate::inference::f80(&model_path, &system, &user)
+                .await
+                .map_err(|e| format!("inference: {}", e))
+        })
+    }).await;
+
+    let text = match result {
+        Ok(Ok(t)) => t,
+        Ok(Err(e)) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": {"message": e, "type": "server_error"}})),
+            ).into_response()
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": {"message": format!("join: {}", e), "type": "server_error"}})),
+            ).into_response()
+        }
+    };
+
+    let elapsed = t0.elapsed();
+    let est_completion = (text.len() / 4) as u64;
+    let est_prompt = (system_len + user_len) / 4;
+    let model_name = req.model.clone();
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let resp = OaiChatResponse {
+        id: format!("kova-{}", now),
+        object: "chat.completion",
+        created: now,
+        model: model_name,
+        choices: vec![OaiChatChoice {
+            index: 0,
+            message: OaiMessage {
+                role: "assistant".into(),
+                content: text,
+            },
+            finish_reason: "stop",
+        }],
+        usage: OaiUsageOut {
+            prompt_tokens: est_prompt as u64,
+            completion_tokens: est_completion,
+            total_tokens: est_prompt as u64 + est_completion,
+        },
+    };
+
+    eprintln!("[v1] {}ms, ~{} tokens", elapsed.as_millis(), est_completion);
+    (StatusCode::OK, Json(resp)).into_response()
+}
+
+#[cfg(not(feature = "inference"))]
+async fn v1_chat_completions(Json(_req): Json<OaiChatRequest>) -> impl IntoResponse {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({"error": {"message": "build with --features inference", "type": "server_error"}})),
+    ).into_response()
+}
+
+async fn v1_models() -> impl IntoResponse {
+    let mut models = Vec::new();
+
+    // List GGUF models from the models directory
+    if let Some(model_path) = crate::config::inference_model_path() {
+        if let Some(dir) = model_path.parent() {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("gguf") {
+                        if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+                            models.push(OaiModelEntry {
+                                id: name.to_string(),
+                                object: "model",
+                                owned_by: "kova",
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Always report at least one model if inference is available
+    if models.is_empty() {
+        models.push(OaiModelEntry {
+            id: "kova-local".into(),
+            object: "model",
+            owned_by: "kova",
+        });
+    }
+
+    Json(OaiModelsResponse {
+        object: "list",
+        data: models,
+    })
+}
+
 async fn api_test_run(Query(q): Query<TestRunQuery>) -> impl IntoResponse {
     let project = if q.project.is_empty() {
         "cochranblock"
@@ -831,7 +1028,10 @@ fn app_router() -> Router<AppState> {
         .route("/api/backlog/run", post(api_backlog_run))
         .route("/api/demo/record", post(api_demo_record))
         .route("/api/test/run", get(api_test_run))
-        .route("/api/webhook/github", post(api_webhook_github));
+        .route("/api/webhook/github", post(api_webhook_github))
+        // OpenAI-compat inference — kova as inference server
+        .route("/v1/chat/completions", post(v1_chat_completions))
+        .route("/v1/models", get(v1_models));
     #[cfg(feature = "inference")]
     let r = r
         .route("/api/route", post(api_route))

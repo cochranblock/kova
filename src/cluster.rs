@@ -76,9 +76,12 @@ impl InferNode {
     }
 
     /// Get provider for this node's HTTP inference endpoint.
+    /// Uses OpenAI-compat — kova serve acts as inference server on each node.
     pub fn provider(&self) -> Provider {
-        Provider::Ollama {
+        Provider::OpenAiCompat {
             url: self.base_url(),
+            api_key: String::new(), // local LAN, no auth needed
+            model: self.model.clone(),
         }
     }
 
@@ -104,7 +107,7 @@ impl Cluster {
                 InferNode {
                     id: "n0".into(),
                     host: "192.168.1.47".into(),
-                    port: 11434, // lf — direct LAN
+                    port: 3002, // lf — kova serve
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:7b".into()),
                     role: NodeRole::PrimaryGen,
@@ -114,7 +117,7 @@ impl Cluster {
                 InferNode {
                     id: "n1".into(),
                     host: "192.168.1.44".into(),
-                    port: 11434, // gd — direct LAN
+                    port: 3002, // gd — kova serve
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:7b".into()),
                     role: NodeRole::Reviewer,
@@ -124,7 +127,7 @@ impl Cluster {
                 InferNode {
                     id: "n2".into(),
                     host: "192.168.1.45".into(),
-                    port: 11434, // bt — direct LAN (150W muzzle)
+                    port: 3002, // bt — kova serve (150W muzzle)
                     model: "qwen2.5-coder:32b".into(),
                     general_model: Some("starcoder2:15b".into()),
                     role: NodeRole::SecondaryGen,
@@ -134,7 +137,7 @@ impl Cluster {
                 InferNode {
                     id: "n3".into(),
                     host: "192.168.1.43".into(),
-                    port: 11434, // st — direct LAN
+                    port: 3002, // st — kova serve
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:14b".into()),
                     role: NodeRole::Batch,
@@ -144,7 +147,7 @@ impl Cluster {
                 InferNode {
                     id: "c2".into(),
                     host: "localhost".into(),
-                    port: 11434, // local ollama
+                    port: 3002, // local kova serve
                     model: "qwen2.5-coder:7b".into(),
                     general_model: Some("qwen2.5:3b".into()),
                     role: NodeRole::Coordinator,
@@ -162,9 +165,8 @@ impl Cluster {
             .iter()
             .map(|node| {
                 let id = node.id.clone();
-                let url = node.base_url();
+                let prov = node.provider();
                 std::thread::spawn(move || {
-                    let prov = Provider::Ollama { url: url.clone() };
                     let online = providers::provider_health(&prov);
                     let ver = if online { providers::provider_version(&prov) } else { None };
                     (id, online, ver)
@@ -308,7 +310,11 @@ impl Cluster {
 
                 std::thread::spawn(move || {
                     busy.store(true, Ordering::SeqCst);
-                    let provider = Provider::Ollama { url };
+                    let provider = Provider::OpenAiCompat {
+                        url,
+                        api_key: String::new(),
+                        model: model.clone(),
+                    };
                     let result = providers::provider_generate(&provider, &model, &system, &prompt)
                         .map(|r| r.text);
                     busy.store(false, Ordering::SeqCst);

@@ -125,9 +125,9 @@ Run: `kova micro tournament`
 ## Features
 
 ```toml
-default  = ["gui", "serve", "inference"]
-serve    = axum + tower + tracing
-gui      = eframe + egui
+default  = ["serve", "inference", "rag"]
+serve    = axum + tower + tracing (+ kova-web WASM, built automatically)
+gui      = eframe + egui (native desktop)
 inference = kalosm + reqwest + lru
 autopilot = enigo (type into Cursor)
 daemon   = capnp (worker node)
@@ -137,10 +137,15 @@ tests    = exopack (quality gate)
 ## Build
 
 ```sh
-cargo build                          # default (gui + serve + inference)
+cargo build                          # default (serve + inference + rag)
 cargo build --release --features serve --target aarch64-apple-darwin
 cargo run --features tests --bin kova-test   # quality gate
 ```
+
+**Serve (web GUI):** Builds kova-web (egui→WASM) automatically. Requires:
+`rustup target add wasm32-unknown-unknown` and `cargo install wasm-bindgen-cli`.
+
+If using a workspace, remove `kova/kova-web` from `members` — kova-web is built by kova's build script.
 
 ## Setup
 
