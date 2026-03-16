@@ -676,17 +676,8 @@ pub fn f60_triple_sims_run(project: &Path) -> SimReport {
     let sim3 = f172_sim3_impl_deep_dive(project);
     println!("  {} pass, {} fail", sim3.pass_count(), sim3.fail_count());
 
-    let mut sims = vec![sim1, sim2, sim3];
-
-    // Sim 4: Mural UI Quality — runs if oakilydokily found as sibling dir
-    if let Some(oakily) = crate::mural_sim::find_oakily_root(project) {
-        println!("TRIPLE SIMS: Sim 4 — Mural UI Quality...");
-        let sim4 = crate::mural_sim::f173_sim4_mural_ui_quality(&oakily);
-        println!("  {} pass, {} fail", sim4.pass_count(), sim4.fail_count());
-        sims.push(sim4);
-    } else {
-        println!("TRIPLE SIMS: Sim 4 — skipped (oakilydokily not found)");
-    }
+    // Sim 4 (mural-wasm) moved out of kova gate — run separately if needed
+    let sims = vec![sim1, sim2, sim3];
 
     SimReport { sims }
 }
