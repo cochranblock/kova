@@ -267,14 +267,16 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-/// Key: timestamp in big-endian bytes (sorts chronologically).
+/// Key: timestamp in big-endian bytes (sorts chronologically) + atomic counter for uniqueness.
 fn failure_key(ts: u64) -> Vec<u8> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
     let ts_bytes = ts.to_be_bytes();
-    // Add 4 pseudo-random bytes for uniqueness within the same ms
-    let rand: u32 = (ts.wrapping_mul(6364136223846793005).wrapping_add(1)) as u32;
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut key = Vec::with_capacity(12);
     key.extend_from_slice(&ts_bytes);
-    key.extend_from_slice(&rand.to_be_bytes());
+    key.extend_from_slice(&seq.to_be_bytes());
     key
 }
 
@@ -645,5 +647,26 @@ DIFFICULTY: hard";
         assert_eq!(category_for_template("f_clippy_fix"), ("clippy_fix", "technical"));
         assert_eq!(category_for_template("f_test_write"), ("test_write", "endurance"));
         assert_eq!(category_for_template("unknown"), ("unknown", "unknown"));
+    }
+
+    /// failure_key produces unique keys for same-ms inserts.
+    #[test]
+    fn failure_key_uniqueness() {
+        let ts = 12345u64;
+        let k1 = failure_key(ts);
+        let k2 = failure_key(ts);
+        assert_ne!(k1, k2, "same ts should get different keys via rand suffix");
+        assert_eq!(k1.len(), 12);
+    }
+
+    /// Empty failure tree: iter yields nothing, no panic.
+    #[test]
+    fn empty_db_operations() {
+        with_temp_db(|db| {
+            let tree = db.open_tree(FAILURE_TREE).expect("open");
+            assert_eq!(tree.len(), 0);
+            let count: usize = tree.iter().filter(|i| i.is_ok()).count();
+            assert_eq!(count, 0);
+        });
     }
 }

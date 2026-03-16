@@ -609,4 +609,29 @@ mod tests {
         assert!(impl_sym.name.contains("Display"));
         assert!(impl_sym.name.contains("Foo"));
     }
+
+    #[test]
+    fn extract_fn_nested_generics() {
+        let src = "fn foo<T: Clone, U: Into<T>>(a: T, b: U) -> T where T: Default, U: Send { a }";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "foo");
+        assert_eq!(syms[0].kind, SymbolKind::Function);
+    }
+
+    #[test]
+    fn extract_fn_lifetime_bounds() {
+        let src = "fn bar<'a, 'b: 'a>(x: &'a str, y: &'b str) -> &'a str where 'b: 'a { x }";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "bar");
+    }
+
+    #[test]
+    fn extract_fn_where_clause() {
+        let src = "fn baz<T>(v: T) -> T where T: std::fmt::Debug + Send { v }";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "baz");
+    }
 }

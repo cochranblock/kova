@@ -204,101 +204,60 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 // ── Code Chunking ────────────────────────────────────────────────
 
-/// Chunk a Rust source file into logical blocks.
-/// Strategy: split on function/struct/impl/mod boundaries.
-/// Fallback: sliding window of ~50 lines with 25% overlap.
+/// Chunk a Rust source file into logical blocks using syntax-aware symbol extraction.
+/// Uses crate::syntax::extract_symbols() for AST-aware boundaries.
+/// Fallback: sliding window of ~50 lines with 25% overlap (non-Rust or empty).
 pub fn chunk_rust_file(_file_path: &str, content: &str) -> Vec<(usize, usize, String)> {
     let lines: Vec<&str> = content.lines().collect();
     if lines.is_empty() {
         return Vec::new();
     }
 
+    // Use syntax module for symbol-aware chunking.
+    let symbols = crate::syntax::extract_symbols(content);
+
     let mut chunks = Vec::new();
-    let mut current_start = 0;
-    let mut brace_depth: i32 = 0;
-    let mut in_block = false;
 
-    for (i, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-
-        // Detect block starts: fn, struct, enum, impl, mod, trait
-        let is_block_start = !in_block
-            && (trimmed.starts_with("pub fn ")
-                || trimmed.starts_with("fn ")
-                || trimmed.starts_with("pub struct ")
-                || trimmed.starts_with("struct ")
-                || trimmed.starts_with("pub enum ")
-                || trimmed.starts_with("enum ")
-                || trimmed.starts_with("impl ")
-                || trimmed.starts_with("pub mod ")
-                || trimmed.starts_with("mod ")
-                || trimmed.starts_with("pub trait ")
-                || trimmed.starts_with("trait ")
-                || trimmed.starts_with("#[cfg(test)]")
-                || trimmed.starts_with("pub async fn ")
-                || trimmed.starts_with("async fn "));
-
-        if is_block_start {
-            // Save any preceding non-block lines as a chunk
-            if i > current_start && !in_block {
-                let text = lines[current_start..i].join("\n");
-                if text.trim().len() > 20 {
-                    chunks.push((current_start + 1, i, text));
-                }
-            }
-            current_start = i;
-            in_block = true;
-            brace_depth = 0;
-        }
-
-        // Track brace depth (skip braces inside strings and comments)
-        {
-            let chars: Vec<char> = trimmed.chars().collect();
-            let mut j = 0;
-            while j < chars.len() {
-                let ch = chars[j];
-                let next = chars.get(j + 1).copied();
-                // Line comment — skip rest of line
-                if ch == '/' && next == Some('/') { break; }
-                // Skip string literals
-                if ch == '"' {
-                    j += 1;
-                    while j < chars.len() {
-                        if chars[j] == '\\' { j += 2; continue; }
-                        if chars[j] == '"' { j += 1; break; }
-                        j += 1;
-                    }
-                    continue;
-                }
-                match ch {
-                    '{' => brace_depth += 1,
-                    '}' => brace_depth -= 1,
-                    _ => {}
-                }
-                j += 1;
-            }
-        }
-
-        // Block ends when braces balance
-        if in_block && brace_depth == 0 && trimmed.contains('}') {
-            let text = lines[current_start..=i].join("\n");
-            chunks.push((current_start + 1, i + 1, text));
-            current_start = i + 1;
-            in_block = false;
-        }
-    }
-
-    // Remaining lines
-    if current_start < lines.len() {
-        let text = lines[current_start..].join("\n");
-        if text.trim().len() > 20 {
-            chunks.push((current_start + 1, lines.len(), text));
-        }
-    }
-
-    // If no blocks found (non-Rust file), use sliding window
-    if chunks.is_empty() {
+    if symbols.is_empty() {
+        // No symbols found — fall back to sliding window.
         return chunk_sliding_window(&lines, 50, 12);
+    }
+
+    // Collect preamble (use/mod/comment lines before first symbol).
+    let first_start = symbols[0].line_start;
+    if first_start > 0 {
+        let text = lines[..first_start].join("\n");
+        if text.trim().len() > 20 {
+            chunks.push((1, first_start, text));
+        }
+    }
+
+    // Each symbol → one chunk. Gaps between symbols become their own chunk.
+    let mut prev_end = first_start;
+    for sym in &symbols {
+        // Gap between previous symbol end and this symbol start.
+        if sym.line_start > prev_end + 1 {
+            let gap_text = lines[prev_end + 1..sym.line_start].join("\n");
+            if gap_text.trim().len() > 20 {
+                chunks.push((prev_end + 2, sym.line_start, gap_text));
+            }
+        }
+
+        let start = sym.line_start;
+        let end = sym.line_end;
+        let text = lines[start..=end.min(lines.len() - 1)].join("\n");
+        if text.trim().len() > 5 {
+            chunks.push((start + 1, end + 1, text));
+        }
+        prev_end = end;
+    }
+
+    // Trailing lines after last symbol.
+    if prev_end + 1 < lines.len() {
+        let text = lines[prev_end + 1..].join("\n");
+        if text.trim().len() > 20 {
+            chunks.push((prev_end + 2, lines.len(), text));
+        }
     }
 
     // Split oversized chunks (>100 lines) into sub-chunks
@@ -636,5 +595,48 @@ pub struct Foo {
         assert_eq!(results.len(), 1);
         assert!((results[0].score - 1.0).abs() < 0.001);
         assert_eq!(results[0].chunk.file, "test.rs");
+    }
+
+    #[test]
+    fn chunk_rust_file_with_strings_and_comments() {
+        let code = r##"
+// comment with { braces } inside
+fn parse() {
+    let s = "string with { more } braces";
+    let r = r#"raw string { }"#;
+}
+"##;
+        let chunks = chunk_rust_file("parse.rs", code);
+        assert!(!chunks.is_empty(), "should chunk despite braces in strings/comments");
+        let full: String = chunks.iter().map(|(_, _, t)| t.as_str()).collect::<Vec<_>>().join("\n");
+        assert!(full.contains("parse"), "should include fn parse");
+    }
+
+    #[test]
+    fn vector_store_remove_then_insert_same_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = VectorStore::open(tmp.path()).unwrap();
+
+        let chunk1 = Chunk {
+            file: "a.rs".to_string(),
+            lines: (1, 5),
+            text: "old".into(),
+            embedding: vec![1.0, 0.0, 0.0],
+        };
+        store.insert(&chunk1).unwrap();
+        let removed = store.remove_file("a.rs").unwrap();
+        assert_eq!(removed, 1);
+
+        let chunk2 = Chunk {
+            file: "a.rs".to_string(),
+            lines: (1, 8),
+            text: "new".into(),
+            embedding: vec![0.0, 1.0, 0.0],
+        };
+        store.insert(&chunk2).unwrap();
+
+        let results = store.search(&[0.0, 1.0, 0.0], 5).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].chunk.text, "new");
     }
 }

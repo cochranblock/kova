@@ -359,4 +359,39 @@ mod tests {
         assert!(summary.contains("2 assistant turn(s)"));
         assert!(summary.contains("1 tool exchange(s)"));
     }
+
+    /// f170=estimate_tokens. Multibyte UTF-8 (emoji) counts chars not bytes.
+    #[test]
+    fn estimate_tokens_multibyte_utf8() {
+        // "🦀" is 1 char, 4 bytes. chars/4 = 0.25 → rounds up to 1.
+        assert_eq!(f170("🦀"), 1);
+        // "café" = 4 chars, 5 bytes. (4+3)/4 = 1.
+        assert_eq!(f170("café"), 1);
+    }
+
+    /// f171=trim_conversation. Edge: Tool results at start.
+    #[test]
+    fn trim_conversation_tool_results_edge() {
+        let conv = "Tool results:\n[read_file] ok\n\nUser: hi\n\nAssistant: hello";
+        let budget = t111 {
+            max_tokens: 4096,
+            system_reserved: 100,
+            tool_reserved: 100,
+        };
+        let trimmed = f171(conv, &budget);
+        assert!(trimmed.contains("hello"));
+    }
+
+    /// f171=trim_conversation. Edge: single turn with no prefix.
+    #[test]
+    fn trim_conversation_single_turn_no_prefix() {
+        let conv = "just some text without User:/Assistant:";
+        let budget = t111 {
+            max_tokens: 100,
+            system_reserved: 10,
+            tool_reserved: 10,
+        };
+        let trimmed = f171(conv, &budget);
+        assert!(!trimmed.is_empty());
+    }
 }

@@ -270,6 +270,18 @@ pub fn cursor_prompts_enabled() -> bool {
     load_config().cursor.prompts_enabled
 }
 
+/// Ollama base URL. OLLAMA_HOST or http://localhost:11434.
+pub fn ollama_url() -> String {
+    std::env::var("OLLAMA_HOST")
+        .unwrap_or_else(|_| "http://localhost:11434".to_string())
+}
+
+/// Default model for review/feedback. OLLAMA_MODEL or qwen2.5-coder:1.5b.
+pub fn default_model() -> String {
+    std::env::var("OLLAMA_MODEL")
+        .unwrap_or_else(|_| "qwen2.5-coder:1.5b".to_string())
+}
+
 /// f97=home. HOME env or /.
 pub fn home() -> PathBuf {
     std::env::var("HOME")

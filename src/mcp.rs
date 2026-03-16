@@ -488,4 +488,22 @@ mod tests {
         let resp_str = f175(&serde_json::to_string(&req).unwrap(), Path::new("/tmp"));
         assert!(resp_str.is_empty(), "notifications should produce no response");
     }
+
+    /// f175 tools/call with missing required args returns isError.
+    #[test]
+    fn f175_tools_call_missing_args_returns_error() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {
+                "name": "read_file",
+                "arguments": {}
+            }
+        });
+        let resp_str = f175(&serde_json::to_string(&req).unwrap(), Path::new("/tmp"));
+        let resp: Value = serde_json::from_str(&resp_str).unwrap();
+        assert_eq!(resp["id"], 7);
+        assert!(resp["result"]["isError"] == true || resp["error"].is_object());
+    }
 }

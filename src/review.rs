@@ -452,4 +452,25 @@ END";
         assert_eq!(result.issues[1].severity, Severity::Warning);
         assert_eq!(result.issues[2].severity, Severity::Praise);
     }
+
+    #[test]
+    /// parse_review_response. Malformed LLM output (garbage, partial SEV lines).
+    fn parse_malformed_llm_output() {
+        let raw = "SEV:Warning FILE:src/x.rs LINE:bad DESC:no number";
+        let result = parse_review_response(raw).unwrap();
+        assert!(result.issues.is_empty() || result.issues[0].line.is_none());
+    }
+
+    #[test]
+    /// format_review. Empty diff produces valid output.
+    fn format_review_empty_diff() {
+        let result = ReviewResult {
+            summary: "No changes".to_string(),
+            score: 10,
+            issues: vec![],
+        };
+        let out = format_review(&result);
+        assert!(out.contains("10/10"));
+        assert!(out.contains("No changes"));
+    }
 }

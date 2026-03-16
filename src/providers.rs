@@ -354,4 +354,16 @@ mod tests {
         };
         assert_eq!(resp.tokens_out, None);
     }
+
+    /// provider_generate with unreachable URL returns Err (not panic).
+    #[test]
+    fn provider_generate_unreachable_url_returns_error() {
+        let provider = Provider::Ollama {
+            url: "http://127.0.0.1:1".into(),
+        };
+        let result = provider_generate(&provider, "test", "system", "prompt");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(!err.is_empty());
+    }
 }

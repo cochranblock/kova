@@ -327,4 +327,60 @@ edition = "2021"
         assert!(result.passed);
         assert!(result.check_ok);
     }
+
+    /// ci_check with nested src dirs (a/b/c.rs) still runs.
+    #[test]
+    fn ci_check_nested_src_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("Cargo.toml"),
+            r#"[package]
+name = "ci-nested"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(tmp.path().join("src/foo/bar")).unwrap();
+        std::fs::write(tmp.path().join("src/lib.rs"), "pub mod foo;").unwrap();
+        std::fs::write(tmp.path().join("src/foo/mod.rs"), "pub mod bar;").unwrap();
+        std::fs::write(tmp.path().join("src/foo/bar.rs"), "pub fn f() {}").unwrap();
+
+        let config = CiConfig {
+            project_dir: tmp.path().to_path_buf(),
+            run_clippy: true,
+            run_tests: true,
+            ..Default::default()
+        };
+        let result = ci_check(tmp.path(), &config);
+        assert!(result.passed, "nested src should compile");
+    }
+
+    /// ci_check clippy-only mode (no tests).
+    #[test]
+    fn ci_check_clippy_only() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("Cargo.toml"),
+            r#"[package]
+name = "ci-clippy"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(tmp.path().join("src/lib.rs"), "pub fn add(a: i32, b: i32) -> i32 { a + b }").unwrap();
+
+        let config = CiConfig {
+            project_dir: tmp.path().to_path_buf(),
+            run_clippy: true,
+            run_tests: false,
+            ..Default::default()
+        };
+        let result = ci_check(tmp.path(), &config);
+        assert!(result.passed);
+        assert_eq!(result.tests_ok, None);
+        assert_eq!(result.clippy_ok, Some(true));
+    }
 }
