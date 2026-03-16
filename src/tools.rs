@@ -187,6 +187,66 @@ pub static TOOLS: &[t101] = &[
             description: "Content to append.",
         }],
     },
+    t101 {
+        name: "code_review",
+        description: "Review a diff or file for bugs, security issues, and style. Returns structured findings with severity.",
+        params: &[
+            t102 {
+                name: "diff",
+                param_type: "string",
+                required: true,
+                description: "Diff text or code to review.",
+            },
+        ],
+    },
+    t101 {
+        name: "code_outline",
+        description: "Extract code structure (functions, structs, enums, traits, impls) from a Rust source file.",
+        params: &[
+            t102 {
+                name: "path",
+                param_type: "string",
+                required: true,
+                description: "Path to .rs file.",
+            },
+        ],
+    },
+    t101 {
+        name: "record_failure",
+        description: "Record a challenge failure for the feedback loop. Feeds into harder challenge generation.",
+        params: &[
+            t102 {
+                name: "challenge",
+                param_type: "string",
+                required: true,
+                description: "Challenge description that was failed.",
+            },
+            t102 {
+                name: "input",
+                param_type: "string",
+                required: true,
+                description: "The input prompt given.",
+            },
+            t102 {
+                name: "expected",
+                param_type: "string",
+                required: true,
+                description: "Expected verification string.",
+            },
+            t102 {
+                name: "actual",
+                param_type: "string",
+                required: true,
+                description: "What the model actually returned.",
+            },
+            t102 {
+                name: "model",
+                param_type: "string",
+                required: true,
+                description: "Model name.",
+            },
+        ],
+    },
     #[cfg(feature = "rag")]
     t101 {
         name: "rag_search",
@@ -240,16 +300,16 @@ pub fn f140(text: &str) -> Vec<t103> {
         let mut i = 0;
         let bytes = text.as_bytes();
         while i < bytes.len() {
-            if bytes[i] == b'{' {
-                if let Some(json_str) = extract_json_object(&text[i..]) {
-                    if json_str.contains("\"tool\"") {
-                        if let Some(call) = parse_single_tool_call(json_str) {
-                            calls.push(call);
-                        }
-                    }
-                    i += json_str.len();
-                    continue;
+            if bytes[i] == b'{'
+                && let Some(json_str) = extract_json_object(&text[i..])
+            {
+                if json_str.contains("\"tool\"")
+                    && let Some(call) = parse_single_tool_call(json_str)
+                {
+                    calls.push(call);
                 }
+                i += json_str.len();
+                continue;
             }
             i += 1;
         }
@@ -351,6 +411,9 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
         "glob" => f146(call, project_dir),
         "grep" => f150(call, project_dir),
         "memory_write" => f155(call),
+        "code_review" => f207(call, project_dir),
+        "code_outline" => f208(call, project_dir),
+        "record_failure" => f209(call),
         #[cfg(feature = "rag")]
         "rag_search" => f166(call),
         _ => t104 {
@@ -783,7 +846,7 @@ fn f166(call: &t103) -> t104 {
         }
     };
 
-    match crate::rag::search(&store, &query, k) {
+    match crate::rag::search(&store, query, k) {
         Ok(results) => {
             if results.is_empty() {
                 return t104 {
@@ -804,6 +867,105 @@ fn f166(call: &t103) -> t104 {
             success: false,
             output: format!("rag search: {}", e),
         },
+    }
+}
+
+// ── f207: code_review ─────────────────────────────────────
+
+/// f207=code_review tool. Send diff to LLM for review.
+fn f207(call: &t103, _project_dir: &Path) -> t104 {
+    let diff = match require_arg(call, "diff") {
+        Ok(d) => d,
+        Err(e) => return e,
+    };
+
+    let ollama_url = crate::config::ollama_url();
+    let model = crate::config::default_model();
+
+    match crate::review::review_diff(diff, &ollama_url, &model) {
+        Ok(result) => t104 {
+            tool: call.tool.clone(),
+            success: true,
+            output: crate::review::format_review(&result),
+        },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("review failed: {}", e),
+        },
+    }
+}
+
+// ── f208: code_outline ────────────────────────────────────
+
+/// f208=code_outline tool. Extract symbols from a Rust file.
+fn f208(call: &t103, project_dir: &Path) -> t104 {
+    let raw_path = match require_arg(call, "path") {
+        Ok(p) => p,
+        Err(e) => return e,
+    };
+    let path = resolve_path(raw_path, project_dir);
+
+    match crate::syntax::outline_file(&path) {
+        Ok(symbols) => {
+            let outline = crate::syntax::format_outline(&symbols);
+            t104 {
+                tool: call.tool.clone(),
+                success: true,
+                output: if outline.is_empty() {
+                    "no symbols found".into()
+                } else {
+                    outline
+                },
+            }
+        }
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("outline: {}", e),
+        },
+    }
+}
+
+// ── f209: record_failure ──────────────────────────────────
+
+/// f209=record_failure tool. Store a challenge failure for curriculum feedback.
+fn f209(call: &t103) -> t104 {
+    let challenge = match require_arg(call, "challenge") {
+        Ok(c) => c.to_string(),
+        Err(e) => return e,
+    };
+    let input = match require_arg(call, "input") {
+        Ok(i) => i.to_string(),
+        Err(e) => return e,
+    };
+    let expected = match require_arg(call, "expected") {
+        Ok(e) => e.to_string(),
+        Err(e) => return e,
+    };
+    let actual = match require_arg(call, "actual") {
+        Ok(a) => a.to_string(),
+        Err(e) => return e,
+    };
+    let model = match require_arg(call, "model") {
+        Ok(m) => m.to_string(),
+        Err(e) => return e,
+    };
+
+    crate::feedback::record_failure(crate::feedback::FailureRecord {
+        challenge_desc: challenge,
+        input,
+        expected_verify: expected,
+        actual_response: actual,
+        model,
+        event_type: "agent".into(),
+        ts: 0,
+    });
+
+    t104 {
+        tool: call.tool.clone(),
+        success: true,
+        output: "failure recorded".into(),
     }
 }
 
@@ -914,5 +1076,338 @@ mod tests {
         std::fs::write(project.join("foo.txt"), "x").unwrap();
         let resolved = resolve_path("foo.txt", &project);
         assert!(resolved.starts_with(&project));
+    }
+
+    // ── TEST-1: Dispatch tests ──────────────────────────
+
+    #[test]
+    fn f141_dispatch_unknown_tool() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let call = t103 {
+            tool: "nonexistent_tool".into(),
+            args: HashMap::new(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(!result.success);
+        assert!(result.output.contains("Unknown tool"));
+    }
+
+    #[test]
+    fn f141_dispatch_read_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("hello.rs"), "fn main() {}").unwrap();
+        let call = t103 {
+            tool: "read_file".into(),
+            args: [("path".into(), "hello.rs".into())].into(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(result.success);
+        assert!(result.output.contains("fn main()"));
+        assert_eq!(result.tool, "read_file");
+    }
+
+    #[test]
+    fn f141_dispatch_write_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let call = t103 {
+            tool: "write_file".into(),
+            args: [
+                ("path".into(), "new.txt".into()),
+                ("content".into(), "hello world".into()),
+            ]
+            .into(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(result.success);
+        let content = std::fs::read_to_string(tmp.path().join("new.txt")).unwrap();
+        assert_eq!(content, "hello world");
+    }
+
+    #[test]
+    fn f141_dispatch_edit_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("e.rs"), "fn old() {}").unwrap();
+        let call = t103 {
+            tool: "edit_file".into(),
+            args: [
+                ("path".into(), "e.rs".into()),
+                ("old_text".into(), "fn old()".into()),
+                ("new_text".into(), "fn fresh()".into()),
+            ]
+            .into(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(result.success);
+        let content = std::fs::read_to_string(tmp.path().join("e.rs")).unwrap();
+        assert!(content.contains("fn fresh()"));
+    }
+
+    #[test]
+    fn f141_dispatch_glob() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("a.rs"), "").unwrap();
+        std::fs::write(tmp.path().join("b.rs"), "").unwrap();
+        std::fs::write(tmp.path().join("c.txt"), "").unwrap();
+        let call = t103 {
+            tool: "glob".into(),
+            args: [("pattern".into(), "*.rs".into())].into(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(result.success);
+        assert!(result.output.contains("a.rs"));
+        assert!(result.output.contains("b.rs"));
+        assert!(!result.output.contains("c.txt"));
+    }
+
+    #[test]
+    fn f141_dispatch_bash() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let call = t103 {
+            tool: "bash".into(),
+            args: [("command".into(), "echo kova-test-output".into())].into(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(result.success);
+        assert!(result.output.contains("kova-test-output"));
+    }
+
+    #[test]
+    fn f141_dispatch_grep() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("search.txt"), "needle in haystack\nno match").unwrap();
+        let call = t103 {
+            tool: "grep".into(),
+            args: [
+                ("pattern".into(), "needle".into()),
+                ("path".into(), "search.txt".into()),
+            ]
+            .into(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(result.success);
+        assert!(result.output.contains("needle"));
+    }
+
+    #[test]
+    fn f141_dispatch_code_outline() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("outline.rs"),
+            "pub fn hello() {\n    println!(\"hi\");\n}\n\nstruct Foo {\n    x: i32,\n}\n",
+        )
+        .unwrap();
+        let call = t103 {
+            tool: "code_outline".into(),
+            args: [("path".into(), "outline.rs".into())].into(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(result.success);
+        assert!(result.output.contains("hello"));
+        assert!(result.output.contains("Foo"));
+    }
+
+    #[test]
+    fn f141_dispatch_record_failure() {
+        let call = t103 {
+            tool: "record_failure".into(),
+            args: [
+                ("challenge".into(), "test challenge".into()),
+                ("input".into(), "test input".into()),
+                ("expected".into(), "compiles".into()),
+                ("actual".into(), "error output".into()),
+                ("model".into(), "test-model".into()),
+            ]
+            .into(),
+        };
+        let result = f141(&call, Path::new("/tmp"));
+        assert!(result.success);
+        assert!(result.output.contains("recorded"));
+    }
+
+    #[test]
+    fn f141_dispatch_record_failure_missing_arg() {
+        let call = t103 {
+            tool: "record_failure".into(),
+            args: [("challenge".into(), "only one arg".into())].into(),
+        };
+        let result = f141(&call, Path::new("/tmp"));
+        assert!(!result.success);
+        assert!(result.output.contains("Missing"));
+    }
+
+    // ── TEST-1: Parse edge cases ────────────────────────
+
+    #[test]
+    fn f140_multiple_tool_calls() {
+        let text = r#"
+```json
+{"tool": "read_file", "args": {"path": "a.rs"}}
+```
+Then another:
+```json
+{"tool": "write_file", "args": {"path": "b.rs", "content": "hello"}}
+```
+"#;
+        let calls = f140(text);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].tool, "read_file");
+        assert_eq!(calls[1].tool, "write_file");
+    }
+
+    #[test]
+    fn f140_malformed_json_skipped() {
+        let text = r#"
+```json
+{"tool": "read_file", "args": {"path": "a.rs"}
+```
+This JSON is missing a closing brace — should be skipped.
+```json
+{"tool": "bash", "args": {"command": "echo hi"}}
+```
+"#;
+        let calls = f140(text);
+        // At least the valid one should parse
+        assert!(calls.iter().any(|c| c.tool == "bash"));
+    }
+
+    #[test]
+    fn f140_json_without_tool_key_ignored() {
+        let text = r#"{"name": "not a tool", "value": 42}"#;
+        let calls = f140(text);
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn f140_empty_string() {
+        assert!(f140("").is_empty());
+    }
+
+    #[test]
+    fn f140_tool_call_with_extra_fields() {
+        let text = r#"{"tool": "bash", "args": {"command": "ls"}, "extra": true}"#;
+        let calls = f140(text);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].tool, "bash");
+    }
+
+    // ── TEST-1: Tool registry ───────────────────────────
+
+    #[test]
+    fn tool_registry_all_tools_have_names() {
+        for tool in TOOLS {
+            assert!(!tool.name.is_empty(), "tool has empty name");
+            assert!(!tool.description.is_empty(), "tool {} has empty description", tool.name);
+        }
+    }
+
+    #[test]
+    fn tool_registry_no_duplicate_names() {
+        let mut names = std::collections::HashSet::new();
+        for tool in TOOLS {
+            assert!(names.insert(tool.name), "duplicate tool name: {}", tool.name);
+        }
+    }
+
+    #[test]
+    fn f149_format_includes_all_tools() {
+        let prompt = f149();
+        for tool in TOOLS {
+            assert!(
+                prompt.contains(tool.name),
+                "f149 output missing tool: {}",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn f143_write_file_creates_subdirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project = tmp.path().canonicalize().unwrap();
+        let call = t103 {
+            tool: "write_file".into(),
+            args: [
+                ("path".into(), "sub/dir/file.txt".into()),
+                ("content".into(), "nested".into()),
+            ]
+            .into(),
+        };
+        let result = f143(&call, &project);
+        assert!(result.success, "write should succeed: {}", result.output);
+        let content = std::fs::read_to_string(project.join("sub/dir/file.txt")).unwrap();
+        assert_eq!(content, "nested");
+    }
+
+    #[test]
+    fn f142_read_nonexistent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let call = t103 {
+            tool: "read_file".into(),
+            args: [("path".into(), "nope.txt".into())].into(),
+        };
+        let result = f142(&call, tmp.path());
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn f144_edit_no_match() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("f.rs"), "fn hello() {}").unwrap();
+        let call = t103 {
+            tool: "edit_file".into(),
+            args: [
+                ("path".into(), "f.rs".into()),
+                ("old_text".into(), "fn missing()".into()),
+                ("new_text".into(), "fn replaced()".into()),
+            ]
+            .into(),
+        };
+        let result = f144(&call, tmp.path());
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn f142_read_with_offset_and_limit() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("lines.txt"), "L1\nL2\nL3\nL4\nL5").unwrap();
+        let call = t103 {
+            tool: "read_file".into(),
+            args: [
+                ("path".into(), "lines.txt".into()),
+                ("offset".into(), "2".into()),
+                ("limit".into(), "2".into()),
+            ]
+            .into(),
+        };
+        let result = f142(&call, tmp.path());
+        assert!(result.success);
+        assert!(result.output.contains("L2"));
+        assert!(result.output.contains("L3"));
+        // Should NOT contain L1 or L5
+        assert!(!result.output.contains("L1\n"));
+    }
+
+    #[test]
+    fn f208_code_outline_empty_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("empty.rs"), "").unwrap();
+        let call = t103 {
+            tool: "code_outline".into(),
+            args: [("path".into(), "empty.rs".into())].into(),
+        };
+        let result = f208(&call, tmp.path());
+        assert!(result.success);
+        assert!(result.output.contains("no symbols"));
+    }
+
+    #[test]
+    fn f208_code_outline_nonexistent_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let call = t103 {
+            tool: "code_outline".into(),
+            args: [("path".into(), "nope.rs".into())].into(),
+        };
+        let result = f208(&call, tmp.path());
+        assert!(!result.success);
     }
 }

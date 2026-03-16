@@ -147,3 +147,80 @@ fn truncate_output(s: &str, max_lines: usize) -> String {
         tail.join("\n")
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_output_short_text() {
+        let s = "line1\nline2\nline3";
+        assert_eq!(truncate_output(s, 5), s);
+    }
+
+    #[test]
+    fn truncate_output_exact_limit() {
+        let s = "a\nb\nc";
+        assert_eq!(truncate_output(s, 3), s);
+    }
+
+    #[test]
+    fn truncate_output_long_text() {
+        let lines: Vec<String> = (0..100).map(|i| format!("line{}", i)).collect();
+        let s = lines.join("\n");
+        let result = truncate_output(&s, 10);
+        assert!(result.contains("line0"));
+        assert!(result.contains("line99"));
+        assert!(result.contains("omitted"));
+    }
+
+    #[test]
+    fn truncate_output_empty() {
+        assert_eq!(truncate_output("", 10), "");
+    }
+
+    #[test]
+    fn truncate_output_single_line() {
+        assert_eq!(truncate_output("only", 10), "only");
+    }
+
+    #[test]
+    fn agent_budget_values() {
+        assert!(AGENT_BUDGET.max_tokens > 0);
+        assert!(AGENT_BUDGET.system_reserved < AGENT_BUDGET.max_tokens);
+        assert!(AGENT_BUDGET.tool_reserved < AGENT_BUDGET.max_tokens);
+        assert!(
+            AGENT_BUDGET.system_reserved + AGENT_BUDGET.tool_reserved < AGENT_BUDGET.max_tokens
+        );
+    }
+
+    #[test]
+    fn t106_variants() {
+        let done = t106::Done("answer".into());
+        match done {
+            t106::Done(s) => assert_eq!(s, "answer"),
+            _ => panic!("expected Done"),
+        }
+
+        let cont = t106::Continue {
+            tool_results: vec![t104 {
+                tool: "test".into(),
+                success: true,
+                output: "ok".into(),
+            }],
+        };
+        match cont {
+            t106::Continue { tool_results } => {
+                assert_eq!(tool_results.len(), 1);
+                assert!(tool_results[0].success);
+            }
+            _ => panic!("expected Continue"),
+        }
+    }
+
+    #[test]
+    fn tool_output_max_tokens_reasonable() {
+        assert!(TOOL_OUTPUT_MAX_TOKENS > 100);
+        assert!(TOOL_OUTPUT_MAX_TOKENS <= AGENT_BUDGET.max_tokens);
+    }
+}

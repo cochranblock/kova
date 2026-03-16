@@ -291,7 +291,7 @@ fn extract_fn_name(s: &str) -> Option<String> {
         .find("fn ")
         .map(|i| &s[i + 3..])?;
     let name_end = after_fn
-        .find(|c: char| c == '(' || c == '<' || c == ' ')
+        .find(|c: char| ['(', '<', ' '].contains(&c))
         .unwrap_or(after_fn.len());
     let name = after_fn[..name_end].trim();
     if name.is_empty() {
@@ -336,8 +336,8 @@ fn find_block_end(start: usize, lines: &[&str]) -> usize {
     let mut in_string = false;
     let mut in_block_comment = false;
 
-    for i in start..lines.len() {
-        let chars: Vec<char> = lines[i].chars().collect();
+    for (i, line) in lines.iter().enumerate().skip(start) {
+        let chars: Vec<char> = line.chars().collect();
         let mut in_line_comment = false;
         let mut j = 0;
 

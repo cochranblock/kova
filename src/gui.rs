@@ -13,6 +13,7 @@ use crate::theme::{self, colors, layout};
 pub fn run(demo: bool) -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([720.0, 560.0]),
+        run_and_return: false, // Use blocking event loop; may help macOS window visibility
         ..Default::default()
     };
     eframe::run_native(

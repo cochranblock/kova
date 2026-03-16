@@ -260,10 +260,10 @@ fn parse_review_response(raw: &str) -> Result<ReviewResult, String> {
             break;
         }
 
-        if in_issues && trimmed.starts_with("SEV:") {
-            if let Some(issue) = parse_issue_line(trimmed) {
-                issues.push(issue);
-            }
+        if in_issues && trimmed.starts_with("SEV:")
+            && let Some(issue) = parse_issue_line(trimmed)
+        {
+            issues.push(issue);
         }
     }
 

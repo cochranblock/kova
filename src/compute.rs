@@ -149,11 +149,11 @@ impl t6 {
         let (cwd, args) = self.cargo_cwd_args(plan, "build", &extra);
         let mut cmd = Command::new("cargo");
         cmd.args(&args).current_dir(&cwd);
-        if let Some(preset) = self.resolve_preset(plan) {
-            if preset.target_dir_in_project {
-                let target_dir = plan.s4.join("target");
-                cmd.env("CARGO_TARGET_DIR", &target_dir);
-            }
+        if let Some(preset) = self.resolve_preset(plan)
+            && preset.target_dir_in_project
+        {
+            let target_dir = plan.s4.join("target");
+            cmd.env("CARGO_TARGET_DIR", &target_dir);
         }
         let r = cmd.output();
         self.cargo_result("cargo build", r)

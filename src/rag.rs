@@ -638,4 +638,113 @@ fn parse() {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].chunk.text, "new");
     }
+
+    // ── TEST-2/3: Cross-module integration & edge cases ─────
+
+    #[test]
+    fn chunk_rust_file_uses_syntax_symbols() {
+        // Verify that chunk_rust_file produces symbol-aligned chunks via syntax::extract_symbols
+        let code = "pub fn alpha() {\n    1 + 1\n}\n\npub fn beta() {\n    2 + 2\n}\n";
+        let chunks = chunk_rust_file("sym.rs", code);
+        // Should produce at least two chunks (one per function), possibly with preamble
+        let fn_chunks: Vec<_> = chunks.iter().filter(|(_, _, t)| t.contains("fn ")).collect();
+        assert!(fn_chunks.len() >= 2, "expected at least 2 function chunks, got {}", fn_chunks.len());
+    }
+
+    #[test]
+    fn chunk_rust_file_empty() {
+        let chunks = chunk_rust_file("empty.rs", "");
+        assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn chunk_rust_file_no_symbols() {
+        // File with only comments and blank lines — no symbols
+        let code = "// just a comment\n// another comment\n";
+        let chunks = chunk_rust_file("comments.rs", code);
+        // Should produce a preamble chunk or nothing, but not panic
+        assert!(chunks.len() <= 1);
+    }
+
+    #[test]
+    fn chunk_rust_file_large_function_splits() {
+        // A function >100 lines should be split via sliding window
+        let mut code = String::from("fn big() {\n");
+        for i in 0..120 {
+            code.push_str(&format!("    let x{} = {};\n", i, i));
+        }
+        code.push_str("}\n");
+        let chunks = chunk_rust_file("big.rs", &code);
+        // Should be split into multiple chunks
+        assert!(chunks.len() >= 2, "big function should split, got {} chunks", chunks.len());
+    }
+
+    #[test]
+    fn chunk_rust_file_preamble_captured() {
+        // Use/mod lines before first symbol should be captured as preamble
+        let code = "use std::io;\nuse std::path::Path;\n\npub fn work() {\n    42\n}\n";
+        let chunks = chunk_rust_file("preamble.rs", code);
+        let all_text: String = chunks.iter().map(|(_, _, t)| t.as_str()).collect::<Vec<_>>().join("\n");
+        assert!(all_text.contains("use std::io"), "preamble should be captured");
+        assert!(all_text.contains("fn work"), "symbol should be captured");
+    }
+
+    #[test]
+    fn vector_store_search_empty() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = VectorStore::open(tmp.path()).unwrap();
+        let results = store.search(&[1.0, 0.0], 5).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn vector_store_multiple_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = VectorStore::open(tmp.path()).unwrap();
+
+        for i in 0..3 {
+            let chunk = Chunk {
+                file: format!("file{}.rs", i),
+                lines: (1, 5),
+                text: format!("content {}", i),
+                embedding: vec![i as f32, 0.0, 0.0],
+            };
+            store.insert(&chunk).unwrap();
+        }
+
+        // Remove one file
+        let removed = store.remove_file("file1.rs").unwrap();
+        assert_eq!(removed, 1);
+
+        // Should have 2 remaining
+        let results = store.search(&[1.0, 0.0, 0.0], 10).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.chunk.file != "file1.rs"));
+    }
+
+    #[test]
+    fn vector_store_cosine_similarity_ordering() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = VectorStore::open(tmp.path()).unwrap();
+
+        // Insert chunks with known embeddings
+        let close = Chunk {
+            file: "close.rs".into(),
+            lines: (1, 1),
+            text: "close match".into(),
+            embedding: vec![0.9, 0.1, 0.0],
+        };
+        let far = Chunk {
+            file: "far.rs".into(),
+            lines: (1, 1),
+            text: "far match".into(),
+            embedding: vec![0.0, 0.0, 1.0],
+        };
+        store.insert(&close).unwrap();
+        store.insert(&far).unwrap();
+
+        let results = store.search(&[1.0, 0.0, 0.0], 2).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].chunk.file, "close.rs", "closer vector should rank first");
+    }
 }

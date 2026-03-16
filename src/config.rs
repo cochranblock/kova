@@ -376,12 +376,13 @@ pub fn discover_projects() -> Vec<PathBuf> {
 
     // 1. Parse root Cargo.toml for [workspace] members
     let manifest = root.join("Cargo.toml");
-    if manifest.exists() {
-        if let Ok(content) = std::fs::read_to_string(&manifest) {
-            if let Ok(toml) = content.parse::<toml::Value>() {
-                if let Some(ws) = toml.get("workspace") {
-                    if let Some(members) = ws.get("members") {
-                        let members = match members {
+    if manifest.exists()
+        && let Ok(content) = std::fs::read_to_string(&manifest)
+        && let Ok(toml) = content.parse::<toml::Value>()
+        && let Some(ws) = toml.get("workspace")
+        && let Some(members) = ws.get("members")
+    {
+        let members = match members {
                             toml::Value::Array(a) => a
                                 .iter()
                                 .filter_map(|v| v.as_str())
@@ -390,17 +391,13 @@ pub fn discover_projects() -> Vec<PathBuf> {
                             toml::Value::String(s) => vec![s.clone()],
                             _ => vec![],
                         };
-                        for m in members {
-                            let full = root.join(&m);
-                            if full.exists()
-                                && full.join("Cargo.toml").exists()
-                                && seen.insert(full.clone())
-                            {
-                                out.push(full);
-                            }
-                        }
-                    }
-                }
+        for m in members {
+            let full = root.join(&m);
+            if full.exists()
+                && full.join("Cargo.toml").exists()
+                && seen.insert(full.clone())
+            {
+                out.push(full);
             }
         }
     }
@@ -462,12 +459,11 @@ fn workspace_root_from_project(project: &Path) -> PathBuf {
     }
     while !dir.as_os_str().is_empty() {
         let manifest = dir.join("Cargo.toml");
-        if manifest.exists() {
-            if let Ok(content) = std::fs::read_to_string(&manifest) {
-                if content.contains("[workspace]") {
-                    return dir;
-                }
-            }
+        if manifest.exists()
+            && let Ok(content) = std::fs::read_to_string(&manifest)
+            && content.contains("[workspace]")
+        {
+            return dir;
         }
         dir = match dir.parent() {
             Some(p) => p.to_path_buf(),

@@ -93,13 +93,12 @@ pub fn record_failure(mut record: FailureRecord) {
     if record.ts == 0 {
         record.ts = now_ms();
     }
-    if let Some(db) = feedback_db() {
-        if let Ok(tree) = db.open_tree(FAILURE_TREE) {
-            let key = failure_key(record.ts);
-            if let Ok(val) = serde_json::to_vec(&record) {
-                let _ = tree.insert(key, val);
-            }
-        }
+    if let Some(db) = feedback_db()
+        && let Ok(tree) = db.open_tree(FAILURE_TREE)
+        && let Ok(val) = serde_json::to_vec(&record)
+    {
+        let key = failure_key(record.ts);
+        let _ = tree.insert(key, val);
     }
 }
 
@@ -119,10 +118,10 @@ pub fn recent_failures(limit: usize) -> Vec<FailureRecord> {
         if out.len() >= limit {
             break;
         }
-        if let Ok((_k, v)) = item {
-            if let Ok(record) = serde_json::from_slice::<FailureRecord>(&v) {
-                out.push(record);
-            }
+        if let Ok((_k, v)) = item
+            && let Ok(record) = serde_json::from_slice::<FailureRecord>(&v)
+        {
+            out.push(record);
         }
     }
 
@@ -168,13 +167,12 @@ pub fn generate_challenge_from_failure(
     let challenge = parse_generated_challenge(&response, &failure.challenge_desc)?;
 
     // Store the generated challenge
-    if let Some(db) = feedback_db() {
-        if let Ok(tree) = db.open_tree(GENERATED_TREE) {
-            let key = failure_key(now_ms());
-            if let Ok(val) = serde_json::to_vec(&challenge) {
-                let _ = tree.insert(key, val);
-            }
-        }
+    if let Some(db) = feedback_db()
+        && let Ok(tree) = db.open_tree(GENERATED_TREE)
+        && let Ok(val) = serde_json::to_vec(&challenge)
+    {
+        let key = failure_key(now_ms());
+        let _ = tree.insert(key, val);
     }
 
     Ok(challenge)
@@ -227,13 +225,12 @@ pub fn feedback_stats() -> FeedbackStats {
         std::collections::HashMap::new();
 
     if let Ok(tree) = db.open_tree(FAILURE_TREE) {
-        for item in tree.iter() {
-            if let Ok((_k, v)) = item {
-                if let Ok(record) = serde_json::from_slice::<FailureRecord>(&v) {
-                    stats.total_failures += 1;
-                    *model_counts.entry(record.model).or_insert(0) += 1;
-                    *event_counts.entry(record.event_type).or_insert(0) += 1;
-                }
+        for item in tree.iter().flatten() {
+            let (_k, v) = item;
+            if let Ok(record) = serde_json::from_slice::<FailureRecord>(&v) {
+                stats.total_failures += 1;
+                *model_counts.entry(record.model).or_insert(0) += 1;
+                *event_counts.entry(record.event_type).or_insert(0) += 1;
             }
         }
     }
@@ -668,5 +665,78 @@ DIFFICULTY: hard";
             let count: usize = tree.iter().filter(|i| i.is_ok()).count();
             assert_eq!(count, 0);
         });
+    }
+
+    #[test]
+    fn failure_record_serde_roundtrip() {
+        let record = FailureRecord {
+            challenge_desc: "fix: borrow".into(),
+            input: "code with\nnewlines\tand tabs".into(),
+            expected_verify: "compiles".into(),
+            actual_response: "wrong answer with \"quotes\"".into(),
+            model: "qwen2.5-coder:1.5b".into(),
+            event_type: "technical".into(),
+            ts: 42,
+        };
+        let bytes = serde_json::to_vec(&record).unwrap();
+        let back: FailureRecord = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(back.challenge_desc, record.challenge_desc);
+        assert_eq!(back.input, record.input);
+        assert_eq!(back.ts, 42);
+    }
+
+    #[test]
+    fn generated_challenge_serde_roundtrip() {
+        let ch = GeneratedChallenge {
+            template_id: "f81".into(),
+            input: "error".into(),
+            verify: "compiles".into(),
+            description: "test".into(),
+            difficulty: "hard".into(),
+            source_failure: "src".into(),
+        };
+        let json = serde_json::to_string(&ch).unwrap();
+        let back: GeneratedChallenge = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.template_id, "f81");
+        assert_eq!(back.difficulty, "hard");
+    }
+
+    #[test]
+    fn failure_key_ordering_by_timestamp() {
+        // Keys with higher ts should sort after keys with lower ts
+        let k1 = failure_key(100);
+        let k2 = failure_key(200);
+        assert!(k1 < k2, "lower timestamp key should sort before higher");
+    }
+
+    #[test]
+    fn export_generated_challenges_empty() {
+        let output = export_generated_challenges(&[]);
+        // Header comment is always emitted, but no tce() lines
+        let tce_lines: Vec<&str> = output.lines().filter(|l| l.starts_with("tce(")).collect();
+        assert!(tce_lines.is_empty());
+    }
+
+    #[test]
+    fn truncate_empty_string() {
+        assert_eq!(truncate("", 10), "");
+    }
+
+    #[test]
+    fn truncate_exact_length() {
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn parse_challenge_handles_extra_whitespace() {
+        let response = "\
+TEMPLATE_ID:   f79
+INPUT:  classify this input
+VERIFY:  single_word
+DESCRIPTION:  classify: tricky
+DIFFICULTY:  medium  ";
+        let ch = parse_generated_challenge(response, "src").expect("parse");
+        assert_eq!(ch.template_id, "f79");
+        assert_eq!(ch.verify, "single_word");
     }
 }

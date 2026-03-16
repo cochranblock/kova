@@ -165,7 +165,7 @@ pub fn f175(req: &str, project_dir: &Path) -> String {
     };
 
     // Notifications have no "id" field — per JSON-RPC 2.0, no response should be sent.
-    let is_notification = !parsed.get("id").is_some_and(|v| !v.is_null());
+    let is_notification = parsed.get("id").is_none_or(|v| v.is_null());
     if is_notification && method.starts_with("notifications/") {
         return String::new();
     }

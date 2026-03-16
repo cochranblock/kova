@@ -180,14 +180,14 @@ fn snapshot_mtimes(project_dir: &Path) -> HashMap<PathBuf, u128> {
 
     // Check Cargo.toml
     let cargo_toml = project_dir.join("Cargo.toml");
-    if let Ok(meta) = std::fs::metadata(&cargo_toml) {
-        if let Ok(modified) = meta.modified() {
-            let secs = modified
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            map.insert(cargo_toml, secs);
-        }
+    if let Ok(meta) = std::fs::metadata(&cargo_toml)
+        && let Ok(modified) = meta.modified()
+    {
+        let secs = modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        map.insert(cargo_toml, secs);
     }
 
     // Walk src/ for .rs files
@@ -208,16 +208,15 @@ fn walk_rs_files(dir: &Path, map: &mut HashMap<PathBuf, u128>) {
         let path = entry.path();
         if path.is_dir() {
             walk_rs_files(&path, map);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            if let Ok(meta) = std::fs::metadata(&path) {
-                if let Ok(modified) = meta.modified() {
-                    let secs = modified
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    map.insert(path, secs);
-                }
-            }
+        } else if path.extension().is_some_and(|e| e == "rs")
+            && let Ok(meta) = std::fs::metadata(&path)
+            && let Ok(modified) = meta.modified()
+        {
+            let secs = modified
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            map.insert(path, secs);
         }
     }
 }

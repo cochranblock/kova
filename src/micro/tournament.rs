@@ -488,6 +488,19 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             response: r.response.clone(),
                         });
 
+                        // WIRE-2: Record failures into feedback loop for challenge mining.
+                        if !passed {
+                            crate::feedback::record_failure(crate::feedback::FailureRecord {
+                                challenge_desc: ch.description.clone(),
+                                input: ch.input.clone(),
+                                expected_verify: ch.verify.clone(),
+                                actual_response: r.response.clone(),
+                                model: competitor.model.clone(),
+                                event_type: ch.event_type.to_string(),
+                                ts: 0,
+                            });
+                        }
+
                         // JIT prequal: too slow = DQ from this event
                         if duration_ms > prequal_cutoff_ms(competitor.weight_class) {
                             eprintln!(
@@ -511,6 +524,17 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             category: ch.category.clone(),
                             passed: false, duration_ms, tokens: 0, response_len: 0,
                             response: format!("ERROR: {}", e),
+                        });
+
+                        // WIRE-2: Record errors into feedback loop.
+                        crate::feedback::record_failure(crate::feedback::FailureRecord {
+                            challenge_desc: ch.description.clone(),
+                            input: ch.input.clone(),
+                            expected_verify: ch.verify.clone(),
+                            actual_response: format!("ERROR: {}", e),
+                            model: competitor.model.clone(),
+                            event_type: ch.event_type.to_string(),
+                            ts: 0,
                         });
 
                         // Error = DQ from this event
