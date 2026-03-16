@@ -76,7 +76,7 @@ pub fn embed_query(query: &str) -> anyhow::Result<Vec<f32>> {
 /// Sled-backed vector store. Each chunk is serialized with its embedding.
 /// Retrieval is brute-force cosine similarity (fast enough for <100K chunks).
 pub struct VectorStore {
-    _db: sled::Db,
+    db: sled::Db,
     tree: sled::Tree,
 }
 
@@ -85,7 +85,7 @@ impl VectorStore {
     pub fn open(path: &Path) -> anyhow::Result<Self> {
         let db = sled::open(path)?;
         let tree = db.open_tree("rag_chunks")?;
-        Ok(Self { _db: db, tree })
+        Ok(Self { db, tree })
     }
 
     /// Default store path: ~/.kova/rag/vectors
@@ -373,6 +373,7 @@ pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize>
     }
 
     let count = store.insert_many(&embedded_chunks)?;
+    mark_indexed(store, dir)?;
     eprintln!("[rag] indexed {} chunks", count);
     Ok(count)
 }
@@ -381,6 +382,83 @@ pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize>
 pub fn search(store: &VectorStore, query: &str, k: usize) -> anyhow::Result<Vec<SearchResult>> {
     let query_emb = embed_query(query)?;
     store.search(&query_emb, k)
+}
+
+// ── Auto-Reindex ─────────────────────────────────────────────────
+
+/// f167=needs_reindex. Check if any .rs files in `dir` have been modified since
+/// the last index time recorded in the store. Returns true if re-indexing is needed.
+pub fn needs_reindex(store: &VectorStore, dir: &Path) -> bool {
+    let indexed_tree = match store.db.open_tree("last_indexed") {
+        Ok(t) => t,
+        Err(_) => return true,
+    };
+
+    let key = dir.to_string_lossy();
+    let ts_bytes = match indexed_tree.get(key.as_bytes()) {
+        Ok(Some(v)) => v,
+        _ => return true,
+    };
+
+    let last_ts: u64 = match std::str::from_utf8(&ts_bytes) {
+        Ok(s) => s.parse().unwrap_or(0),
+        Err(_) => return true,
+    };
+
+    let last_indexed_time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(last_ts);
+
+    // Walk .rs files, check if any modified after last_indexed_time
+    let pattern = dir.join("**/*.rs");
+    let pattern_str = pattern.to_string_lossy();
+    let entries = match glob::glob(&pattern_str) {
+        Ok(e) => e,
+        Err(_) => return true,
+    };
+
+    for entry in entries {
+        let path = match entry {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        let path_str = path.to_string_lossy();
+        if path_str.contains("/target/") || path_str.contains("/.") {
+            continue;
+        }
+
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if let Ok(modified) = meta.modified() {
+                if modified > last_indexed_time {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// f168=mark_indexed. Record that `dir` was indexed at the current timestamp.
+pub fn mark_indexed(store: &VectorStore, dir: &Path) -> anyhow::Result<()> {
+    let indexed_tree = store.db.open_tree("last_indexed")?;
+    let key = dir.to_string_lossy();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    indexed_tree.insert(key.as_bytes(), now.to_string().as_bytes())?;
+    indexed_tree.flush()?;
+    Ok(())
+}
+
+/// f169=auto_reindex. Check if `dir` needs re-indexing and do it if so.
+/// Returns the number of chunks indexed (0 if skipped because index is fresh).
+pub fn auto_reindex(store: &VectorStore, dir: &Path) -> anyhow::Result<usize> {
+    if !needs_reindex(store, dir) {
+        return Ok(0);
+    }
+    let count = index_directory(store, dir)?;
+    Ok(count)
 }
 
 /// Format search results as context for LLM injection.
@@ -449,6 +527,70 @@ pub struct Foo {
         let lines: Vec<&str> = (0..100).map(|i| "some code line here").collect();
         let chunks = chunk_sliding_window(&lines, 50, 12);
         assert!(chunks.len() >= 2);
+    }
+
+    #[test]
+    fn f168_mark_and_check_indexed() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = VectorStore::open(tmp.path()).unwrap();
+        let dir = tmp.path();
+
+        // Before marking: needs_reindex should return true (no record)
+        assert!(needs_reindex(&store, dir));
+
+        // Mark indexed
+        mark_indexed(&store, dir).unwrap();
+
+        // After marking with no .rs files modified after: should be false
+        assert!(!needs_reindex(&store, dir));
+    }
+
+    #[test]
+    fn f167_needs_reindex_detects_new_file() {
+        // Use /tmp/kova_test_reindex to avoid macOS tempdir paths containing /. (hidden dir filter)
+        let base = std::path::PathBuf::from("/tmp/kova_test_reindex");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        let store = VectorStore::open(&base.join("db")).unwrap();
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+
+        // Write a timestamp in the past (60 seconds ago) so any new file is "newer"
+        let indexed_tree = store.db.open_tree("last_indexed").unwrap();
+        let key = src_dir.to_string_lossy();
+        let past_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - 60;
+        indexed_tree
+            .insert(key.as_bytes(), past_ts.to_string().as_bytes())
+            .unwrap();
+
+        // Create a .rs file (mtime = now, which is after past_ts)
+        std::fs::write(src_dir.join("new.rs"), "fn main() {}").unwrap();
+
+        // Should detect the new file
+        assert!(needs_reindex(&store, &src_dir));
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn f169_auto_reindex_skips_fresh() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = VectorStore::open(&tmp.path().join("db")).unwrap();
+        let src_dir = tmp.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+
+        // Mark as indexed, no .rs files exist
+        mark_indexed(&store, &src_dir).unwrap();
+
+        // auto_reindex should return 0 (skipped)
+        let count = auto_reindex(&store, &src_dir).unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

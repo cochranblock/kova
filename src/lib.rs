@@ -60,6 +60,7 @@ pub mod daemon;
 pub mod agent_loop;
 pub mod c2;
 pub mod cargo_cmd;
+pub mod context_mgr;
 pub mod cluster;
 pub mod elicitor;
 pub mod factory;
@@ -74,8 +75,16 @@ pub mod ollama;
 pub mod rag;
 #[cfg(feature = "inference")]
 pub mod repl;
+pub mod ci;
+pub mod feedback;
+pub mod imagegen;
+pub mod mcp;
+pub mod providers;
+pub mod review;
 pub mod ssh_ca;
+pub mod syntax;
 pub mod tools;
+pub mod training_data;
 
 #[cfg(test)]
 mod test_utils;

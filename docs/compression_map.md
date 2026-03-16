@@ -21,9 +21,10 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f80 | chat_complete | inference | — |
 | f60 | triple_sims_run | exopack | triple_sims::sim1*, sim2*, sim3*, report* |
 | f61 | run_cargo_test_n | exopack | — |
-| f170 | sim1_user_story | exopack | triple_sims::sim1_runs_without_panic |
-| f171 | sim2_feature_gap | exopack | triple_sims::sim2_runs_without_panic |
-| f172 | sim3_impl_deep_dive | exopack | triple_sims::sim3_modules_exist |
+| f170 | estimate_tokens | context_mgr | context_mgr::estimate_tokens_* |
+| f171 | trim_conversation | context_mgr | context_mgr::trim_conversation_* |
+| f172 | trim_tool_output | context_mgr | context_mgr::trim_tool_output_* |
+| f173 | summarize_old_turns | context_mgr | context_mgr::summarize_* |
 | f81 | run_code_gen_pipeline | pipeline | pipeline::cargo_check_clippy_test_* |
 | f82 | load_project_context | context_loader | context_loader::f82_* |
 | f86 | recent_changes_snapshot | recent_changes | recent_changes::f86_* |
@@ -110,6 +111,42 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f164 | print_llm_stats | trace | Print formatted LLM stats |
 | f165 | print_recent_traces | trace | Print recent traces table |
 | f166 | tool_rag_search | tools | RAG search tool for agent loop |
+| f167 | needs_reindex | rag | Check if dir has .rs files modified since last index |
+| f168 | mark_indexed | rag | Record dir indexed timestamp in sled |
+| f169 | auto_reindex | rag | Check + reindex if needed, return chunk count |
+| f189 | generate_image | imagegen | Dispatch to provider |
+| f190 | generate_sd | imagegen | Stable Diffusion WebUI txt2img |
+| f191 | generate_dalle | imagegen | OpenAI DALL-E generations |
+| f192 | save_image | imagegen | Write image bytes to file |
+| f193 | list_sd_models | imagegen | List SD models |
+| f174 | mcp_tools_list | mcp | Return kova tools in MCP format |
+| f175 | mcp_handle_request | mcp | Parse JSON-RPC request, dispatch to tool, return response |
+| f176 | mcp_stdio_loop | mcp | Stdin/stdout MCP server loop |
+| f177 | ci_check | ci | Run cargo check, optionally clippy and tests |
+| f178 | ci_watch | ci | Poll loop: detect file changes, run ci_check |
+| f179 | ci_once | ci | Single CI run with default config |
+| f180 | print_ci_result | ci | Formatted CI output with pass/fail status |
+| f181 | export_from_traces | training_data | Read LLM traces from sled, export as training data |
+| f182 | export_jsonl | training_data | Write training examples as JSONL |
+| f183 | export_csv | training_data | Write training examples as CSV |
+| f184 | export_dpo_pairs | training_data | Build DPO chosen/rejected pairs from scored examples |
+| f194 | record_failure | feedback | Store challenge failure in sled |
+| f195 | recent_failures | feedback | Query recent failure records |
+| f196 | generate_challenge_from_failure | feedback | LLM-generate harder variant from failure |
+| f197 | export_generated_challenges | feedback | Format generated challenges as tce() Rust code |
+| f198 | feedback_stats | feedback | Count failures by model, event type, challenge type |
+| f185 | review_diff | review | Send diff to LLM for code review |
+| f186 | review_staged | review | Review currently staged changes |
+| f187 | review_branch | review | Review diff between current branch and base |
+| f188 | format_review | review | Human-readable formatted review output |
+| f199 | provider_generate | providers | Generate text from any provider |
+| f200 | provider_list | providers | Load configured providers from config |
+| f201 | extract_symbols | syntax | Extract all symbols from Rust source |
+| f202 | extract_functions | syntax | Extract only function symbols |
+| f203 | extract_structs | syntax | Extract struct and enum symbols |
+| f204 | extract_impls | syntax | Extract impl blocks |
+| f205 | format_outline | syntax | Format symbols as code outline |
+| f206 | outline_file | syntax | Parse file and return outline |
 
 ## Types (tN)
 
@@ -143,6 +180,29 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | t108 | GitResult |
 | t109 | LlmTrace |
 | t110 | LlmStats |
+| t111 | ContextBudget |
+| t122 | ImageProvider |
+| t123 | ImageRequest |
+| t124 | ImageResult |
+| t125 | ImageFormat |
+| t112 | McpRequest |
+| t113 | McpResponse |
+| t114 | CiConfig |
+| t115 | CiResult |
+| t116 | TrainingExample |
+| t117 | ExportFormat |
+| t126 | FailureRecord |
+| t127 | GeneratedChallenge |
+| t128 | FeedbackStats |
+| t118 | ReviewRequest |
+| t119 | ReviewResult |
+| t120 | ReviewIssue |
+| t121 | Severity |
+| t129 | Provider |
+| t130 | ProviderConfig |
+| t131 | ProviderResponse |
+| t132 | Symbol |
+| t133 | SymbolKind |
 
 ## Struct fields (sN) — plan t3
 
@@ -227,7 +287,16 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | recent_changes | 3 | empty, includes recent, format |
 | cursor_prompts | 1 | load includes baked |
 | gui | 1 | build system prompt includes baked |
-| **Total** | **88** | |
+| context_mgr | 11 | estimate_tokens, trim_conversation, trim_tool_output, budget_remaining, summarize |
+| mcp | 7 | tools_list, initialize, tools/list, tools/call dispatch, unknown method, parse error, tool error |
+| ci | 4 | valid project passes, broken code fails, result formatting, ci_once returns result |
+| review | 6 | format_review readable, severity ordering, empty issues, parse response, score clamp, fallback summary |
+| training_data | 4 | csv_escape, export_jsonl, export_csv, export_dpo_pairs |
+| feedback | 5 | record/retrieve roundtrip, stats counts, category mapping, export tce calls, parse challenge |
+| imagegen | 6 | request defaults, format extensions, base64 roundtrip, dalle size, save image temp, save creates dirs |
+| providers | 3 | default ollama, config serde roundtrip, response fields |
+| syntax | 8 | basic fn, struct+impl, enum, trait, async fn, outline lines, empty source, kind short |
+| **Total** | **153** | |
 
 ## Test traceability
 

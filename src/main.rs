@@ -66,6 +66,78 @@ enum Cmd {
     /// LLM call traces. Observability for every inference call.
     #[command(name = "traces")]
     Traces(TracesArgs),
+    /// MCP server (Model Context Protocol). Stdio transport for AI tool interop.
+    #[command(name = "mcp")]
+    Mcp(McpArgs),
+    /// CI mode. Headless quality gate: run check/clippy/test, watch for changes.
+    #[command(name = "ci")]
+    Ci(CiArgs),
+    /// Export training data from LLM traces. DPO/SFT fine-tuning.
+    #[command(name = "export")]
+    Export(ExportArgs),
+}
+
+#[derive(clap::Args)]
+struct McpArgs {
+    /// Project directory (default: cwd).
+    #[arg(short, long)]
+    project: Option<std::path::PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct CiArgs {
+    #[command(subcommand)]
+    cmd: CiCmd,
+}
+
+#[derive(clap::Subcommand)]
+enum CiCmd {
+    /// Single CI check on current or specified project.
+    Run {
+        /// Project directory (default: cwd).
+        #[arg(short, long)]
+        project: Option<std::path::PathBuf>,
+        /// Skip clippy.
+        #[arg(long)]
+        no_clippy: bool,
+        /// Skip tests.
+        #[arg(long)]
+        no_tests: bool,
+    },
+    /// Continuous watch mode. Re-runs CI on file changes.
+    Watch {
+        /// Project directory (default: cwd).
+        #[arg(short, long)]
+        project: Option<std::path::PathBuf>,
+        /// Poll interval in seconds (default: 5).
+        #[arg(short, long, default_value = "5")]
+        interval: u64,
+        /// Skip clippy.
+        #[arg(long)]
+        no_clippy: bool,
+        /// Skip tests.
+        #[arg(long)]
+        no_tests: bool,
+    },
+}
+
+#[derive(clap::Args)]
+struct ExportArgs {
+    #[command(subcommand)]
+    cmd: ExportCmd,
+}
+
+#[derive(clap::Subcommand)]
+enum ExportCmd {
+    /// Export LLM traces as training data (JSONL, CSV, or DPO pairs).
+    Training {
+        /// Format: jsonl, csv, or dpo.
+        #[arg(long, default_value = "jsonl")]
+        format: String,
+        /// Output file path. Default: ~/.kova/training_data/<format-based>.
+        #[arg(long)]
+        output: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(clap::Args)]
@@ -96,6 +168,8 @@ enum RagCmd {
     Clear,
     /// Index all discovered projects (from config).
     IndexAll,
+    /// Auto-reindex: only re-index projects with modified .rs files since last index.
+    Auto,
 }
 
 #[derive(clap::Args)]
@@ -1108,6 +1182,17 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
     }
 }
 
+fn run_export(args: ExportArgs) -> anyhow::Result<()> {
+    match args.cmd {
+        ExportCmd::Training { format, output } => {
+            let fmt = kova::training_data::ExportFormat::from_str_loose(&format)
+                .ok_or_else(|| anyhow::anyhow!("unknown format: {} (expected jsonl, csv, or dpo)", format))?;
+            kova::training_data::export_from_traces(fmt, output)?;
+            Ok(())
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -1120,7 +1205,10 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Gauntlet(_))
         | Some(Cmd::Micro(_))
         | Some(Cmd::Rag(_))
-        | Some(Cmd::Traces(_)) => {
+        | Some(Cmd::Traces(_))
+        | Some(Cmd::Mcp(_))
+        | Some(Cmd::Ci(_))
+        | Some(Cmd::Export(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -1177,6 +1265,15 @@ fn main() -> anyhow::Result<()> {
                 #[cfg(feature = "rag")]
                 Cmd::Rag(a) => run_rag(a),
                 Cmd::Traces(a) => run_traces(a),
+                Cmd::Mcp(a) => {
+                    let project = a
+                        .project
+                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+                    kova::mcp::f176(&project);
+                    Ok(())
+                }
+                Cmd::Ci(a) => run_ci(a),
+                Cmd::Export(a) => run_export(a),
                 _ => unreachable!(),
             };
         }
@@ -1321,7 +1418,10 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Gauntlet(_))
         | Some(Cmd::Micro(_))
         | Some(Cmd::Rag(_))
-        | Some(Cmd::Traces(_)) => unreachable!("handled before tokio"),
+        | Some(Cmd::Traces(_))
+        | Some(Cmd::Mcp(_))
+        | Some(Cmd::Ci(_))
+        | Some(Cmd::Export(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
@@ -1414,6 +1514,39 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
                 println!("Total: {} chunks across {} projects", total, projects.len());
             }
         }
+        RagCmd::Auto => {
+            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let projects = kova::discover_projects();
+            if projects.is_empty() {
+                println!("No projects found. Run `kova bootstrap` first.");
+            } else {
+                let mut total = 0;
+                let mut reindexed = 0;
+                for p in &projects {
+                    if !p.exists() {
+                        eprintln!("{}: not found, skipping", p.display());
+                        continue;
+                    }
+                    match rag::auto_reindex(&store, p) {
+                        Ok(0) => {
+                            println!("{}: fresh", p.display());
+                        }
+                        Ok(n) => {
+                            println!("{}: reindexed {} chunks", p.display(), n);
+                            total += n;
+                            reindexed += 1;
+                        }
+                        Err(e) => eprintln!("{}: error: {}", p.display(), e),
+                    }
+                }
+                println!(
+                    "Done: {} projects reindexed, {} chunks total ({} already fresh)",
+                    reindexed,
+                    total,
+                    projects.len() - reindexed
+                );
+            }
+        }
     }
 
     Ok(())
@@ -1425,4 +1558,46 @@ fn run_traces(args: TracesArgs) -> anyhow::Result<()> {
         TracesCmd::Stats => kova::trace::print_llm_stats(),
     }
     Ok(())
+}
+
+fn run_ci(args: CiArgs) -> anyhow::Result<()> {
+    match args.cmd {
+        CiCmd::Run {
+            project,
+            no_clippy,
+            no_tests,
+        } => {
+            let dir =
+                project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let config = kova::ci::CiConfig {
+                project_dir: dir.clone(),
+                run_clippy: !no_clippy,
+                run_tests: !no_tests,
+                ..Default::default()
+            };
+            let result = kova::ci::ci_check(&dir, &config);
+            kova::ci::print_ci_result(&result);
+            if !result.passed {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        CiCmd::Watch {
+            project,
+            interval,
+            no_clippy,
+            no_tests,
+        } => {
+            let dir =
+                project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let config = kova::ci::CiConfig {
+                project_dir: dir,
+                watch_interval_secs: interval,
+                run_clippy: !no_clippy,
+                run_tests: !no_tests,
+                ..Default::default()
+            };
+            kova::ci::ci_watch(&config)
+        }
+    }
 }

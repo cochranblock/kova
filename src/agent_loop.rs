@@ -9,6 +9,7 @@
 use std::io::Write;
 use std::path::Path;
 
+use crate::context_mgr::{self, t111};
 use crate::tools::{self, t104};
 
 /// t106=AgentAction.
@@ -71,6 +72,16 @@ pub fn f147(
     }
 }
 
+/// Context budget for agent loop. 8k tokens total, 1k system, 512 tools.
+const AGENT_BUDGET: t111 = t111 {
+    max_tokens: 8192,
+    system_reserved: 1024,
+    tool_reserved: 512,
+};
+
+/// Max tokens for a single tool result before trimming.
+const TOOL_OUTPUT_MAX_TOKENS: usize = 1024;
+
 /// f148=agent_loop. Run agent turns until done or max iterations.
 pub fn f148(
     model_path: &Path,
@@ -83,6 +94,9 @@ pub fn f148(
     conversation.push_str(&format!("User: {}\n\nAssistant: ", user_input));
 
     for i in 0..max_iterations {
+        // Trim conversation to fit context window before each inference call.
+        conversation = context_mgr::f171(&conversation, &AGENT_BUDGET);
+
         let action = f147(model_path, system_prompt, &conversation, project_dir);
 
         match action {
@@ -93,11 +107,14 @@ pub fn f148(
                 // Append tool results to conversation for next turn.
                 conversation.push_str("\n\nTool results:\n");
                 for r in &tool_results {
+                    // Trim long tool outputs to stay within budget.
+                    let trimmed_output =
+                        context_mgr::f172(&r.output, TOOL_OUTPUT_MAX_TOKENS);
                     conversation.push_str(&format!(
                         "[{}] {}: {}\n",
                         r.tool,
                         if r.success { "ok" } else { "err" },
-                        truncate_output(&r.output, 100),
+                        truncate_output(&trimmed_output, 100),
                     ));
                 }
                 conversation.push_str("\nAssistant: ");
