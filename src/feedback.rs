@@ -33,16 +33,6 @@ fn feedback_db() -> Option<&'static sled::Db> {
         .as_ref()
 }
 
-/// For tests: open a sled db at a custom path and use it instead.
-#[cfg(test)]
-static TEST_DB: OnceLock<Option<sled::Db>> = OnceLock::new();
-
-#[cfg(test)]
-fn feedback_db_test(path: &std::path::Path) -> Option<&'static sled::Db> {
-    TEST_DB
-        .get_or_init(|| sled::open(path).ok())
-        .as_ref()
-}
 
 // ── Types ────────────────────────────────────────────────────────
 

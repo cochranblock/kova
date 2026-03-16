@@ -26,6 +26,7 @@ const SERVER_VERSION: &str = "0.2.0";
 
 /// t112=McpRequest. Parsed JSON-RPC 2.0 request.
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 pub struct t112 {
     pub id: Value,
     pub method: String,
@@ -34,6 +35,7 @@ pub struct t112 {
 
 /// t113=McpResponse. JSON-RPC 2.0 response.
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 pub struct t113 {
     pub id: Value,
     pub result: Option<Value>,

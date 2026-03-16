@@ -524,7 +524,7 @@ pub struct Foo {
 
     #[test]
     fn chunk_sliding_window_basic() {
-        let lines: Vec<&str> = (0..100).map(|i| "some code line here").collect();
+        let lines: Vec<&str> = (0..100).map(|_| "some code line here").collect();
         let chunks = chunk_sliding_window(&lines, 50, 12);
         assert!(chunks.len() >= 2);
     }
