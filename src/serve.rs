@@ -4,13 +4,13 @@
 //! f114=serve_run
 
 use axum::{
+    body::Body,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
     },
-    http::StatusCode,
-    response::Html,
-    response::IntoResponse,
+    http::{header, StatusCode},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -105,6 +105,27 @@ struct TestRunResponse {
     ok: bool,
     node: String,
     output: String,
+}
+
+async fn serve_index() -> impl IntoResponse {
+    let html = include_str!("../kova-web/dist/index.html");
+    Html(html)
+}
+
+async fn serve_js() -> impl IntoResponse {
+    let js = include_str!("../kova-web/dist/kova_web.js");
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/javascript")
+        .body(Body::from(js))
+        .unwrap()
+}
+
+async fn serve_wasm() -> impl IntoResponse {
+    let wasm = include_bytes!("../kova-web/dist/kova_web_bg.wasm");
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/wasm")
+        .body(Body::from(wasm.as_slice()))
+        .unwrap()
 }
 
 async fn api_webhook_github() -> impl IntoResponse {
@@ -783,10 +804,9 @@ async fn api_demo_record(Json(payload): Json<serde_json::Value>) -> impl IntoRes
 
 fn app_router() -> Router<AppState> {
     let r = Router::new()
-        .route(
-            "/",
-            get(|| async { Html(include_str!("../assets/app.html")) }),
-        )
+        .route("/", get(serve_index))
+        .route("/kova_web.js", get(serve_js))
+        .route("/kova_web_bg.wasm", get(serve_wasm))
         .route(
             "/api/status",
             get(|| async { Json(Status { status: "ok" }) }),

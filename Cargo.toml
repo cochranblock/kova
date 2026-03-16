@@ -4,10 +4,10 @@
 name = "kova"
 version = "0.2.0"
 edition = "2024"
-description = "Kova — augment engine. Hybrid: native egui + web client, shared API."
+description = "Kova — augment engine. Web GUI (Rust/WASM) + serve API. No JavaScript."
 
 [features]
-default = ["gui", "serve", "inference", "rag"]
+default = ["serve", "inference", "rag"]
 serve = ["dep:axum", "dep:futures-util", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:similar"]
 gui = ["dep:eframe", "dep:egui", "dep:similar"]
 inference = ["dep:kalosm", "dep:kalosm-sample", "dep:lru"]

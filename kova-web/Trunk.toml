@@ -1,0 +1,12 @@
+# Trunk config for kova-web. Build: trunk build --release
+
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "/"
+
+[watch]
+watch = ["src", "index.html"]
+
+[hooks]
+build = "cargo build --target wasm32-unknown-unknown --release -p kova-web"
