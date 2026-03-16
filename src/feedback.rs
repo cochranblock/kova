@@ -278,12 +278,13 @@ fn failure_key(ts: u64) -> Vec<u8> {
     key
 }
 
-/// Truncate a string to max bytes.
+/// Truncate a string to max characters (char-safe, no UTF-8 panic).
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    if s.chars().count() <= max {
         s.to_string()
     } else {
-        format!("{}...", &s[..max])
+        let truncated: String = s.chars().take(max).collect();
+        format!("{}...", truncated)
     }
 }
 
@@ -611,6 +612,25 @@ DIFFICULTY: hard";
         let response = "TEMPLATE_ID: f80\nDESCRIPTION: something";
         let result = parse_generated_challenge(response, "test");
         assert!(result.is_err());
+    }
+
+    /// truncate is char-safe with multibyte UTF-8.
+    #[test]
+    fn truncate_handles_multibyte_utf8() {
+        // 4 emoji = 4 chars but 16 bytes. Truncate to 2 chars.
+        let s = "🦀🦀🦀🦀";
+        let t = truncate(s, 2);
+        assert_eq!(t, "🦀🦀...");
+        // Doesn't panic on byte boundary.
+        let s2 = "café";
+        let t2 = truncate(s2, 3);
+        assert_eq!(t2, "caf...");
+    }
+
+    /// truncate returns full string when short.
+    #[test]
+    fn truncate_no_op_when_short() {
+        assert_eq!(truncate("hello", 10), "hello");
     }
 
     /// category_for_template maps known templates.

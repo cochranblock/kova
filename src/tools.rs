@@ -363,10 +363,46 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
 
 fn resolve_path(raw: &str, project_dir: &Path) -> PathBuf {
     let p = PathBuf::from(raw);
-    if p.is_absolute() {
+    let resolved = if p.is_absolute() {
         p
     } else {
         project_dir.join(p)
+    };
+    // Canonicalize to resolve .. and symlinks, then verify it's within project_dir.
+    // If canonicalization fails (file doesn't exist yet), normalize manually.
+    match resolved.canonicalize() {
+        Ok(canon) => {
+            if let Ok(proj_canon) = project_dir.canonicalize() {
+                if canon.starts_with(&proj_canon) {
+                    canon
+                } else {
+                    // Path escapes project boundary — clamp to project dir.
+                    proj_canon.join(canon.file_name().unwrap_or_default())
+                }
+            } else {
+                canon
+            }
+        }
+        Err(_) => {
+            // File doesn't exist yet (write_file). Strip .. components manually.
+            let mut clean = PathBuf::new();
+            for component in resolved.components() {
+                match component {
+                    std::path::Component::ParentDir => { let _ = clean.pop(); }
+                    c => clean.push(c.as_os_str()),
+                }
+            }
+            // Verify cleaned path is within project_dir.
+            if let Ok(proj_canon) = project_dir.canonicalize() {
+                if clean.starts_with(&proj_canon) {
+                    clean
+                } else {
+                    proj_canon.join(clean.file_name().unwrap_or_default())
+                }
+            } else {
+                clean
+            }
+        }
     }
 }
 
@@ -855,5 +891,28 @@ mod tests {
         assert!(result.success);
         let content = std::fs::read_to_string(tmp.path().join("test.rs")).unwrap();
         assert!(content.contains("fn new_fn()"));
+    }
+
+    #[test]
+    fn resolve_path_blocks_traversal() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project = tmp.path().canonicalize().unwrap();
+        // Relative path with .. should not escape project dir.
+        let resolved = resolve_path("../../etc/passwd", &project);
+        // The resolved path should not contain /etc/passwd as a real path.
+        assert!(
+            !resolved.starts_with("/etc"),
+            "path traversal escaped project: {:?}",
+            resolved
+        );
+    }
+
+    #[test]
+    fn resolve_path_normal_relative() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project = tmp.path().canonicalize().unwrap();
+        std::fs::write(project.join("foo.txt"), "x").unwrap();
+        let resolved = resolve_path("foo.txt", &project);
+        assert!(resolved.starts_with(&project));
     }
 }

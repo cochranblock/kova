@@ -277,11 +277,11 @@ fn parse_issue_line(line: &str) -> Option<ReviewIssue> {
     let line_str = extract_field(line, "LINE:", "DESC:")?;
     let desc = line.split("DESC:").nth(1)?.trim().to_string();
 
-    let severity = match sev_str.trim() {
-        "Critical" => Severity::Critical,
-        "Warning" => Severity::Warning,
-        "Suggestion" => Severity::Suggestion,
-        "Praise" => Severity::Praise,
+    let severity = match sev_str.trim().to_ascii_lowercase().as_str() {
+        "critical" => Severity::Critical,
+        "warning" => Severity::Warning,
+        "suggestion" => Severity::Suggestion,
+        "praise" => Severity::Praise,
         _ => Severity::Suggestion,
     };
 
@@ -419,5 +419,23 @@ END";
         assert_eq!(result.summary, "Some random LLM output");
         assert_eq!(result.score, 5); // default
         assert!(result.issues.is_empty());
+    }
+
+    #[test]
+    /// parse_issue_line. Case-insensitive severity matching.
+    fn severity_case_insensitive() {
+        let raw = "\
+SUMMARY: test
+SCORE: 7
+ISSUES:
+SEV:CRITICAL FILE:src/a.rs LINE:1 DESC:bad thing
+SEV:warning FILE:src/b.rs LINE:2 DESC:meh
+SEV:PRAISE FILE:src/c.rs LINE:none DESC:nice
+END";
+        let result = parse_review_response(raw).unwrap();
+        assert_eq!(result.issues.len(), 3);
+        assert_eq!(result.issues[0].severity, Severity::Critical);
+        assert_eq!(result.issues[1].severity, Severity::Warning);
+        assert_eq!(result.issues[2].severity, Severity::Praise);
     }
 }

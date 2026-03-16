@@ -115,8 +115,16 @@ pub fn f172(output: &str, max_tokens: usize) -> String {
     let head_chars = (char_limit * 60) / 100;
     let tail_chars = (char_limit * 30) / 100;
 
-    let head: String = output.chars().take(head_chars).collect();
     let total_chars = output.chars().count();
+    // Clamp so head + tail never exceed total (avoids overlap on short output).
+    let (head_chars, tail_chars) = if head_chars + tail_chars >= total_chars {
+        let half = total_chars / 2;
+        (half, total_chars.saturating_sub(half + 1).max(1))
+    } else {
+        (head_chars, tail_chars)
+    };
+
+    let head: String = output.chars().take(head_chars).collect();
     let tail: String = output.chars().skip(total_chars.saturating_sub(tail_chars)).collect();
     let omitted = total_chars.saturating_sub(head_chars + tail_chars);
 

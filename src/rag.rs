@@ -94,9 +94,9 @@ impl VectorStore {
         PathBuf::from(home).join(".kova").join("rag").join("vectors")
     }
 
-    /// Insert a chunk. Key = file:start_line.
+    /// Insert a chunk. Key = file\0start_line (null byte separator avoids collision with : in paths).
     pub fn insert(&self, chunk: &Chunk) -> anyhow::Result<()> {
-        let key = format!("{}:{}", chunk.file, chunk.lines.0);
+        let key = format!("{}\0{}", chunk.file, chunk.lines.0);
         let value = serde_json::to_vec(chunk)?;
         self.tree.insert(key.as_bytes(), value)?;
         Ok(())
@@ -139,7 +139,7 @@ impl VectorStore {
 
     /// Remove all chunks for a given file (re-index).
     pub fn remove_file(&self, file: &str) -> anyhow::Result<usize> {
-        let prefix = format!("{}:", file);
+        let prefix = format!("{}\0", file);
         let mut removed = 0;
         for entry in self.tree.scan_prefix(prefix.as_bytes()) {
             let (key, _) = entry?;
@@ -251,12 +251,31 @@ pub fn chunk_rust_file(_file_path: &str, content: &str) -> Vec<(usize, usize, St
             brace_depth = 0;
         }
 
-        // Track brace depth
-        for ch in trimmed.chars() {
-            match ch {
-                '{' => brace_depth += 1,
-                '}' => brace_depth -= 1,
-                _ => {}
+        // Track brace depth (skip braces inside strings and comments)
+        {
+            let chars: Vec<char> = trimmed.chars().collect();
+            let mut j = 0;
+            while j < chars.len() {
+                let ch = chars[j];
+                let next = chars.get(j + 1).copied();
+                // Line comment — skip rest of line
+                if ch == '/' && next == Some('/') { break; }
+                // Skip string literals
+                if ch == '"' {
+                    j += 1;
+                    while j < chars.len() {
+                        if chars[j] == '\\' { j += 2; continue; }
+                        if chars[j] == '"' { j += 1; break; }
+                        j += 1;
+                    }
+                    continue;
+                }
+                match ch {
+                    '{' => brace_depth += 1,
+                    '}' => brace_depth -= 1,
+                    _ => {}
+                }
+                j += 1;
             }
         }
 
@@ -336,9 +355,6 @@ pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize>
         let content = std::fs::read_to_string(&path)?;
         let file_str = path.to_string_lossy().to_string();
 
-        // Remove old chunks for this file
-        let _ = store.remove_file(&file_str);
-
         let file_chunks = chunk_rust_file(&file_str, &content);
         for (start, end, text) in file_chunks {
             all_chunks.push((file_str.clone(), start, end, text));
@@ -370,6 +386,15 @@ pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize>
                 embedding: emb,
             });
         }
+    }
+
+    // Remove old chunks only after embeddings are ready (avoids partial state).
+    let files_to_update: std::collections::HashSet<&str> = embedded_chunks
+        .iter()
+        .map(|c| c.file.as_str())
+        .collect();
+    for file in &files_to_update {
+        let _ = store.remove_file(file);
     }
 
     let count = store.insert_many(&embedded_chunks)?;

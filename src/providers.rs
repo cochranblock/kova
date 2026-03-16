@@ -203,7 +203,7 @@ fn anthropic_generate(
     let resp = client
         .post(url)
         .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
+        .header("anthropic-version", "2024-10-22")
         .header("Content-Type", "application/json")
         .json(&body)
         .send()

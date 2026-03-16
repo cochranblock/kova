@@ -316,8 +316,62 @@ fn extract_impl_name(s: &str) -> String {
 
 fn find_block_end(start: usize, lines: &[&str]) -> usize {
     let mut depth: i32 = 0;
+    let mut in_string = false;
+    let mut in_block_comment = false;
+
     for i in start..lines.len() {
-        for ch in lines[i].chars() {
+        let chars: Vec<char> = lines[i].chars().collect();
+        let mut in_line_comment = false;
+        let mut j = 0;
+
+        while j < chars.len() {
+            let ch = chars[j];
+            let next = chars.get(j + 1).copied();
+
+            if in_block_comment {
+                if ch == '*' && next == Some('/') {
+                    in_block_comment = false;
+                    j += 2;
+                    continue;
+                }
+                j += 1;
+                continue;
+            }
+
+            if in_line_comment {
+                j += 1;
+                continue;
+            }
+
+            if in_string {
+                if ch == '\\' {
+                    j += 2; // skip escaped char
+                    continue;
+                }
+                if ch == '"' {
+                    in_string = false;
+                }
+                j += 1;
+                continue;
+            }
+
+            // Not in any special context.
+            if ch == '/' && next == Some('/') {
+                in_line_comment = true;
+                j += 2;
+                continue;
+            }
+            if ch == '/' && next == Some('*') {
+                in_block_comment = true;
+                j += 2;
+                continue;
+            }
+            if ch == '"' {
+                in_string = true;
+                j += 1;
+                continue;
+            }
+
             match ch {
                 '{' => depth += 1,
                 '}' => {
@@ -328,6 +382,7 @@ fn find_block_end(start: usize, lines: &[&str]) -> usize {
                 }
                 _ => {}
             }
+            j += 1;
         }
     }
     // No closing brace found (single-line item or parse error)
@@ -406,5 +461,59 @@ mod tests {
         assert_eq!(SymbolKind::Function.short(), "fn");
         assert_eq!(SymbolKind::Struct.short(), "struct");
         assert_eq!(SymbolKind::Impl.short(), "impl");
+    }
+
+    #[test]
+    fn find_block_end_ignores_braces_in_strings() {
+        let src = "fn foo() {\n    let s = \"{ not a block }\";\n    let x = 1;\n}";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "foo");
+        assert_eq!(syms[0].line_end, 3);
+    }
+
+    #[test]
+    fn find_block_end_ignores_braces_in_comments() {
+        let src = "fn bar() {\n    // { this is a comment }\n    let x = 2;\n}";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "bar");
+        assert_eq!(syms[0].line_end, 3);
+    }
+
+    #[test]
+    fn find_block_end_ignores_block_comment() {
+        let src = "fn baz() {\n    /* { nested } */\n    let y = 3;\n}";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "baz");
+        assert_eq!(syms[0].line_end, 3);
+    }
+
+    #[test]
+    fn extract_const_and_static() {
+        let src = "pub const MAX: usize = 100;\nstatic COUNT: usize = 0;";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 2);
+        assert_eq!(syms[0].name, "MAX");
+        assert_eq!(syms[0].kind, SymbolKind::Const);
+        assert_eq!(syms[1].name, "COUNT");
+        assert_eq!(syms[1].kind, SymbolKind::Static);
+    }
+
+    #[test]
+    fn extract_type_alias() {
+        let src = "pub type Result<T> = std::result::Result<T, Error>;";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "Result");
+        assert_eq!(syms[0].kind, SymbolKind::TypeAlias);
+    }
+
+    #[test]
+    fn extract_mod_with_body() {
+        let src = "mod inner {\n    fn private() {}\n}";
+        let syms = extract_symbols(src);
+        assert!(syms.iter().any(|s| s.name == "inner" && s.kind == SymbolKind::Mod));
     }
 }
