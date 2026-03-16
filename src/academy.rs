@@ -7,7 +7,7 @@
 //! This is the "do all the shit" module. Human direction → AI execution.
 
 use crate::cluster::{Cluster, TaskKind};
-use crate::ollama;
+use crate::providers::{self, Provider};
 use crate::trace::LastTrace;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -728,7 +728,7 @@ fn moe_generate(
         if nodes.len() >= config.num_experts {
             break;
         }
-        if ollama::health(&node.base_url()) {
+        if providers::provider_health(&node.provider()) {
             nodes.push((&node.id, node.base_url()));
         }
     }
@@ -747,7 +747,7 @@ fn moe_generate(
             let base_url = base_url.clone();
             let system = system.to_string();
             let prompt = prompt.to_string();
-            let num_ctx = config.num_ctx;
+            let _num_ctx = config.num_ctx;
 
             let model = cluster
                 .nodes
@@ -757,7 +757,9 @@ fn moe_generate(
                 .unwrap_or_default();
 
             std::thread::spawn(move || {
-                let result = ollama::generate(&base_url, &model, &system, &prompt, Some(num_ctx));
+                let provider = Provider::Ollama { url: base_url };
+                let result = providers::provider_generate(&provider, &model, &system, &prompt)
+                    .map(|r| r.text);
                 let _ = tx.send((node_id, result));
             })
         })

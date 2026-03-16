@@ -1,12 +1,15 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! providers — Multi-provider LLM client. Local (Kalosm/candle), Ollama, OpenAI-compatible, Anthropic.
-//! Pure Rust local inference is the default. Ollama kept for remote nodes only.
+//! providers — Multi-provider LLM client. Local (Kalosm/candle), OpenAI-compatible, Anthropic.
+//! Pure Rust local inference is the default. No ollama dependency.
 //! f199=provider_generate, f200=provider_list, f210=default_provider.
-//! t129=Provider, t130=ProviderConfig, t131=ProviderResponse.
+//! f211=provider_health, f212=provider_version, f213=provider_list_models.
+//! f214=provider_generate_stream.
+//! t129=Provider, t130=ProviderConfig, t131=ProviderResponse, t134=ModelInfo.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::{mpsc, Arc};
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -45,6 +48,14 @@ pub struct ProviderResponse {
     pub tokens_out: Option<u64>,
 }
 
+/// t134=ModelInfo. Model available on a provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub name: String,
+    pub size: u64,
+    pub modified_at: String,
+}
+
 // ── Generation ───────────────────────────────────────────────────
 
 /// f199=provider_generate. Generate text from any provider.
@@ -72,13 +83,13 @@ pub fn provider_generate(
             })
         }
         Provider::Ollama { url } => {
-            let resp_text = crate::ollama::generate(url, model, system, prompt, None)?;
+            let resp = ollama_generate_raw(url, model, system, prompt, None, Some(0.2))?;
             Ok(ProviderResponse {
-                text: resp_text,
+                text: resp.text,
                 model: model.into(),
-                provider_name: "ollama".into(),
+                provider_name: "local-http".into(),
                 latency_ms: t0.elapsed().as_millis() as u64,
-                tokens_out: None,
+                tokens_out: resp.tokens_out,
             })
         }
         Provider::OpenAiCompat {
@@ -158,6 +169,338 @@ pub fn default_provider() -> Provider {
             }
         }
     }
+}
+
+// ── Provider Health / Version / Models ───────────────────────────
+
+/// f211=provider_health. Check if a provider is reachable.
+pub fn provider_health(provider: &Provider) -> bool {
+    match provider {
+        Provider::Local { model_path } => model_path.exists(),
+        Provider::Ollama { url } => {
+            let endpoint = format!("{}/api/version", url);
+            reqwest::blocking::get(&endpoint)
+                .map(|r| r.status().is_success())
+                .unwrap_or(false)
+        }
+        Provider::OpenAiCompat { url, api_key, .. } => {
+            let endpoint = format!("{}/v1/models", url.trim_end_matches('/'));
+            reqwest::blocking::Client::new()
+                .get(&endpoint)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .send()
+                .map(|r| r.status().is_success())
+                .unwrap_or(false)
+        }
+        Provider::Anthropic { .. } => {
+            // Anthropic is always "online" if we have a key. Real check would burn tokens.
+            true
+        }
+    }
+}
+
+/// f212=provider_version. Get version string from provider.
+pub fn provider_version(provider: &Provider) -> Option<String> {
+    match provider {
+        Provider::Local { .. } => Some(env!("CARGO_PKG_VERSION").to_string()),
+        Provider::Ollama { url } => {
+            #[derive(Deserialize)]
+            struct VersionResp {
+                version: String,
+            }
+            let endpoint = format!("{}/api/version", url);
+            reqwest::blocking::get(&endpoint)
+                .ok()
+                .and_then(|r| r.json::<VersionResp>().ok())
+                .map(|v| v.version)
+        }
+        Provider::OpenAiCompat { .. } => None,
+        Provider::Anthropic { .. } => None,
+    }
+}
+
+/// f213=provider_list_models. List available models on a provider.
+pub fn provider_list_models(provider: &Provider) -> Result<Vec<ModelInfo>, String> {
+    match provider {
+        Provider::Local { model_path } => {
+            // List GGUF files in the model's parent directory.
+            let dir = model_path.parent().unwrap_or(model_path.as_path());
+            let mut models = Vec::new();
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("gguf") {
+                        let name = path
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                        let modified_at = std::fs::metadata(&path)
+                            .and_then(|m| m.modified())
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs().to_string())
+                            .unwrap_or_default();
+                        models.push(ModelInfo {
+                            name,
+                            size,
+                            modified_at,
+                        });
+                    }
+                }
+            }
+            Ok(models)
+        }
+        Provider::Ollama { url } => {
+            #[derive(Deserialize)]
+            struct TagsResp {
+                models: Vec<ModelInfo>,
+            }
+            let endpoint = format!("{}/api/tags", url);
+            let resp =
+                reqwest::blocking::get(&endpoint).map_err(|e| format!("list models: {}", e))?;
+            let tags: TagsResp = resp.json().map_err(|e| format!("parse models: {}", e))?;
+            Ok(tags.models)
+        }
+        Provider::OpenAiCompat { url, api_key, .. } => {
+            #[derive(Deserialize)]
+            struct OaiModelsResp {
+                data: Vec<OaiModel>,
+            }
+            #[derive(Deserialize)]
+            struct OaiModel {
+                id: String,
+            }
+            let endpoint = format!("{}/v1/models", url.trim_end_matches('/'));
+            let resp = reqwest::blocking::Client::new()
+                .get(&endpoint)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .send()
+                .map_err(|e| format!("list models: {}", e))?;
+            let models: OaiModelsResp =
+                resp.json().map_err(|e| format!("parse models: {}", e))?;
+            Ok(models
+                .data
+                .into_iter()
+                .map(|m| ModelInfo {
+                    name: m.id,
+                    size: 0,
+                    modified_at: String::new(),
+                })
+                .collect())
+        }
+        Provider::Anthropic { .. } => Ok(vec![
+            ModelInfo { name: "claude-opus-4-6".into(), size: 0, modified_at: String::new() },
+            ModelInfo { name: "claude-sonnet-4-6".into(), size: 0, modified_at: String::new() },
+            ModelInfo { name: "claude-haiku-4-5-20251001".into(), size: 0, modified_at: String::new() },
+        ]),
+    }
+}
+
+/// f214=provider_generate_stream. Streaming generation. Returns receiver for token chunks.
+pub fn provider_generate_stream(
+    provider: &Provider,
+    model: &str,
+    system: &str,
+    prompt: &str,
+) -> mpsc::Receiver<Arc<str>> {
+    match provider {
+        Provider::Local { model_path } => {
+            // Reuse inference::f76 which already returns mpsc::Receiver<Arc<str>>
+            crate::inference::f76(model_path, system, &[], prompt)
+        }
+        Provider::Ollama { url } => {
+            let (tx, rx) = mpsc::channel();
+            let url = format!("{}/api/generate", url);
+            let body = serde_json::json!({
+                "model": model,
+                "prompt": prompt,
+                "system": system,
+                "stream": true,
+                "options": { "num_ctx": 8192, "temperature": 0.2 }
+            });
+            std::thread::spawn(move || {
+                let client = match reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(300))
+                    .build()
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = tx.send(Arc::from(format!("Error: {}", e)));
+                        return;
+                    }
+                };
+                let resp = match client.post(&url).json(&body).send() {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let _ = tx.send(Arc::from(format!("Error: {}", e)));
+                        return;
+                    }
+                };
+                let reader = std::io::BufReader::new(resp);
+                use std::io::BufRead;
+                for line in reader.lines() {
+                    let line = match line {
+                        Ok(l) => l,
+                        Err(_) => break,
+                    };
+                    if line.is_empty() {
+                        continue;
+                    }
+                    #[derive(Deserialize)]
+                    struct StreamChunk {
+                        response: String,
+                        #[serde(default)]
+                        done: bool,
+                    }
+                    if let Ok(chunk) = serde_json::from_str::<StreamChunk>(&line) {
+                        if !chunk.response.is_empty()
+                            && tx.send(Arc::from(chunk.response.as_str())).is_err()
+                        {
+                            break;
+                        }
+                        if chunk.done {
+                            break;
+                        }
+                    }
+                }
+            });
+            rx
+        }
+        Provider::OpenAiCompat { .. } | Provider::Anthropic { .. } => {
+            // Non-streaming fallback: generate full response and send as one chunk.
+            let (tx, rx) = mpsc::channel();
+            let provider = provider.clone();
+            let model = model.to_string();
+            let system = system.to_string();
+            let prompt = prompt.to_string();
+            std::thread::spawn(move || {
+                match provider_generate(&provider, &model, &system, &prompt) {
+                    Ok(resp) => {
+                        let _ = tx.send(Arc::from(resp.text.as_str()));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Arc::from(format!("Error: {}", e)));
+                    }
+                }
+            });
+            rx
+        }
+    }
+}
+
+// ── Ollama HTTP (self-contained, no external module) ────────────
+
+/// Self-contained ollama /api/generate. No dependency on ollama.rs.
+fn ollama_generate_raw(
+    base_url: &str,
+    model: &str,
+    system: &str,
+    prompt: &str,
+    num_ctx: Option<u32>,
+    temperature: Option<f32>,
+) -> Result<RawResponse, String> {
+    let url = format!("{}/api/generate", base_url);
+    let body = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+        "system": system,
+        "stream": false,
+        "options": {
+            "num_ctx": num_ctx.unwrap_or(8192),
+            "temperature": temperature.unwrap_or(0.2),
+        }
+    });
+
+    let t0 = std::time::Instant::now();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("http client: {}", e))?;
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .map_err(|e| {
+            let elapsed = t0.elapsed().as_millis() as u64;
+            crate::trace::log_llm(crate::trace::LlmTrace {
+                ts: crate::trace::now_ms(),
+                backend: "local-http".into(),
+                model: model.into(),
+                node: base_url.into(),
+                call_type: "generate".into(),
+                latency_ms: elapsed,
+                tokens_out: None,
+                tok_per_sec: None,
+                prompt_bytes: prompt.len() + system.len(),
+                response_bytes: 0,
+                status: format!("send: {}", e),
+            });
+            format!("generate: {}", e)
+        })?;
+
+    if !resp.status().is_success() {
+        let status_code = resp.status();
+        let body_text = resp.text().unwrap_or_default();
+        crate::trace::log_llm(crate::trace::LlmTrace {
+            ts: crate::trace::now_ms(),
+            backend: "local-http".into(),
+            model: model.into(),
+            node: base_url.into(),
+            call_type: "generate".into(),
+            latency_ms: t0.elapsed().as_millis() as u64,
+            tokens_out: None,
+            tok_per_sec: None,
+            prompt_bytes: prompt.len() + system.len(),
+            response_bytes: 0,
+            status: format!("http {}", status_code),
+        });
+        return Err(format!("http {}: {}", status_code, body_text));
+    }
+
+    #[derive(Deserialize)]
+    struct GenResp {
+        response: String,
+        #[serde(default)]
+        eval_count: Option<u64>,
+        #[serde(default)]
+        eval_duration: Option<u64>,
+    }
+
+    let gen_resp: GenResp = resp.json().map_err(|e| format!("parse: {}", e))?;
+
+    let elapsed = t0.elapsed().as_millis() as u64;
+    let tokens_out = gen_resp.eval_count;
+    let tok_per_sec = match (gen_resp.eval_count, gen_resp.eval_duration) {
+        (Some(count), Some(dur)) if dur > 0 => {
+            Some(count as f64 / (dur as f64 / 1_000_000_000.0))
+        }
+        _ => None,
+    };
+
+    if let (Some(count), Some(tps)) = (tokens_out, tok_per_sec) {
+        eprintln!("[provider] {} tokens, {:.1} tok/s", count, tps);
+    }
+
+    crate::trace::log_llm(crate::trace::LlmTrace {
+        ts: crate::trace::now_ms(),
+        backend: "local-http".into(),
+        model: model.into(),
+        node: base_url.into(),
+        call_type: "generate".into(),
+        latency_ms: elapsed,
+        tokens_out,
+        tok_per_sec,
+        prompt_bytes: prompt.len() + system.len(),
+        response_bytes: gen_resp.response.len(),
+        status: "ok".into(),
+    });
+
+    Ok(RawResponse {
+        text: gen_resp.response,
+        tokens_out,
+    })
 }
 
 // ── OpenAI-Compatible ────────────────────────────────────────────

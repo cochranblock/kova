@@ -36,7 +36,7 @@ pub mod gui;
 pub mod inference;
 #[cfg(feature = "inference")]
 pub mod model;
-#[cfg(feature = "gui")]
+#[cfg(any(feature = "gui", feature = "serve"))]
 pub mod output;
 #[cfg(feature = "inference")]
 pub mod pipeline;
@@ -70,7 +70,6 @@ pub mod inspect;
 pub mod micro;
 pub mod moe;
 pub mod node_cmd;
-pub mod ollama;
 #[cfg(feature = "rag")]
 pub mod rag;
 #[cfg(feature = "inference")]

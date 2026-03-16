@@ -12,7 +12,7 @@
 //!   6. Optionally save to ~/.kova/experts/
 
 use crate::cluster::{Cluster, ModelTier, TaskKind};
-use crate::ollama;
+use crate::providers::{self, Provider};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
@@ -128,7 +128,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
             let base_url = base_url.clone();
             let system = system.clone();
             let gen_prompt = gen_prompt.clone();
-            let num_ctx = config.num_ctx;
+            let _num_ctx = config.num_ctx;
 
             // Pick the right model for this node
             let node = cluster.nodes.iter().find(|n| n.id == node_id).unwrap();
@@ -136,8 +136,9 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
 
             std::thread::spawn(move || {
                 let start = Instant::now();
-                let result =
-                    ollama::generate(&base_url, &model, &system, &gen_prompt, Some(num_ctx));
+                let provider = Provider::Ollama { url: base_url };
+                let result = providers::provider_generate(&provider, &model, &system, &gen_prompt)
+                    .map(|r| r.text);
                 let elapsed = start.elapsed().as_millis() as u64;
                 let _ = tx.send((node_id, result, elapsed));
             })
@@ -420,7 +421,7 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
         if nodes.len() >= max {
             break;
         }
-        if matches!(node.tier, ModelTier::Heavy) && ollama::health(&node.base_url()) {
+        if matches!(node.tier, ModelTier::Heavy) && providers::provider_health(&node.provider()) {
             nodes.push((node.id.clone(), node.base_url()));
         }
     }
@@ -431,7 +432,7 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
             break;
         }
         if matches!(node.tier, ModelTier::Mid)
-            && ollama::health(&node.base_url())
+            && providers::provider_health(&node.provider())
             && !nodes.iter().any(|(id, _)| id == &node.id)
         {
             nodes.push((node.id.clone(), node.base_url()));
@@ -444,7 +445,7 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
             break;
         }
         if matches!(node.tier, ModelTier::Light | ModelTier::Router)
-            && ollama::health(&node.base_url())
+            && providers::provider_health(&node.provider())
             && !nodes.iter().any(|(id, _)| id == &node.id)
         {
             nodes.push((node.id.clone(), node.base_url()));

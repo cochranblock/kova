@@ -3,7 +3,7 @@
 //! Cluster inference — distributed model dispatch across IRONHIVE nodes.
 //! Routes tasks to the best available node based on role, model tier, and load.
 
-use crate::ollama;
+use crate::providers::{self, Provider};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
@@ -73,6 +73,13 @@ pub struct InferNode {
 impl InferNode {
     pub fn base_url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
+    }
+
+    /// Get provider for this node's HTTP inference endpoint.
+    pub fn provider(&self) -> Provider {
+        Provider::Ollama {
+            url: self.base_url(),
+        }
     }
 
     pub fn is_busy(&self) -> bool {
@@ -157,8 +164,9 @@ impl Cluster {
                 let id = node.id.clone();
                 let url = node.base_url();
                 std::thread::spawn(move || {
-                    let online = ollama::health(&url);
-                    let ver = if online { ollama::version(&url) } else { None };
+                    let prov = Provider::Ollama { url: url.clone() };
+                    let online = providers::provider_health(&prov);
+                    let ver = if online { providers::provider_version(&prov) } else { None };
                     (id, online, ver)
                 })
             })
@@ -171,7 +179,7 @@ impl Cluster {
     pub fn online_nodes(&self) -> Vec<&InferNode> {
         self.nodes
             .iter()
-            .filter(|n| ollama::health(&n.base_url()))
+            .filter(|n| providers::provider_health(&n.provider()))
             .collect()
     }
 
@@ -198,7 +206,7 @@ impl Cluster {
         // Try preferred roles in order, pick first non-busy online node
         for role in preferred_roles {
             for node in &self.nodes {
-                if node.role == *role && !node.is_busy() && ollama::health(&node.base_url()) {
+                if node.role == *role && !node.is_busy() && providers::provider_health(&node.provider()) {
                     return Some(node);
                 }
             }
@@ -208,7 +216,7 @@ impl Cluster {
         self.nodes.iter().find(|n| {
             !n.is_busy()
                 && tier_rank(n.tier) >= tier_rank(min_tier)
-                && ollama::health(&n.base_url())
+                && providers::provider_health(&n.provider())
         })
     }
 
@@ -219,11 +227,10 @@ impl Cluster {
         task: TaskKind,
         system: &str,
         prompt: &str,
-        num_ctx: Option<u32>,
+        _num_ctx: Option<u32>,
     ) -> Result<(String, String), String> {
         let node = self.pick_node(task).ok_or("no available nodes")?;
         let node_id = node.id.clone();
-        let url = node.base_url();
 
         // Use coding model for code tasks, general model for others
         let model = match task {
@@ -237,10 +244,10 @@ impl Cluster {
         };
 
         node.set_busy(true);
-        let result = ollama::generate(&url, model, system, prompt, num_ctx);
+        let result = providers::provider_generate(&node.provider(), model, system, prompt);
         node.set_busy(false);
 
-        result.map(|r| (node_id, r))
+        result.map(|r| (node_id, r.text))
     }
 
     /// Dispatch with streaming. Returns (node_id, receiver).
@@ -249,15 +256,14 @@ impl Cluster {
         task: TaskKind,
         system: &str,
         prompt: &str,
-        num_ctx: Option<u32>,
+        _num_ctx: Option<u32>,
     ) -> Result<(String, mpsc::Receiver<Arc<str>>), String> {
         let node = self.pick_node(task).ok_or("no available nodes")?;
         let node_id = node.id.clone();
-        let url = node.base_url();
         let model = &node.model;
 
         node.set_busy(true);
-        let rx = ollama::generate_stream(&url, model, system, prompt, num_ctx);
+        let rx = providers::provider_generate_stream(&node.provider(), model, system, prompt);
         // Note: busy flag should be cleared when stream ends — caller responsibility
         Ok((node_id, rx))
     }
@@ -302,7 +308,9 @@ impl Cluster {
 
                 std::thread::spawn(move || {
                     busy.store(true, Ordering::SeqCst);
-                    let result = ollama::generate(&url, &model, &system, &prompt, num_ctx);
+                    let provider = Provider::Ollama { url };
+                    let result = providers::provider_generate(&provider, &model, &system, &prompt)
+                        .map(|r| r.text);
                     busy.store(false, Ordering::SeqCst);
                     let _ = tx.send((id, result));
                 })
@@ -351,7 +359,7 @@ impl Cluster {
             let tier = format!("{:?}", node.tier);
 
             let models = if online {
-                match ollama::list_models(&node.base_url()) {
+                match providers::provider_list_models(&node.provider()) {
                     Ok(ms) => ms
                         .iter()
                         .map(|m| m.name.clone())

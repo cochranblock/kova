@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use super::template::MicroTemplate;
 use crate::cluster::Cluster;
-use crate::providers::{Provider, provider_generate};
+use crate::providers::{Provider, provider_generate, provider_list_models};
 
 /// Result of running a micro-model.
 #[derive(Debug, Clone)]
@@ -202,7 +202,10 @@ pub fn run_micro(
 /// If the exact model exists, use it. Otherwise, find a model from the same family
 /// (e.g. qwen2.5-coder:3b → qwen2.5-coder:7b).
 fn pick_model(base_url: &str, preferred: &str) -> Option<String> {
-    let models = crate::ollama::list_models(base_url).ok()?;
+    let provider = Provider::Ollama {
+        url: base_url.to_string(),
+    };
+    let models = provider_list_models(&provider).ok()?;
     let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
 
     // Exact match

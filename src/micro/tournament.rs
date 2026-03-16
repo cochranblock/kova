@@ -31,7 +31,7 @@ use super::bench;
 use super::registry::MicroRegistry;
 use super::runner;
 use crate::cluster::Cluster;
-use crate::ollama;
+use crate::providers;
 
 // ── Weight Classes ──────────────────────────────────────────────
 
@@ -272,7 +272,7 @@ pub fn discover_competitors(cluster: &Cluster) -> Vec<Competitor> {
 
     for node in online {
         let url = node.base_url();
-        if let Ok(models) = ollama::list_models(&url) {
+        if let Ok(models) = providers::provider_list_models(&node.provider()) {
             for m in models {
                 if EXCLUDED_MODELS.iter().any(|ex| m.name.contains(ex)) {
                     eprintln!("  SKIP {} on {} (too large)", m.name, node.id);

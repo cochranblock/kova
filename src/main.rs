@@ -676,7 +676,8 @@ fn run_gui(demo: bool) -> anyhow::Result<()> {
 
 #[cfg(not(feature = "gui"))]
 fn run_gui(_demo: bool) -> anyhow::Result<()> {
-    anyhow::bail!("Build with --features gui for GUI mode")
+    // No native GUI — use web UI via serve
+    anyhow::bail!("Use `kova serve --open` for the web GUI (Rust/WASM, no JS)")
 }
 
 #[cfg(feature = "tests")]
@@ -1176,13 +1177,14 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
                 .nodes
                 .iter()
                 .map(|node| {
-                    let url = node.base_url();
+                    let provider = node.provider();
                     let model = node.model.clone();
                     let id = node.id.clone();
                     std::thread::spawn(move || {
                         let start = std::time::Instant::now();
                         let result =
-                            kova::ollama::generate(&url, &model, system, prompt, Some(4096));
+                            kova::providers::provider_generate(&provider, &model, system, prompt)
+                                .map(|r| r.text);
                         let elapsed = start.elapsed();
                         (id, model, result, elapsed)
                     })
@@ -1212,9 +1214,8 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
         }
         ClusterCmd::Models => {
             for node in &cluster.nodes {
-                let url = node.base_url();
                 print!("  {} — ", node.id);
-                match kova::ollama::list_models(&url) {
+                match kova::providers::provider_list_models(&node.provider()) {
                     Ok(models) => {
                         let names: Vec<_> = models
                             .iter()
