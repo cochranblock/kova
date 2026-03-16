@@ -160,10 +160,11 @@ async fn api_test_run(Query(q): Query<TestRunQuery>) -> impl IntoResponse {
 /// Validate hint is a safe filename: word.rs only. Returns hint or "lib.rs".
 fn safe_hint(hint: Option<&str>) -> String {
     let h = hint.unwrap_or("lib.rs").trim();
-    if let Some(stem) = h.strip_suffix(".rs") {
-        if !stem.is_empty() && stem.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return h.to_string();
-        }
+    if let Some(stem) = h.strip_suffix(".rs")
+        && !stem.is_empty()
+        && stem.chars().all(|c| c.is_alphanumeric() || c == '_')
+    {
+        return h.to_string();
     }
     "lib.rs".to_string()
 }

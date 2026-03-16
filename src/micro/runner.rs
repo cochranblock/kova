@@ -211,7 +211,7 @@ fn pick_model(base_url: &str, preferred: &str) -> Option<String> {
     let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
 
     // Exact match
-    if model_names.iter().any(|m| *m == preferred) {
+    if model_names.contains(&preferred) {
         return Some(preferred.to_string());
     }
 

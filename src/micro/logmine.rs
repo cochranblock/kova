@@ -58,7 +58,7 @@ pub fn mine_logs() -> Result<(Vec<MinedExample>, MineStats), String> {
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "jsonl") {
+        if path.extension().is_some_and(|e| e == "jsonl") {
             match mine_single_log(&path) {
                 Ok((examples, msg_count, user_count)) => {
                     stats.sessions += 1;
@@ -119,12 +119,12 @@ fn mine_single_log(path: &PathBuf) -> Result<(Vec<MinedExample>, usize, usize), 
             "user" => {
                 user_count += 1;
                 // Extract user message text
-                if let Some(content) = obj.get("message").and_then(|m| m.get("content")) {
-                    if let Some(text) = content.as_str() {
-                        // Skip very short or tool_result messages
-                        if text.len() > 10 {
-                            last_user_instruction = Some(text.to_string());
-                        }
+                if let Some(content) = obj.get("message").and_then(|m| m.get("content"))
+                    && let Some(text) = content.as_str()
+                {
+                    // Skip very short or tool_result messages
+                    if text.len() > 10 {
+                        last_user_instruction = Some(text.to_string());
                     }
                 }
             }
@@ -135,8 +135,9 @@ fn mine_single_log(path: &PathBuf) -> Result<(Vec<MinedExample>, usize, usize), 
                 };
 
                 // Extract assistant content blocks
-                if let Some(content) = obj.get("message").and_then(|m| m.get("content")) {
-                    if let Some(blocks) = content.as_array() {
+                if let Some(content) = obj.get("message").and_then(|m| m.get("content"))
+                    && let Some(blocks) = content.as_array()
+                {
                         for block in blocks {
                             let block_type = block.get("type")
                                 .and_then(|v| v.as_str())
@@ -214,7 +215,6 @@ fn mine_single_log(path: &PathBuf) -> Result<(Vec<MinedExample>, usize, usize), 
                                 _ => {}
                             }
                         }
-                    }
                 }
             }
             _ => {}

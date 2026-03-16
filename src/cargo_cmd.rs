@@ -274,10 +274,10 @@ fn compress_output_text(stderr: &str, stdout: &str) -> (u32, u32, String, Option
             errors += 1;
             compressed.push(compress_path(trimmed));
         }
-        if trimmed.contains("generated") && trimmed.contains("warning") {
-            if let Some(n) = extract_count(trimmed) {
-                warnings = n;
-            }
+        if trimmed.contains("generated") && trimmed.contains("warning")
+            && let Some(n) = extract_count(trimmed)
+        {
+            warnings = n;
         }
         parse_test_line(trimmed, &mut errors, &mut compressed, &mut test_summary);
     }
@@ -427,11 +427,9 @@ fn f133(
     }
 
     // Target from preset.
-    if let Some(ref p) = preset {
-        if let Some(ref t) = p.target {
-            args.push("--target".into());
-            args.push(t.clone());
-        }
+    if let Some(ref p) = preset && let Some(ref t) = p.target {
+        args.push("--target".into());
+        args.push(t.clone());
     }
 
     // Bin.

@@ -333,7 +333,7 @@ pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize>
     for batch_start in (0..texts.len()).step_by(256) {
         let batch_end = (batch_start + 256).min(texts.len());
         let batch = &texts[batch_start..batch_end];
-        let embeddings = embed_texts(&batch.to_vec())?;
+        let embeddings = embed_texts(batch)?;
 
         for (i, emb) in embeddings.into_iter().enumerate() {
             let idx = batch_start + i;
@@ -410,12 +410,11 @@ pub fn needs_reindex(store: &VectorStore, dir: &Path) -> bool {
             continue;
         }
 
-        if let Ok(meta) = std::fs::metadata(&path) {
-            if let Ok(modified) = meta.modified() {
-                if modified > last_indexed_time {
-                    return true;
-                }
-            }
+        if let Ok(meta) = std::fs::metadata(&path)
+            && let Ok(modified) = meta.modified()
+            && modified > last_indexed_time
+        {
+            return true;
         }
     }
 

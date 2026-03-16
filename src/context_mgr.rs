@@ -31,7 +31,7 @@ pub fn f170(text: &str) -> usize {
     // Use char count (not byte len) so multibyte UTF-8 doesn't inflate estimates.
     // Round up so we never undercount.
     let char_count = text.chars().count();
-    (char_count + 3) / 4
+    char_count.div_ceil(4)
 }
 
 /// f171=trim_conversation. Trim oldest turns to fit within budget.
@@ -181,9 +181,7 @@ fn split_turns(text: &str) -> Vec<&str> {
             let abs = start + pos;
             // If prefix starts with \n, the boundary is at abs (before \n).
             // Otherwise only if at position 0.
-            if prefix.starts_with('\n') {
-                boundaries.push(abs);
-            } else if abs == 0 {
+            if prefix.starts_with('\n') || abs == 0 {
                 boundaries.push(abs);
             }
             start = abs + prefix.len();

@@ -201,7 +201,7 @@ fn check_format(response: &str, expected: &str) -> ValidationCheck {
         upper.contains("PASS") || upper.contains("FAIL") || upper.contains("LGTM")
     } else if lower_expected.contains("category") || lower_expected.contains("single") {
         // Single-word response expected
-        response.trim().split_whitespace().count() <= 3
+        response.split_whitespace().count() <= 3
     } else {
         true
     };

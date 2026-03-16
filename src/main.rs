@@ -75,6 +75,12 @@ enum Cmd {
     /// Export training data from LLM traces. DPO/SFT fine-tuning.
     #[command(name = "export")]
     Export(ExportArgs),
+    /// Code review. Review staged changes or branch diff via LLM.
+    #[command(name = "review")]
+    Review(ReviewArgs),
+    /// Feedback loop. View/export tournament failure data and generated challenges.
+    #[command(name = "feedback")]
+    Feedback(FeedbackArgs),
 }
 
 #[derive(clap::Args)]
@@ -119,6 +125,51 @@ enum CiCmd {
         #[arg(long)]
         no_tests: bool,
     },
+}
+
+#[derive(clap::Args)]
+struct ReviewArgs {
+    #[command(subcommand)]
+    cmd: ReviewCmd,
+}
+
+#[derive(clap::Subcommand)]
+enum ReviewCmd {
+    /// Review staged changes.
+    Staged {
+        /// Project directory (default: cwd).
+        #[arg(short, long)]
+        project: Option<std::path::PathBuf>,
+    },
+    /// Review diff between current branch and base.
+    Branch {
+        /// Base branch to diff against (default: main).
+        #[arg(default_value = "main")]
+        base: String,
+        /// Project directory (default: cwd).
+        #[arg(short, long)]
+        project: Option<std::path::PathBuf>,
+    },
+}
+
+#[derive(clap::Args)]
+struct FeedbackArgs {
+    #[command(subcommand)]
+    cmd: FeedbackCmd,
+}
+
+#[derive(clap::Subcommand)]
+enum FeedbackCmd {
+    /// Show failure statistics.
+    Stats,
+    /// List recent failures.
+    Recent {
+        /// Number of failures to show.
+        #[arg(short = 'n', default_value = "10")]
+        limit: usize,
+    },
+    /// Export generated challenges as Rust tce() calls.
+    Export,
 }
 
 #[derive(clap::Args)]
@@ -770,12 +821,11 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
 
     // Load user templates from ~/.kova/micro/
     let micro_dir = kova::kova_dir().join("micro");
-    if micro_dir.is_dir() {
-        if let Ok(n) = registry.load_dir(&micro_dir) {
-            if n > 0 {
-                eprintln!("[micro] loaded {} user templates from {:?}", n, micro_dir);
-            }
-        }
+    if micro_dir.is_dir()
+        && let Ok(n) = registry.load_dir(&micro_dir)
+        && n > 0
+    {
+        eprintln!("[micro] loaded {} user templates from {:?}", n, micro_dir);
     }
 
     match args.cmd {
@@ -1182,6 +1232,91 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
     }
 }
 
+fn run_review(args: ReviewArgs) -> anyhow::Result<()> {
+    let ollama_url = kova::config::ollama_url();
+    let model = kova::config::default_model();
+
+    match args.cmd {
+        ReviewCmd::Staged { project } => {
+            let project = project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let result = kova::review::review_staged(&project, &ollama_url, &model)
+                .map_err(|e| anyhow::anyhow!(e))?;
+            println!("{}", kova::review::format_review(&result));
+            Ok(())
+        }
+        ReviewCmd::Branch { base, project } => {
+            let project = project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let result = kova::review::review_branch(&project, &base, &ollama_url, &model)
+                .map_err(|e| anyhow::anyhow!(e))?;
+            println!("{}", kova::review::format_review(&result));
+            Ok(())
+        }
+    }
+}
+
+fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
+    match args.cmd {
+        FeedbackCmd::Stats => {
+            let stats = kova::feedback::feedback_stats();
+            println!("Failures: {}", stats.total_failures);
+            println!("Generated challenges: {}", stats.generated_challenges);
+            if !stats.by_model.is_empty() {
+                println!("\nBy model:");
+                for (model, count) in &stats.by_model {
+                    println!("  {}: {}", model, count);
+                }
+            }
+            if !stats.by_event.is_empty() {
+                println!("\nBy event:");
+                for (event, count) in &stats.by_event {
+                    println!("  {}: {}", event, count);
+                }
+            }
+            Ok(())
+        }
+        FeedbackCmd::Recent { limit } => {
+            let failures = kova::feedback::recent_failures(limit);
+            if failures.is_empty() {
+                println!("No failures recorded.");
+                return Ok(());
+            }
+            for (i, f) in failures.iter().enumerate() {
+                println!(
+                    "#{} [{}] {} — model={}, event={}",
+                    i + 1,
+                    f.ts,
+                    f.challenge_desc,
+                    f.model,
+                    f.event_type
+                );
+            }
+            Ok(())
+        }
+        FeedbackCmd::Export => {
+            let failures = kova::feedback::recent_failures(100);
+            if failures.is_empty() {
+                println!("No failures to generate challenges from.");
+                return Ok(());
+            }
+            let ollama_url = kova::config::ollama_url();
+            let model = kova::config::default_model();
+            let mut challenges = Vec::new();
+            for f in &failures {
+                match kova::feedback::generate_challenge_from_failure(f, &ollama_url, &model) {
+                    Ok(ch) => challenges.push(ch),
+                    Err(e) => eprintln!("skip: {}", e),
+                }
+            }
+            if challenges.is_empty() {
+                println!("No challenges generated.");
+            } else {
+                println!("{}", kova::feedback::export_generated_challenges(&challenges));
+            }
+            Ok(())
+        }
+    }
+}
+
 fn run_export(args: ExportArgs) -> anyhow::Result<()> {
     match args.cmd {
         ExportCmd::Training { format, output } => {
@@ -1208,7 +1343,9 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Traces(_))
         | Some(Cmd::Mcp(_))
         | Some(Cmd::Ci(_))
-        | Some(Cmd::Export(_)) => {
+        | Some(Cmd::Export(_))
+        | Some(Cmd::Review(_))
+        | Some(Cmd::Feedback(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -1274,6 +1411,8 @@ fn main() -> anyhow::Result<()> {
                 }
                 Cmd::Ci(a) => run_ci(a),
                 Cmd::Export(a) => run_export(a),
+                Cmd::Review(a) => run_review(a),
+                Cmd::Feedback(a) => run_feedback(a),
                 _ => unreachable!(),
             };
         }
@@ -1421,7 +1560,9 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Traces(_))
         | Some(Cmd::Mcp(_))
         | Some(Cmd::Ci(_))
-        | Some(Cmd::Export(_)) => unreachable!("handled before tokio"),
+        | Some(Cmd::Export(_))
+        | Some(Cmd::Review(_))
+        | Some(Cmd::Feedback(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: REPL (like Claude Code). Fallback: GUI.
             #[cfg(feature = "inference")]
@@ -1595,7 +1736,6 @@ fn run_ci(args: CiArgs) -> anyhow::Result<()> {
                 watch_interval_secs: interval,
                 run_clippy: !no_clippy,
                 run_tests: !no_tests,
-                ..Default::default()
             };
             kova::ci::ci_watch(&config)
         }

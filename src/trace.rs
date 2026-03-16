@@ -66,8 +66,9 @@ fn trace_db() -> Option<&'static sled::Db> {
 
 /// f161=log_llm. Log an LLM trace to sled. Fire-and-forget.
 pub fn log_llm(trace: LlmTrace) {
-    if let Some(db) = trace_db() {
-        if let Ok(tree) = db.open_tree(LLM_TRACE_TREE) {
+    if let Some(db) = trace_db()
+        && let Ok(tree) = db.open_tree(LLM_TRACE_TREE)
+    {
             // Key: timestamp_millis + 4 random bytes for uniqueness
             let ts_bytes = trace.ts.to_be_bytes();
             let rand_bytes: [u8; 4] = {
@@ -86,7 +87,6 @@ pub fn log_llm(trace: LlmTrace) {
             if let Ok(val) = serde_json::to_vec(&trace) {
                 let _ = tree.insert(key, val);
             }
-        }
     }
 }
 
@@ -104,10 +104,10 @@ pub fn recent_llm_traces(limit: usize) -> Vec<LlmTrace> {
         if traces.len() >= limit {
             break;
         }
-        if let Ok((_, val)) = entry {
-            if let Ok(t) = serde_json::from_slice::<LlmTrace>(&val) {
-                traces.push(t);
-            }
+        if let Ok((_, val)) = entry
+            && let Ok(t) = serde_json::from_slice::<LlmTrace>(&val)
+        {
+            traces.push(t);
         }
     }
     traces

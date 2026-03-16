@@ -24,6 +24,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
+/// (key, model, node_id, duration_sum, count, passed_count, _)
+type CatBestEntry = (String, String, String, f64, u64, usize, usize);
+
 use super::bench;
 use super::registry::MicroRegistry;
 use super::runner;
@@ -64,10 +67,8 @@ impl WeightClass {
             // Models with no explicit size tag — check known families
             if lower.contains("tinyllama") || lower.contains("smollm2") {
                 WeightClass::Atomweight
-            } else if lower.contains("phi4-mini") {
-                WeightClass::Bantamweight  // phi4-mini = 3.8B
             } else {
-                WeightClass::Bantamweight
+                WeightClass::Bantamweight  // phi4-mini, etc. = 3-7B
             }
         }
     }
@@ -118,16 +119,16 @@ fn extract_param_size(model: &str) -> Option<f64> {
     for part in model.split(':') {
         let size_part = part.split('-').next().unwrap_or(part);
         // Check for billions (e.g. "3b", "0.5b", "14b")
-        if let Some(num_str) = size_part.strip_suffix('b').or_else(|| size_part.strip_suffix('B')) {
-            if let Ok(n) = num_str.parse::<f64>() {
-                return Some(n);
-            }
+        if let Some(num_str) = size_part.strip_suffix('b').or_else(|| size_part.strip_suffix('B'))
+            && let Ok(n) = num_str.parse::<f64>()
+        {
+            return Some(n);
         }
         // Check for millions (e.g. "135m", "360m") — convert to billions
-        if let Some(num_str) = size_part.strip_suffix('m').or_else(|| size_part.strip_suffix('M')) {
-            if let Ok(n) = num_str.parse::<f64>() {
-                return Some(n / 1000.0); // 135m → 0.135B, 360m → 0.36B
-            }
+        if let Some(num_str) = size_part.strip_suffix('m').or_else(|| size_part.strip_suffix('M'))
+            && let Ok(n) = num_str.parse::<f64>()
+        {
+            return Some(n / 1000.0); // 135m → 0.135B, 360m → 0.36B
         }
     }
     None
@@ -404,7 +405,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
     eprintln!("KOVA MICRO OLYMPICS");
     eprintln!("═══════════════════════════════════════════════════════════════════");
     eprintln!("{} competitors, {} events, {} challenges", competitors.len(), 6, challenges.len());
-    eprintln!("");
+    eprintln!();
     for (wc, members) in &by_weight {
         eprintln!("  {} division:", wc);
         for c in members {
@@ -585,7 +586,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
     let exhibition_results: Vec<ModelScore> = scores.iter().filter(|s| s.exhibition).cloned().collect();
 
     // Category winners (best overall per task type, excluding exhibition)
-    let mut cat_best: HashMap<String, (String, String, String, f64, u64, usize, usize)> = HashMap::new();
+    let mut cat_best: HashMap<String, CatBestEntry> = HashMap::new();
     for m in &all_matches {
         if m.competitor.exhibition { continue; }
         let key = format!("{}@{}", m.competitor.model, m.competitor.node_id);

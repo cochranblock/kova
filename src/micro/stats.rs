@@ -53,6 +53,12 @@ pub struct MicroStats {
     pub templates: HashMap<String, TemplateStats>,
 }
 
+impl Default for MicroStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MicroStats {
     pub fn new() -> Self {
         MicroStats {

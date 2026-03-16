@@ -30,14 +30,14 @@ pub fn load_cursor_prompts(workspace_root: &Path) -> String {
     // 1. ~/.cursor/rules (append)
     if let Ok(home) = std::env::var("HOME") {
         let rules = Path::new(&home).join(".cursor/rules");
-        if rules.exists() {
-            if let Ok(entries) = std::fs::read_dir(&rules) {
-                for e in entries.flatten() {
-                    if e.path().extension().is_some_and(|ext| ext == "mdc") {
-                        if let Ok(c) = std::fs::read_to_string(e.path()) {
-                            out.push_str(&format!("\n\n--- {} ---\n{}", e.path().display(), c));
-                        }
-                    }
+        if rules.exists()
+            && let Ok(entries) = std::fs::read_dir(&rules)
+        {
+            for e in entries.flatten() {
+                if e.path().extension().is_some_and(|ext| ext == "mdc")
+                    && let Ok(c) = std::fs::read_to_string(e.path())
+                {
+                    out.push_str(&format!("\n\n--- {} ---\n{}", e.path().display(), c));
                 }
             }
         }
@@ -46,14 +46,14 @@ pub fn load_cursor_prompts(workspace_root: &Path) -> String {
     // 2. ~/.cursor/shared-rules (append)
     if let Ok(home) = std::env::var("HOME") {
         let shared = Path::new(&home).join(".cursor/shared-rules");
-        if shared.exists() {
-            if let Ok(entries) = std::fs::read_dir(&shared) {
-                for e in entries.flatten() {
-                    if e.path().extension().is_some_and(|ext| ext == "mdc") {
-                        if let Ok(c) = std::fs::read_to_string(e.path()) {
-                            out.push_str(&format!("\n\n--- {} ---\n{}", e.path().display(), c));
-                        }
-                    }
+        if shared.exists()
+            && let Ok(entries) = std::fs::read_dir(&shared)
+        {
+            for e in entries.flatten() {
+                if e.path().extension().is_some_and(|ext| ext == "mdc")
+                    && let Ok(c) = std::fs::read_to_string(e.path())
+                {
+                    out.push_str(&format!("\n\n--- {} ---\n{}", e.path().display(), c));
                 }
             }
         }
@@ -61,14 +61,12 @@ pub fn load_cursor_prompts(workspace_root: &Path) -> String {
 
     // 3. workspace .cursor/rules (append)
     let wr = workspace_root.join(".cursor/rules");
-    if wr.exists() {
-        if let Ok(entries) = std::fs::read_dir(&wr) {
-            for e in entries.flatten() {
-                if e.path().extension().is_some_and(|ext| ext == "mdc") {
-                    if let Ok(c) = std::fs::read_to_string(e.path()) {
-                        out.push_str(&format!("\n\n--- {} ---\n{}", e.path().display(), c));
-                    }
-                }
+    if wr.exists() && let Ok(entries) = std::fs::read_dir(&wr) {
+        for e in entries.flatten() {
+            if e.path().extension().is_some_and(|ext| ext == "mdc")
+                && let Ok(c) = std::fs::read_to_string(e.path())
+            {
+                out.push_str(&format!("\n\n--- {} ---\n{}", e.path().display(), c));
             }
         }
     }
@@ -85,10 +83,8 @@ pub fn load_cursor_prompts(workspace_root: &Path) -> String {
                 "env_token_map.md",
             ] {
                 let p = protocols.join(name);
-                if p.exists() {
-                    if let Ok(c) = std::fs::read_to_string(&p) {
-                        out.push_str(&format!("\n\n--- {} ---\n{}", p.display(), c));
-                    }
+                if p.exists() && let Ok(c) = std::fs::read_to_string(&p) {
+                    out.push_str(&format!("\n\n--- {} ---\n{}", p.display(), c));
                 }
             }
         }
@@ -117,20 +113,16 @@ pub fn load_cursor_prompts(workspace_root: &Path) -> String {
 
     // 7. AGENTS.md
     let agents = workspace_root.join("AGENTS.md");
-    if agents.exists() {
-        if let Ok(c) = std::fs::read_to_string(&agents) {
-            out.push_str(&format!("\n\n--- AGENTS.md ---\n{}", c));
-        }
+    if agents.exists() && let Ok(c) = std::fs::read_to_string(&agents) {
+        out.push_str(&format!("\n\n--- AGENTS.md ---\n{}", c));
     }
 
     // 8. protocol_map, compression_map
     for name in ["protocol_map.md", "compression_map.md"] {
         for base in [workspace_root.join("docs"), workspace_root.to_path_buf()] {
             let p = base.join(name);
-            if p.exists() {
-                if let Ok(c) = std::fs::read_to_string(&p) {
-                    out.push_str(&format!("\n\n--- {} ---\n{}", name, c));
-                }
+            if p.exists() && let Ok(c) = std::fs::read_to_string(&p) {
+                out.push_str(&format!("\n\n--- {} ---\n{}", name, c));
                 break;
             }
         }
@@ -142,36 +134,32 @@ pub fn load_cursor_prompts(workspace_root: &Path) -> String {
 fn append_project_rules(project: &Path, out: &mut String) {
     // project/.cursor/rules/*.mdc
     let rules = project.join(".cursor/rules");
-    if rules.exists() {
-        if let Ok(entries) = std::fs::read_dir(&rules) {
-            for e in entries.flatten() {
-                if e.path().extension().is_some_and(|ext| ext == "mdc") {
-                    if let Ok(c) = std::fs::read_to_string(e.path()) {
-                        out.push_str(&format!(
-                            "\n\n--- {} (project) ---\n{}",
-                            e.path().display(),
-                            c
-                        ));
-                    }
-                }
+    if rules.exists() && let Ok(entries) = std::fs::read_dir(&rules) {
+        for e in entries.flatten() {
+            if e.path().extension().is_some_and(|ext| ext == "mdc")
+                && let Ok(c) = std::fs::read_to_string(e.path())
+            {
+                out.push_str(&format!(
+                    "\n\n--- {} (project) ---\n{}",
+                    e.path().display(),
+                    c
+                ));
             }
         }
     }
     // project/.cursor/protocols/*.md
     let protocols = project.join(".cursor/protocols");
-    if protocols.exists() {
-        if let Ok(entries) = std::fs::read_dir(&protocols) {
-            for e in entries.flatten() {
-                let p = e.path();
-                if p.extension().is_some_and(|ext| ext == "md") {
-                    if let Ok(c) = std::fs::read_to_string(&p) {
-                        out.push_str(&format!(
-                            "\n\n--- {} (project protocol) ---\n{}",
-                            p.display(),
-                            c
-                        ));
-                    }
-                }
+    if protocols.exists() && let Ok(entries) = std::fs::read_dir(&protocols) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().is_some_and(|ext| ext == "md")
+                && let Ok(c) = std::fs::read_to_string(&p)
+            {
+                out.push_str(&format!(
+                    "\n\n--- {} (project protocol) ---\n{}",
+                    p.display(),
+                    c
+                ));
             }
         }
     }
@@ -181,10 +169,8 @@ fn append_skill_dir(dir: &Path, out: &mut String) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for e in entries.flatten() {
             let skill_md = e.path().join("SKILL.md");
-            if skill_md.exists() {
-                if let Ok(c) = std::fs::read_to_string(&skill_md) {
-                    out.push_str(&format!("\n\n--- {} ---\n{}", skill_md.display(), c));
-                }
+            if skill_md.exists() && let Ok(c) = std::fs::read_to_string(&skill_md) {
+                out.push_str(&format!("\n\n--- {} ---\n{}", skill_md.display(), c));
             }
         }
     }

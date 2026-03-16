@@ -14,6 +14,12 @@ pub struct MicroRegistry {
     templates: HashMap<String, MicroTemplate>,
 }
 
+impl Default for MicroRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MicroRegistry {
     /// Build registry from built-in templates.
     pub fn new() -> Self {

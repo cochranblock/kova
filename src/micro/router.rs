@@ -38,13 +38,21 @@ pub struct RouteOutcome {
     pub reward: f32,
 }
 
+/// Per-category reward history: category -> template_id -> (total_reward, count).
+type CatHistory = HashMap<String, HashMap<String, (f32, u32)>>;
+
 /// Learned router state. Epsilon-greedy bandit over template selection.
 /// Inspired by Mattbusel/tokio-prompt-orchestrator's epsilon-greedy routing.
 pub struct MicroRouter {
-    /// Per-category reward history: category -> template_id -> (total_reward, count).
-    history: Mutex<HashMap<String, HashMap<String, (f32, u32)>>>,
+    history: Mutex<CatHistory>,
     /// Exploration rate (0.0 = pure exploit, 1.0 = pure explore).
     pub epsilon: f32,
+}
+
+impl Default for MicroRouter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MicroRouter {
@@ -64,14 +72,12 @@ impl MicroRouter {
         explicit_id: Option<&str>,
     ) -> RouteDecision {
         // Explicit override
-        if let Some(id) = explicit_id {
-            if registry.get(id).is_some() {
-                return RouteDecision {
+        if let Some(id) = explicit_id && registry.get(id).is_some() {
+            return RouteDecision {
                     template_id: id.to_string(),
                     confidence: 1.0,
                     method: RouteMethod::Explicit,
                 };
-            }
         }
 
         // Classify the input into a category via keywords
@@ -79,8 +85,10 @@ impl MicroRouter {
 
         // Check bandit history for this category
         let history = self.history.lock().unwrap();
-        if let Some(cat_history) = history.get(&category) {
-            if !cat_history.is_empty() && rand_f32() > self.epsilon {
+        if let Some(cat_history) = history.get(&category)
+            && !cat_history.is_empty()
+            && rand_f32() > self.epsilon
+        {
                 // Exploit: pick the template with highest average reward
                 let best = cat_history
                     .iter()
@@ -98,7 +106,6 @@ impl MicroRouter {
                         method: RouteMethod::Bandit,
                     };
                 }
-            }
         }
         drop(history);
 

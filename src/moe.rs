@@ -393,10 +393,8 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
             variants[w].node_id, variants[w].total_score
         );
 
-        if config.save_winner {
-            if let Some(path) = save_expert(prompt, &variants[w].code) {
-                println!("[moe] saved to {}", path.display());
-            }
+        if config.save_winner && let Some(path) = save_expert(prompt, &variants[w].code) {
+            println!("[moe] saved to {}", path.display());
         }
 
         println!("```rust");

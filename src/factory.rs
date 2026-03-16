@@ -126,10 +126,10 @@ impl Factory {
         // ── Stage 4: Review ──
         if self.config.run_review {
             let review_result = self.review(&compiled_code, &mut result);
-            if let Some(issues) = review_result {
-                if let Some(fixed) =
+            if let Some(issues) = review_result
+                && let Some(fixed) =
                     self.fix_from_review(&compiled_code, &issues, &system, &mut result)
-                {
+            {
                     // Re-verify the review fix compiles
                     let tmp = match tempfile::TempDir::new() {
                         Ok(d) => d,
@@ -145,7 +145,6 @@ impl Factory {
                         result.code = fixed;
                     }
                     // If review fix broke compilation, keep the pre-review code
-                }
             }
         }
 

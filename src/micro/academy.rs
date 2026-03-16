@@ -305,14 +305,12 @@ fn generate_recommendations(
     let best = profiles.iter().max_by(|a, b|
         a.overall_accuracy.partial_cmp(&b.overall_accuracy).unwrap_or(std::cmp::Ordering::Equal)
     );
-    if let Some(best) = best {
-        if !best.gaps.is_empty() {
-            recs.push(format!(
+    if let Some(best) = best && !best.gaps.is_empty() {
+        recs.push(format!(
                 "Even the best model ({}, {:.0}% overall) struggles with: {}",
                 best.model, best.overall_accuracy * 100.0,
                 best.gaps.join(", ")
             ));
-        }
     }
 
     // Training data recommendations

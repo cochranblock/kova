@@ -293,13 +293,12 @@ fn gather_context(project_dir: &Path) -> ProjectContext {
     if let Ok(lib_rs) = std::fs::read_to_string(src_dir.join("lib.rs")) {
         for line in lib_rs.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("pub mod ") {
-                if let Some(name) = trimmed
+            if trimmed.starts_with("pub mod ")
+                && let Some(name) = trimmed
                     .strip_prefix("pub mod ")
                     .and_then(|s| s.strip_suffix(';'))
-                {
-                    ctx.modules.push(name.to_string());
-                }
+            {
+                ctx.modules.push(name.to_string());
             }
         }
     }

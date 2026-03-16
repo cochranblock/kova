@@ -36,37 +36,33 @@ fn inspect_local_macos() -> HostInfo {
     };
 
     // CPU cores
-    if let Ok(out) = Command::new("sysctl").args(["-n", "hw.ncpu"]).output() {
-        if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if let Ok(n) = s.parse::<i32>() {
-                info.cores = Some(n);
-            }
+    if let Ok(out) = Command::new("sysctl").args(["-n", "hw.ncpu"]).output()
+        && out.status.success()
+    {
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if let Ok(n) = s.parse::<i32>() {
+            info.cores = Some(n);
         }
     }
 
     // RAM (bytes -> GB)
-    if let Ok(out) = Command::new("sysctl").args(["-n", "hw.memsize"]).output() {
-        if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if let Ok(bytes) = s.parse::<i64>() {
-                info.ram_gb = Some((bytes / (1024 * 1024 * 1024)) as i32);
-            }
+    if let Ok(out) = Command::new("sysctl").args(["-n", "hw.memsize"]).output()
+        && out.status.success()
+    {
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if let Ok(bytes) = s.parse::<i64>() {
+            info.ram_gb = Some((bytes / (1024 * 1024 * 1024)) as i32);
         }
     }
 
     // Disk free (df / — 512-byte blocks on macOS; column 4 = Available)
-    if let Ok(out) = Command::new("df").arg("/").output() {
-        if out.status.success() {
-            let text = String::from_utf8_lossy(&out.stdout).to_string();
-            let lines: Vec<&str> = text.lines().collect();
-            if lines.len() >= 2 {
-                let parts: Vec<&str> = lines[1].split_whitespace().collect();
-                if parts.len() >= 4 {
-                    if let Ok(blocks) = parts[3].parse::<i64>() {
-                        info.disk_free_gb = Some((blocks * 512) / (1024 * 1024 * 1024));
-                    }
-                }
+    if let Ok(out) = Command::new("df").arg("/").output() && out.status.success() {
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let lines: Vec<&str> = text.lines().collect();
+        if lines.len() >= 2 {
+            let parts: Vec<&str> = lines[1].split_whitespace().collect();
+            if parts.len() >= 4 && let Ok(blocks) = parts[3].parse::<i64>() {
+                info.disk_free_gb = Some((blocks * 512) / (1024 * 1024 * 1024));
             }
         }
     }
@@ -75,8 +71,8 @@ fn inspect_local_macos() -> HostInfo {
     if let Ok(out) = Command::new("system_profiler")
         .args(["SPDisplaysDataType"])
         .output()
+        && out.status.success()
     {
-        if out.status.success() {
             let text = String::from_utf8_lossy(&out.stdout);
             // Look for "Chipset Model:" or "Metal:" line
             for line in text.lines() {
@@ -92,7 +88,6 @@ fn inspect_local_macos() -> HostInfo {
                     }
                 }
             }
-        }
     }
 
     info
@@ -132,20 +127,14 @@ echo "$gpu"
                 id: node.to_string(),
                 ..Default::default()
             };
-            if !parts.is_empty() && !parts[0].is_empty() {
-                if let Ok(n) = parts[0].parse::<i32>() {
-                    info.cores = Some(n);
-                }
+            if !parts.is_empty() && !parts[0].is_empty() && let Ok(n) = parts[0].parse::<i32>() {
+                info.cores = Some(n);
             }
-            if parts.len() >= 2 && !parts[1].is_empty() {
-                if let Ok(n) = parts[1].parse::<i32>() {
-                    info.ram_gb = Some(n);
-                }
+            if parts.len() >= 2 && !parts[1].is_empty() && let Ok(n) = parts[1].parse::<i32>() {
+                info.ram_gb = Some(n);
             }
-            if parts.len() >= 3 && !parts[2].is_empty() {
-                if let Ok(bytes) = parts[2].parse::<i64>() {
-                    info.disk_free_gb = Some(bytes / (1024 * 1024 * 1024));
-                }
+            if parts.len() >= 3 && !parts[2].is_empty() && let Ok(bytes) = parts[2].parse::<i64>() {
+                info.disk_free_gb = Some(bytes / (1024 * 1024 * 1024));
             }
             if parts.len() >= 4 && !parts[3].is_empty() {
                 info.gpu = Some(parts[3].to_string());
@@ -248,16 +237,16 @@ pub fn print_recommend(hosts: &[HostInfo]) {
         println!("  -> Use sshallp or kova c2 run f18 --broadcast\n");
     }
 
-    if let Some(st) = workers.iter().find(|h| h.id == "st") {
-        if let Some(d) = st.disk_free_gb {
-            if d < 50 {
+    if let Some(st) = workers.iter().find(|h| h.id == "st")
+        && let Some(d) = st.disk_free_gb
+    {
+        if d < 50 {
                 println!(
                     "WARNING: st disk low ({} GB free). Hive/NFS export at risk.",
                     d
                 );
-            } else {
-                println!("st: NFS export /mnt/hive. Use for rsync target, hive setup.");
-            }
+        } else {
+            println!("st: NFS export /mnt/hive. Use for rsync target, hive setup.");
         }
     }
 

@@ -12,18 +12,18 @@ pub fn f139(project_dir: &Path) -> String {
 
     // Base persona.
     let persona_path = crate::config::prompts_dir().join("persona.md");
-    if let Ok(persona) = std::fs::read_to_string(&persona_path) {
-        if !persona.trim().is_empty() {
-            parts.push(persona.trim().to_string());
-        }
+    if let Ok(persona) = std::fs::read_to_string(&persona_path)
+        && !persona.trim().is_empty()
+    {
+        parts.push(persona.trim().to_string());
     }
 
     // System prompt.
     let system_path = crate::config::prompts_dir().join("system.md");
-    if let Ok(system) = std::fs::read_to_string(&system_path) {
-        if !system.trim().is_empty() {
-            parts.push(system.trim().to_string());
-        }
+    if let Ok(system) = std::fs::read_to_string(&system_path)
+        && !system.trim().is_empty()
+    {
+        parts.push(system.trim().to_string());
     }
 
     // Cursor rules.
@@ -36,21 +36,21 @@ pub fn f139(project_dir: &Path) -> String {
 
     // KOVA.md from project root.
     let kova_md = project_dir.join("KOVA.md");
-    if let Ok(content) = std::fs::read_to_string(&kova_md) {
-        if !content.trim().is_empty() {
-            parts.push(format!(
-                "## Project Instructions (KOVA.md)\n{}",
-                content.trim()
-            ));
-        }
+    if let Ok(content) = std::fs::read_to_string(&kova_md)
+        && !content.trim().is_empty()
+    {
+        parts.push(format!(
+            "## Project Instructions (KOVA.md)\n{}",
+            content.trim()
+        ));
     }
 
     // Memory.
     let memory_path = crate::config::kova_dir().join("memory.md");
-    if let Ok(content) = std::fs::read_to_string(&memory_path) {
-        if !content.trim().is_empty() {
-            parts.push(format!("## Persistent Memory\n{}", content.trim()));
-        }
+    if let Ok(content) = std::fs::read_to_string(&memory_path)
+        && !content.trim().is_empty()
+    {
+        parts.push(format!("## Persistent Memory\n{}", content.trim()));
     }
 
     // Project context (Cargo.toml, recent changes).

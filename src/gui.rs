@@ -478,26 +478,26 @@ impl eframe::App for KovaApp {
                                     ui.label(egui::RichText::new("·").color(colors::MUTED));
                                     ui.label(egui::RichText::new(entry.project.as_deref().unwrap_or("-")).color(colors::MUTED).small());
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.button("Run").clicked() {
-                                if let Some(intent) = crate::entry_to_intent(entry) {
-                                    let project = entry
-                                        .project
-                                        .as_ref()
-                                        .map(std::path::PathBuf::from)
-                                        .unwrap_or_else(|| self.current_project.clone());
-                                    let approuter_dir = entry
-                                        .approuter_dir
-                                        .as_ref()
-                                        .map(std::path::PathBuf::from)
-                                        .or_else(|| {
-                                            std::env::var("HOME")
-                                                .ok()
-                                                .map(|h| std::path::PathBuf::from(h).join("approuter"))
-                                        });
+                                        if ui.button("Run").clicked()
+                                            && let Some(intent) = crate::entry_to_intent(entry)
+                                        {
+                                            let project = entry
+                                                .project
+                                                .as_ref()
+                                                .map(std::path::PathBuf::from)
+                                                .unwrap_or_else(|| self.current_project.clone());
+                                            let approuter_dir = entry
+                                                .approuter_dir
+                                                .as_ref()
+                                                .map(std::path::PathBuf::from)
+                                                .or_else(|| {
+                                                    std::env::var("HOME")
+                                                        .ok()
+                                                        .map(|h| std::path::PathBuf::from(h).join("approuter"))
+                                                });
                                             self.run_intent(intent, project, approuter_dir);
                                         }
-                                    }
-                                });
+                                    });
                                 });
                             });
                         }
@@ -757,8 +757,9 @@ impl eframe::App for KovaApp {
                     ui.label(egui::RichText::new(content).color(colors::TEXT).monospace());
 
                     #[cfg(feature = "inference")]
-                    if m.role == "assistant" {
-                        if let Some(code) = crate::pipeline::extract_rust_block(&m.content) {
+                    if m.role == "assistant"
+                        && let Some(code) = crate::pipeline::extract_rust_block(&m.content)
+                    {
                             ui.add_space(layout::PADDING_SM);
                             let user_msg = self
                                 .messages
@@ -810,7 +811,6 @@ impl eframe::App for KovaApp {
                                             ui.label(egui::RichText::new(diff).color(colors::TEXT).monospace());
                                         });
                                 });
-                        }
                     }
                     });
                     ui.add_space(layout::GAP);

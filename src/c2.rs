@@ -562,7 +562,7 @@ fn broadcast_parallel(plan: &crate::plan::t3, nodes: &[String], local: bool) -> 
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .spawn();
-                    let ok = match child {
+                    match child {
                         Ok(mut c) => {
                             if let Some(out) = c.stdout.take() {
                                 for line in BufReader::new(out).lines().map_while(Result::ok) {
@@ -580,8 +580,7 @@ fn broadcast_parallel(plan: &crate::plan::t3, nodes: &[String], local: bool) -> 
                             let _ = tx.send((node.clone(), format!("ssh failed: {}", e)));
                             false
                         }
-                    };
-                    ok
+                    }
                 })
             })
             .collect();

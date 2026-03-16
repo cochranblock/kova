@@ -63,24 +63,22 @@ pub fn parse_reply(input: &str, num_choices: Option<usize>) -> ElicitorReply {
     // Choice by letter: a=0, b=1, c=2, d=3, e=4
     if s.len() == 1 {
         let c = s.chars().next().unwrap();
-        if let Some(idx) = (b'a'..=b'e').position(|x| x as char == c) {
-            if num_choices.is_none_or(|n| idx < n) {
-                return ElicitorReply::Choice(idx);
-            }
+        if let Some(idx) = (b'a'..=b'e').position(|x| x as char == c)
+            && num_choices.is_none_or(|n| idx < n)
+        {
+            return ElicitorReply::Choice(idx);
         }
-        if let Some(idx) = (b'1'..=b'5').position(|x| (x - b'0') as char == c) {
-            if num_choices.is_none_or(|n| idx < n) {
-                return ElicitorReply::Choice(idx);
-            }
+        if let Some(idx) = (b'1'..=b'5').position(|x| (x - b'0') as char == c)
+            && num_choices.is_none_or(|n| idx < n)
+        {
+            return ElicitorReply::Choice(idx);
         }
     }
     // Choice by number "1", "2", etc.
-    if let Ok(n) = s.parse::<usize>() {
-        if n >= 1 {
-            let idx = n - 1;
-            if num_choices.is_none_or(|max| idx < max) {
-                return ElicitorReply::Choice(idx);
-            }
+    if let Ok(n) = s.parse::<usize>() && n >= 1 {
+        let idx = n - 1;
+        if num_choices.is_none_or(|max| idx < max) {
+            return ElicitorReply::Choice(idx);
         }
     }
     ElicitorReply::Freeform(input.trim().to_string())

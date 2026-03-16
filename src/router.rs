@@ -56,10 +56,8 @@ impl RouterResult {
                             "Could you clarify what you need?"
                         }
                     });
-                if let Some(ch) = choices {
-                    if !ch.is_empty() {
-                        return crate::elicitor::format_question(q, Some(ch));
-                    }
+                if let Some(ch) = choices && !ch.is_empty() {
+                    return crate::elicitor::format_question(q, Some(ch));
                 }
                 // Canned choices for fix/add when model didn't provide any
                 let lower = original_msg.to_lowercase();
@@ -169,10 +167,10 @@ async fn run_classify(model_path: &Path, user_input: &str) -> RouterResult {
         Err(e) => return RouterResult::Error(format!("model load: {}", e)),
     };
 
-    if crate::config::router_structured() {
-        if let Ok(result) = run_classify_structured(&model, user_input).await {
-            return result;
-        }
+    if crate::config::router_structured()
+        && let Ok(result) = run_classify_structured(&model, user_input).await
+    {
+        return result;
     }
 
     let mut chat = model.chat().with_system_prompt(CLASSIFY_PROMPT);
