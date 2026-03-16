@@ -879,10 +879,9 @@ fn f207(call: &t103, _project_dir: &Path) -> t104 {
         Err(e) => return e,
     };
 
-    let ollama_url = crate::config::ollama_url();
-    let model = crate::config::default_model();
+    let provider = crate::providers::default_provider();
 
-    match crate::review::review_diff(diff, &ollama_url, &model) {
+    match crate::review::review_diff(diff, &provider) {
         Ok(result) => t104 {
             tool: call.tool.clone(),
             success: true,

@@ -1233,20 +1233,19 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
 }
 
 fn run_review(args: ReviewArgs) -> anyhow::Result<()> {
-    let ollama_url = kova::config::ollama_url();
-    let model = kova::config::default_model();
+    let provider = kova::providers::default_provider();
 
     match args.cmd {
         ReviewCmd::Staged { project } => {
             let project = project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let result = kova::review::review_staged(&project, &ollama_url, &model)
+            let result = kova::review::review_staged(&project, &provider)
                 .map_err(|e| anyhow::anyhow!(e))?;
             println!("{}", kova::review::format_review(&result));
             Ok(())
         }
         ReviewCmd::Branch { base, project } => {
             let project = project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let result = kova::review::review_branch(&project, &base, &ollama_url, &model)
+            let result = kova::review::review_branch(&project, &base, &provider)
                 .map_err(|e| anyhow::anyhow!(e))?;
             println!("{}", kova::review::format_review(&result));
             Ok(())
@@ -1298,11 +1297,10 @@ fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
                 println!("No failures to generate challenges from.");
                 return Ok(());
             }
-            let ollama_url = kova::config::ollama_url();
-            let model = kova::config::default_model();
+            let provider = kova::providers::default_provider();
             let mut challenges = Vec::new();
             for f in &failures {
-                match kova::feedback::generate_challenge_from_failure(f, &ollama_url, &model) {
+                match kova::feedback::generate_challenge_from_failure(f, &provider) {
                     Ok(ch) => challenges.push(ch),
                     Err(e) => eprintln!("skip: {}", e),
                 }

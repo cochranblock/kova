@@ -132,8 +132,7 @@ pub fn recent_failures(limit: usize) -> Vec<FailureRecord> {
 /// variant of the failed challenge. Returns one generated challenge.
 pub fn generate_challenge_from_failure(
     failure: &FailureRecord,
-    ollama_url: &str,
-    model: &str,
+    provider: &crate::providers::Provider,
 ) -> Result<GeneratedChallenge, String> {
     let system = "You are a Rust challenge designer for the Kova micro-model tournament. \
         Given a failure record (a challenge a model got wrong), create a NEW, HARDER variant. \
@@ -163,8 +162,8 @@ pub fn generate_challenge_from_failure(
         failure.model,
     );
 
-    let response = ollama_generate(ollama_url, model, system, &prompt)?;
-    let challenge = parse_generated_challenge(&response, &failure.challenge_desc)?;
+    let resp = crate::providers::provider_generate(provider, "", system, &prompt)?;
+    let challenge = parse_generated_challenge(&resp.text, &failure.challenge_desc)?;
 
     // Store the generated challenge
     if let Some(db) = feedback_db()
@@ -350,44 +349,6 @@ fn parse_generated_challenge(
         difficulty,
         source_failure: source_failure.to_string(),
     })
-}
-
-/// Call ollama /api/generate directly (same as crate::ollama but self-contained).
-fn ollama_generate(
-    base_url: &str,
-    model: &str,
-    system: &str,
-    prompt: &str,
-) -> Result<String, String> {
-    let url = format!("{}/api/generate", base_url.trim_end_matches('/'));
-    let body = serde_json::json!({
-        "model": model,
-        "system": system,
-        "prompt": prompt,
-        "stream": false,
-        "options": { "num_ctx": 4096 }
-    });
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .map_err(|e| format!("ollama request failed: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("ollama returned {}", resp.status()));
-    }
-
-    let json: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
-    json["response"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "no 'response' field in ollama output".to_string())
 }
 
 // ── Tests ────────────────────────────────────────────────────────

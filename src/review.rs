@@ -7,6 +7,8 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use crate::providers::Provider;
+
 // ── Types ───────────────────────────────────────────────
 
 /// t118=ReviewRequest. Input for code review.
@@ -88,15 +90,14 @@ Rules:
 // ── Core Functions ──────────────────────────────────────
 
 /// f185=review_diff. Send a diff to LLM for code review.
-pub fn review_diff(diff: &str, ollama_url: &str, model: &str) -> Result<ReviewResult, String> {
+pub fn review_diff(diff: &str, provider: &Provider) -> Result<ReviewResult, String> {
     review_diff_with_opts(
         &ReviewRequest {
             diff: diff.to_string(),
             context: None,
             focus: None,
         },
-        ollama_url,
-        model,
+        provider,
     )
 }
 
@@ -106,8 +107,7 @@ const MAX_DIFF_CHARS: usize = 50_000;
 /// Review with full request options.
 fn review_diff_with_opts(
     req: &ReviewRequest,
-    ollama_url: &str,
-    model: &str,
+    provider: &Provider,
 ) -> Result<ReviewResult, String> {
     let mut prompt = String::with_capacity(req.diff.len().min(MAX_DIFF_CHARS) + 256);
 
@@ -135,37 +135,35 @@ fn review_diff_with_opts(
         prompt.push_str(&req.diff);
     }
 
-    let raw = crate::ollama::generate(ollama_url, model, REVIEW_SYSTEM_PROMPT, &prompt, Some(8192))?;
+    let resp = crate::providers::provider_generate(provider, "", REVIEW_SYSTEM_PROMPT, &prompt)?;
 
-    parse_review_response(&raw)
+    parse_review_response(&resp.text)
 }
 
 /// f186=review_staged. Review currently staged changes.
 pub fn review_staged(
     project_dir: &Path,
-    ollama_url: &str,
-    model: &str,
+    provider: &Provider,
 ) -> Result<ReviewResult, String> {
     let diff = git_diff(project_dir, &["diff", "--staged"])?;
     if diff.trim().is_empty() {
         return Err("no staged changes to review".into());
     }
-    review_diff(&diff, ollama_url, model)
+    review_diff(&diff, provider)
 }
 
 /// f187=review_branch. Review diff between current branch and base.
 pub fn review_branch(
     project_dir: &Path,
     base: &str,
-    ollama_url: &str,
-    model: &str,
+    provider: &Provider,
 ) -> Result<ReviewResult, String> {
     let range = format!("{}...HEAD", base);
     let diff = git_diff(project_dir, &["diff", &range])?;
     if diff.trim().is_empty() {
         return Err(format!("no diff between {} and HEAD", base));
     }
-    review_diff(&diff, ollama_url, model)
+    review_diff(&diff, provider)
 }
 
 /// f188=format_review. Human-readable review output.

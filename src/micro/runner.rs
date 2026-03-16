@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use super::template::MicroTemplate;
 use crate::cluster::Cluster;
-use crate::ollama;
+use crate::providers::{Provider, provider_generate};
 
 /// Result of running a micro-model.
 #[derive(Debug, Clone)]
@@ -171,27 +171,22 @@ pub fn run_micro(
         None => template.model.clone(),
     };
 
-    let result = ollama::generate_with_temp(
-        &url,
-        &model,
-        &template.system_prompt,
-        &prompt,
-        Some(template.num_ctx),
-        Some(template.temperature),
-    );
+    // Remote node → Ollama provider.
+    let provider = Provider::Ollama { url: url.clone() };
+    let result = provider_generate(&provider, &model, &template.system_prompt, &prompt);
 
     match result {
-        Ok(response) => {
+        Ok(resp) => {
             let duration = start.elapsed();
             breaker.record_success();
-            let est_tokens = (response.len() / 4) as u64;
+            let est_tokens = resp.tokens_out.unwrap_or((resp.text.len() / 4) as u64);
             budget.record(est_tokens);
 
             Ok(MicroResult {
                 template_id: template.id.clone(),
                 node_id,
                 model,
-                response,
+                response: resp.text,
                 duration,
                 tokens: Some(est_tokens),
             })
@@ -207,7 +202,7 @@ pub fn run_micro(
 /// If the exact model exists, use it. Otherwise, find a model from the same family
 /// (e.g. qwen2.5-coder:3b → qwen2.5-coder:7b).
 fn pick_model(base_url: &str, preferred: &str) -> Option<String> {
-    let models = ollama::list_models(base_url).ok()?;
+    let models = crate::ollama::list_models(base_url).ok()?;
     let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
 
     // Exact match
@@ -237,23 +232,17 @@ pub fn run_micro_direct(
     let model = model_override.unwrap_or(&template.model);
     let start = Instant::now();
 
-    let response = ollama::generate_with_temp(
-        base_url,
-        model,
-        &template.system_prompt,
-        &prompt,
-        Some(template.num_ctx),
-        Some(template.temperature),
-    )?;
+    let provider = Provider::Ollama { url: base_url.to_string() };
+    let resp = provider_generate(&provider, model, &template.system_prompt, &prompt)?;
 
     let duration = start.elapsed();
-    let est_tokens = (response.len() / 4) as u64;
+    let est_tokens = resp.tokens_out.unwrap_or((resp.text.len() / 4) as u64);
 
     Ok(MicroResult {
         template_id: template.id.clone(),
         node_id: "direct".into(),
         model: model.to_string(),
-        response,
+        response: resp.text,
         duration,
         tokens: Some(est_tokens),
     })

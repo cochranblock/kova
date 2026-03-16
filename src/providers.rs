@@ -1,18 +1,21 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! providers — Multi-provider LLM client. Ollama, OpenAI-compatible, Anthropic.
-//! Research: rust-genai (multi-provider patterns), reqwest blocking client.
-//! f199=provider_generate, f200=provider_list.
+//! providers — Multi-provider LLM client. Local (Kalosm/candle), Ollama, OpenAI-compatible, Anthropic.
+//! Pure Rust local inference is the default. Ollama kept for remote nodes only.
+//! f199=provider_generate, f200=provider_list, f210=default_provider.
 //! t129=Provider, t130=ProviderConfig, t131=ProviderResponse.
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 // ── Types ────────────────────────────────────────────────────────
 
 /// t129=Provider. Supported LLM providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Provider {
-    /// Local ollama instance.
+    /// Pure Rust local inference via Kalosm/candle. Default provider.
+    Local { model_path: PathBuf },
+    /// Remote ollama instance (kept for cluster nodes).
     Ollama { url: String },
     /// OpenAI-compatible API (OpenAI, Groq, Together, local vLLM, etc).
     OpenAiCompat {
@@ -54,6 +57,20 @@ pub fn provider_generate(
     let t0 = std::time::Instant::now();
 
     match provider {
+        Provider::Local { model_path } => {
+            let resp_text = local_generate(model_path, system, prompt)?;
+            let model_name = model_path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "local".into());
+            Ok(ProviderResponse {
+                text: resp_text,
+                model: model_name,
+                provider_name: "local".into(),
+                latency_ms: t0.elapsed().as_millis() as u64,
+                tokens_out: None,
+            })
+        }
         Provider::Ollama { url } => {
             let resp_text = crate::ollama::generate(url, model, system, prompt, None)?;
             Ok(ProviderResponse {
@@ -97,6 +114,48 @@ pub fn provider_generate(
                 latency_ms: t0.elapsed().as_millis() as u64,
                 tokens_out: resp.tokens_out,
             })
+        }
+    }
+}
+
+// ── Local (Kalosm/candle) ────────────────────────────────────────
+
+/// Pure Rust local inference via Kalosm. Blocks until complete.
+fn local_generate(model_path: &std::path::Path, system: &str, prompt: &str) -> Result<String, String> {
+    let path = model_path.to_path_buf();
+    let sys = system.to_string();
+    let inp = prompt.to_string();
+
+    // Spawn a thread with its own tokio runtime (same pattern as inference::f76).
+    let handle = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| format!("tokio: {}", e))?;
+        rt.block_on(async {
+            crate::inference::f80(&path, &sys, &inp)
+                .await
+                .map_err(|e| format!("local inference: {}", e))
+        })
+    });
+
+    handle.join().map_err(|_| "inference thread panic".to_string())?
+}
+
+/// f210=default_provider. Returns Local provider using config model path.
+/// Falls back to Ollama if KOVA_PROVIDER=ollama or model file missing.
+pub fn default_provider() -> Provider {
+    // Explicit override: KOVA_PROVIDER=ollama forces remote.
+    if std::env::var("KOVA_PROVIDER").as_deref() == Ok("ollama") {
+        return Provider::Ollama {
+            url: crate::config::ollama_url(),
+        };
+    }
+
+    match crate::config::inference_model_path() {
+        Some(path) if path.exists() => Provider::Local { model_path: path },
+        _ => {
+            // No local model found — fall back to ollama.
+            Provider::Ollama {
+                url: crate::config::ollama_url(),
+            }
         }
     }
 }
@@ -270,12 +329,17 @@ pub fn provider_list() -> Vec<ProviderConfig> {
 }
 
 fn default_providers() -> Vec<ProviderConfig> {
+    let provider = default_provider();
+    let model_name = match &provider {
+        Provider::Local { model_path } => model_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned()),
+        _ => Some("qwen2.5-coder:1.5b".into()),
+    };
     vec![ProviderConfig {
         name: "local".into(),
-        provider: Provider::Ollama {
-            url: "http://localhost:11434".into(),
-        },
-        default_model: Some("qwen2.5-coder:1.5b".into()),
+        provider,
+        default_model: model_name,
     }]
 }
 
@@ -286,11 +350,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_providers_includes_ollama() {
+    fn default_providers_includes_local() {
         let providers = default_providers();
         assert_eq!(providers.len(), 1);
         assert_eq!(providers[0].name, "local");
-        assert!(matches!(providers[0].provider, Provider::Ollama { .. }));
+        // Default is Local (pure Rust) when model exists, Ollama fallback otherwise.
+        assert!(
+            matches!(providers[0].provider, Provider::Local { .. })
+                || matches!(providers[0].provider, Provider::Ollama { .. })
+        );
     }
 
     #[test]
@@ -325,6 +393,7 @@ mod tests {
     #[test]
     fn all_provider_variants_serialize() {
         let providers = vec![
+            Provider::Local { model_path: PathBuf::from("/models/test.gguf") },
             Provider::Ollama { url: "http://localhost:11434".into() },
             Provider::OpenAiCompat {
                 url: "http://localhost:8080".into(),
@@ -365,5 +434,32 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn default_provider_returns_valid_variant() {
+        let provider = default_provider();
+        // Should be Local or Ollama depending on whether model file exists.
+        match &provider {
+            Provider::Local { model_path } => {
+                assert!(model_path.to_string_lossy().len() > 0);
+            }
+            Provider::Ollama { url } => {
+                assert!(url.starts_with("http"));
+            }
+            _ => panic!("default_provider should return Local or Ollama"),
+        }
+    }
+
+    #[test]
+    fn local_provider_serializes() {
+        let p = Provider::Local {
+            model_path: PathBuf::from("/tmp/test-model.gguf"),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("Local"));
+        assert!(json.contains("test-model.gguf"));
+        let back: Provider = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, Provider::Local { .. }));
     }
 }
