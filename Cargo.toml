@@ -33,8 +33,8 @@ tokio = { workspace = true }
 tempfile = { workspace = true }
 similar = { version = "2", optional = true }
 
-eframe = { version = "0.29", optional = true }
-egui = { version = "0.29", optional = true }
+eframe = { version = "0.33", optional = true }
+egui = { version = "0.33", optional = true }
 axum = { version = "0.7", features = ["json", "macros", "ws"], optional = true }
 futures-util = { version = "0.3", optional = true }
 tower = { version = "0.4", features = ["util"], optional = true }

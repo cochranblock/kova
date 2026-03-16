@@ -400,7 +400,7 @@ impl eframe::App for KovaApp {
         }
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::default().fill(colors::BG).inner_margin(egui::Margin::same(layout::MARGIN)))
+            .frame(egui::Frame::default().fill(colors::BG).inner_margin(egui::Margin::same(layout::MARGIN_I8)))
             .show(ctx, |ui| {
             ui.add_space(layout::GAP);
             ui.horizontal(|ui| {
@@ -420,7 +420,7 @@ impl eframe::App for KovaApp {
                             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("?");
                             if ui.selectable_label(name == current_name, name).clicked() {
                                 self.current_project = p.clone();
-                                ui.close_menu();
+                                ui.close();
                             }
                         }
                         if projects.is_empty() {
@@ -777,7 +777,7 @@ impl eframe::App for KovaApp {
 
                             ui.horizontal(|ui| {
                                 if ui.button("Copy").clicked() {
-                                    ui.ctx().output_mut(|o| o.copied_text = code.clone());
+                                    ui.ctx().output_mut(|o| o.commands.push(egui::OutputCommand::CopyText(code.clone())));
                                 }
                                 if ui.button("Apply").clicked() {
                                     let parent = target.parent().unwrap_or(project);

@@ -23,7 +23,7 @@ impl KovaWebApp {
 
 impl eframe::App for KovaWebApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let is_narrow = ctx.screen_rect().width() < 600.0;
+        let is_narrow = ctx.content_rect().width() < 600.0;
 
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
             ui.horizontal(|ui| {
