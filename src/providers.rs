@@ -321,4 +321,37 @@ mod tests {
         assert_eq!(resp.text, "hello");
         assert_eq!(resp.tokens_out, Some(5));
     }
+
+    #[test]
+    fn all_provider_variants_serialize() {
+        let providers = vec![
+            Provider::Ollama { url: "http://localhost:11434".into() },
+            Provider::OpenAiCompat {
+                url: "http://localhost:8080".into(),
+                api_key: "sk-test".into(),
+                model: "gpt-4".into(),
+            },
+            Provider::Anthropic {
+                api_key: "sk-ant-test".into(),
+                model: "claude-sonnet-4-6".into(),
+            },
+        ];
+        for p in &providers {
+            let json = serde_json::to_string(p).unwrap();
+            assert!(!json.is_empty());
+            let _back: Provider = serde_json::from_str(&json).unwrap();
+        }
+    }
+
+    #[test]
+    fn provider_response_no_tokens() {
+        let resp = ProviderResponse {
+            text: "output".into(),
+            model: "m".into(),
+            provider_name: "test".into(),
+            latency_ms: 0,
+            tokens_out: None,
+        };
+        assert_eq!(resp.tokens_out, None);
+    }
 }

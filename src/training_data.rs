@@ -126,24 +126,16 @@ pub fn export_from_traces(format: ExportFormat, output: Option<PathBuf>) -> anyh
         .unwrap_or_else(default_output_dir);
     std::fs::create_dir_all(&out_dir)?;
 
-    let out_path = if let Some(ref p) = output {
-        if p.extension().is_some() {
-            p.clone()
-        } else {
-            let filename = match format {
-                ExportFormat::Jsonl => "training.jsonl",
-                ExportFormat::Csv => "training.csv",
-                ExportFormat::Dpo => "dpo_pairs.jsonl",
-            };
-            p.join(filename)
-        }
-    } else {
-        let filename = match format {
-            ExportFormat::Jsonl => "training.jsonl",
-            ExportFormat::Csv => "training.csv",
-            ExportFormat::Dpo => "dpo_pairs.jsonl",
-        };
-        out_dir.join(filename)
+    let default_filename = match format {
+        ExportFormat::Jsonl => "training.jsonl",
+        ExportFormat::Csv => "training.csv",
+        ExportFormat::Dpo => "dpo_pairs.jsonl",
+    };
+
+    let out_path = match output {
+        Some(ref p) if p.extension().is_some() => p.clone(),
+        Some(ref p) => p.join(default_filename),
+        None => out_dir.join(default_filename),
     };
 
     let count = match format {
@@ -244,9 +236,9 @@ pub fn export_dpo_pairs(examples: &[TrainingExample], path: &Path) -> anyhow::Re
     Ok(count)
 }
 
-/// Escape a field for CSV: wrap in quotes if it contains comma, quote, or newline.
+/// Escape a field for CSV: wrap in quotes if it contains comma, quote, CR, or newline.
 fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
         s.to_string()
@@ -362,5 +354,23 @@ mod tests {
         assert_eq!(csv_escape("has,comma"), "\"has,comma\"");
         assert_eq!(csv_escape("has\"quote"), "\"has\"\"quote\"");
         assert_eq!(csv_escape("has\nnewline"), "\"has\nnewline\"");
+        assert_eq!(csv_escape("has\rcarriage"), "\"has\rcarriage\"");
+    }
+
+    /// ExportFormat from_str_loose handles case and unknown.
+    #[test]
+    fn export_format_from_str() {
+        assert_eq!(ExportFormat::from_str_loose("jsonl"), Some(ExportFormat::Jsonl));
+        assert_eq!(ExportFormat::from_str_loose("CSV"), Some(ExportFormat::Csv));
+        assert_eq!(ExportFormat::from_str_loose("DPO"), Some(ExportFormat::Dpo));
+        assert_eq!(ExportFormat::from_str_loose("nope"), None);
+    }
+
+    /// ExportFormat extensions.
+    #[test]
+    fn export_format_extensions() {
+        assert_eq!(ExportFormat::Jsonl.extension(), "jsonl");
+        assert_eq!(ExportFormat::Csv.extension(), "csv");
+        assert_eq!(ExportFormat::Dpo.extension(), "jsonl");
     }
 }

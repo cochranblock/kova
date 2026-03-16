@@ -123,15 +123,32 @@ fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<S
     let is_pub = line.starts_with("pub ");
     let rest = if is_pub {
         line.strip_prefix("pub ").unwrap_or(line)
+    } else if line.starts_with("pub(") {
+        // pub(crate), pub(super), pub(in path::to::mod) — skip past ") "
+        if let Some(close) = line.find(") ") {
+            return try_parse_symbol_inner(&line[close + 2..], line_idx, all_lines, true);
+        } else {
+            return None;
+        }
     } else {
         line
     };
-    // Skip pub(crate) etc
-    let rest = if rest.starts_with("(crate) ") || rest.starts_with("(super) ") {
-        rest.split_once(") ").map(|(_, r)| r).unwrap_or(rest)
+    // Skip pub(crate) etc when reached via "pub " prefix (shouldn't happen, but defensive)
+    let rest = if rest.starts_with('(') {
+        if let Some(close) = rest.find(") ") {
+            &rest[close + 2..]
+        } else {
+            rest
+        }
     } else {
         rest
     };
+
+    try_parse_symbol_inner(rest, line_idx, all_lines, is_pub)
+}
+
+fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pub: bool) -> Option<Symbol> {
+    let line_str = all_lines[line_idx];
 
     // fn name(...)
     if rest.starts_with("fn ")
@@ -141,7 +158,7 @@ fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<S
     {
         let name = extract_fn_name(rest)?;
         let end = find_block_end(line_idx, all_lines);
-        let sig = line.trim_end().to_string();
+        let sig = line_str.trim_end().to_string();
         return Some(Symbol {
             name,
             kind: SymbolKind::Function,
@@ -204,14 +221,14 @@ fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<S
             line_start: line_idx,
             line_end: end,
             is_public: false,
-            signature: line.trim_end().to_string(),
+            signature: line_str.trim_end().to_string(),
         });
     }
 
     // mod name
     if rest.starts_with("mod ") {
         let name = extract_item_name(rest, "mod ")?;
-        let has_body = line.contains('{');
+        let has_body = line_str.contains('{');
         let end = if has_body {
             find_block_end(line_idx, all_lines)
         } else {
@@ -236,7 +253,7 @@ fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<S
             line_start: line_idx,
             line_end: line_idx,
             is_public: is_pub,
-            signature: line.trim_end().to_string(),
+            signature: line_str.trim_end().to_string(),
         });
     }
 
@@ -248,7 +265,7 @@ fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<S
             line_start: line_idx,
             line_end: line_idx,
             is_public: is_pub,
-            signature: line.trim_end().to_string(),
+            signature: line_str.trim_end().to_string(),
         });
     }
 
@@ -261,7 +278,7 @@ fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<S
             line_start: line_idx,
             line_end: line_idx,
             is_public: is_pub,
-            signature: line.trim_end().to_string(),
+            signature: line_str.trim_end().to_string(),
         });
     }
 
@@ -365,6 +382,38 @@ fn find_block_end(start: usize, lines: &[&str]) -> usize {
                 in_block_comment = true;
                 j += 2;
                 continue;
+            }
+            // Raw string: r"...", r#"..."#, r##"..."## etc
+            if ch == 'r' && (next == Some('"') || next == Some('#')) {
+                let mut k = j + 1;
+                let mut hashes = 0u32;
+                while k < chars.len() && chars[k] == '#' {
+                    hashes += 1;
+                    k += 1;
+                }
+                if k < chars.len() && chars[k] == '"' {
+                    k += 1; // skip opening "
+                    loop {
+                        if k >= chars.len() {
+                            j = k;
+                            break;
+                        }
+                        if chars[k] == '"' {
+                            let mut ch_count = 0u32;
+                            let mut m = k + 1;
+                            while m < chars.len() && chars[m] == '#' && ch_count < hashes {
+                                ch_count += 1;
+                                m += 1;
+                            }
+                            if ch_count == hashes {
+                                j = m;
+                                break;
+                            }
+                        }
+                        k += 1;
+                    }
+                    continue;
+                }
             }
             if ch == '"' {
                 in_string = true;
@@ -515,5 +564,49 @@ mod tests {
         let src = "mod inner {\n    fn private() {}\n}";
         let syms = extract_symbols(src);
         assert!(syms.iter().any(|s| s.name == "inner" && s.kind == SymbolKind::Mod));
+    }
+
+    #[test]
+    fn find_block_end_ignores_braces_in_raw_string() {
+        let src = "fn raw() {\n    let s = r#\"{ not a block }\"#;\n    let x = 1;\n}";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "raw");
+        assert_eq!(syms[0].line_end, 3);
+    }
+
+    #[test]
+    fn extract_pub_crate_fn() {
+        let src = "pub(crate) fn internal() {\n    42\n}";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "internal");
+        assert!(syms[0].is_public);
+    }
+
+    #[test]
+    fn extract_pub_in_path_fn() {
+        let src = "pub(in crate::module) fn scoped() {\n    1\n}";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "scoped");
+    }
+
+    #[test]
+    fn find_block_end_escaped_quote_in_string() {
+        let src = "fn esc() {\n    let s = \"she said \\\"{ hi }\\\"\";\n    let x = 1;\n}";
+        let syms = extract_symbols(src);
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "esc");
+        assert_eq!(syms[0].line_end, 3);
+    }
+
+    #[test]
+    fn extract_impl_trait_for() {
+        let src = "impl std::fmt::Display for Foo {\n    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n        Ok(())\n    }\n}";
+        let syms = extract_symbols(src);
+        let impl_sym = syms.iter().find(|s| s.kind == SymbolKind::Impl).unwrap();
+        assert!(impl_sym.name.contains("Display"));
+        assert!(impl_sym.name.contains("Foo"));
     }
 }

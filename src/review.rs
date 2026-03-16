@@ -100,13 +100,16 @@ pub fn review_diff(diff: &str, ollama_url: &str, model: &str) -> Result<ReviewRe
     )
 }
 
+/// Max diff size in chars to send to LLM. Larger diffs get head+tail truncated.
+const MAX_DIFF_CHARS: usize = 50_000;
+
 /// Review with full request options.
 fn review_diff_with_opts(
     req: &ReviewRequest,
     ollama_url: &str,
     model: &str,
 ) -> Result<ReviewResult, String> {
-    let mut prompt = String::with_capacity(req.diff.len() + 256);
+    let mut prompt = String::with_capacity(req.diff.len().min(MAX_DIFF_CHARS) + 256);
 
     if let Some(ctx) = &req.context {
         prompt.push_str("Context: ");
@@ -119,7 +122,18 @@ fn review_diff_with_opts(
         prompt.push('\n');
     }
     prompt.push_str("Diff to review:\n");
-    prompt.push_str(&req.diff);
+
+    // Truncate oversized diffs to keep within model context limits.
+    if req.diff.chars().count() > MAX_DIFF_CHARS {
+        let head: String = req.diff.chars().take(MAX_DIFF_CHARS * 60 / 100).collect();
+        let total = req.diff.chars().count();
+        let tail: String = req.diff.chars().skip(total - MAX_DIFF_CHARS * 30 / 100).collect();
+        prompt.push_str(&head);
+        prompt.push_str("\n\n[... diff truncated ...]\n\n");
+        prompt.push_str(&tail);
+    } else {
+        prompt.push_str(&req.diff);
+    }
 
     let raw = crate::ollama::generate(ollama_url, model, REVIEW_SYSTEM_PROMPT, &prompt, Some(8192))?;
 

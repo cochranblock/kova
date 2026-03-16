@@ -13,7 +13,6 @@ pub struct CiConfig {
     pub watch_interval_secs: u64,
     pub run_clippy: bool,
     pub run_tests: bool,
-    pub auto_fix: bool,
 }
 
 impl Default for CiConfig {
@@ -23,7 +22,6 @@ impl Default for CiConfig {
             watch_interval_secs: 5,
             run_clippy: true,
             run_tests: true,
-            auto_fix: false,
         }
     }
 }
@@ -177,7 +175,7 @@ fn on_off(b: bool) -> &'static str {
 }
 
 /// Collect mtime for all .rs and Cargo.toml files under src/.
-fn snapshot_mtimes(project_dir: &Path) -> HashMap<PathBuf, u64> {
+fn snapshot_mtimes(project_dir: &Path) -> HashMap<PathBuf, u128> {
     let mut map = HashMap::new();
 
     // Check Cargo.toml
@@ -187,7 +185,7 @@ fn snapshot_mtimes(project_dir: &Path) -> HashMap<PathBuf, u64> {
             let secs = modified
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_secs();
+                .as_millis();
             map.insert(cargo_toml, secs);
         }
     }
@@ -201,7 +199,7 @@ fn snapshot_mtimes(project_dir: &Path) -> HashMap<PathBuf, u64> {
     map
 }
 
-fn walk_rs_files(dir: &Path, map: &mut HashMap<PathBuf, u64>) {
+fn walk_rs_files(dir: &Path, map: &mut HashMap<PathBuf, u128>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -216,7 +214,7 @@ fn walk_rs_files(dir: &Path, map: &mut HashMap<PathBuf, u64>) {
                     let secs = modified
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
-                        .as_secs();
+                        .as_millis();
                     map.insert(path, secs);
                 }
             }

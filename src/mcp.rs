@@ -139,6 +139,7 @@ pub fn f174() -> Vec<Value> {
 // ── f175: mcp_handle_request ─────────────────────────────
 
 /// f175=mcp_handle_request. Parse JSON-RPC request, dispatch, return JSON-RPC response string.
+/// Returns empty string for notifications (no id) — caller should skip writing those.
 pub fn f175(req: &str, project_dir: &Path) -> String {
     let parsed: Value = match serde_json::from_str(req) {
         Ok(v) => v,
@@ -148,14 +149,28 @@ pub fn f175(req: &str, project_dir: &Path) -> String {
         }
     };
 
-    let id = parsed.get("id").cloned().unwrap_or(Value::Null);
+    // Validate jsonrpc version field.
+    if parsed.get("jsonrpc").and_then(|v| v.as_str()) != Some("2.0") {
+        let resp = t113::err(Value::Null, INVALID_REQUEST, "Missing or invalid jsonrpc version".into());
+        return serde_json::to_string(&resp.to_json()).unwrap_or_default();
+    }
+
     let method = match parsed.get("method").and_then(|m| m.as_str()) {
         Some(m) => m.to_string(),
         None => {
+            let id = parsed.get("id").cloned().unwrap_or(Value::Null);
             let resp = t113::err(id, INVALID_REQUEST, "Missing method".into());
             return serde_json::to_string(&resp.to_json()).unwrap_or_default();
         }
     };
+
+    // Notifications have no "id" field — per JSON-RPC 2.0, no response should be sent.
+    let is_notification = !parsed.get("id").is_some_and(|v| !v.is_null());
+    if is_notification && method.starts_with("notifications/") {
+        return String::new();
+    }
+
+    let id = parsed.get("id").cloned().unwrap_or(Value::Null);
     let params = parsed.get("params").cloned().unwrap_or(Value::Null);
 
     let resp = dispatch_method(&method, &params, &id, project_dir);
@@ -271,9 +286,11 @@ pub fn f176(project_dir: &Path) {
         }
 
         let response = f175(trimmed, project_dir);
-        // Write response + newline (JSON-RPC over stdio uses newline-delimited JSON).
-        let _ = writeln!(stdout, "{}", response);
-        let _ = stdout.flush();
+        // Skip empty responses (notifications don't get a reply per JSON-RPC 2.0).
+        if !response.is_empty() {
+            let _ = writeln!(stdout, "{}", response);
+            let _ = stdout.flush();
+        }
     }
 }
 
@@ -445,5 +462,30 @@ mod tests {
         assert_eq!(resp["id"], 5);
         // Tool errors come back as result with isError=true (MCP convention).
         assert_eq!(resp["result"]["isError"], true);
+    }
+
+    /// f175 rejects requests missing jsonrpc version.
+    #[test]
+    fn f175_missing_jsonrpc_version_returns_error() {
+        let req = json!({
+            "id": 10,
+            "method": "tools/list",
+        });
+        let resp_str = f175(&serde_json::to_string(&req).unwrap(), Path::new("/tmp"));
+        let resp: Value = serde_json::from_str(&resp_str).unwrap();
+        assert!(resp["error"].is_object());
+        assert_eq!(resp["error"]["code"], INVALID_REQUEST);
+        assert!(resp["error"]["message"].as_str().unwrap().contains("jsonrpc"));
+    }
+
+    /// f175 returns empty string for notifications (no id).
+    #[test]
+    fn f175_notification_returns_empty() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+        });
+        let resp_str = f175(&serde_json::to_string(&req).unwrap(), Path::new("/tmp"));
+        assert!(resp_str.is_empty(), "notifications should produce no response");
     }
 }

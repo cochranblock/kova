@@ -27,9 +27,11 @@ impl t111 {
 /// f170=estimate_tokens. Rough token count: chars / 4.
 /// Good enough for local GGUF models without pulling in a tokenizer crate.
 pub fn f170(text: &str) -> usize {
-    // chars/4 is a standard rough estimate for English text.
+    // chars()/4 is a standard rough estimate for English text.
+    // Use char count (not byte len) so multibyte UTF-8 doesn't inflate estimates.
     // Round up so we never undercount.
-    (text.len() + 3) / 4
+    let char_count = text.chars().count();
+    (char_count + 3) / 4
 }
 
 /// f171=trim_conversation. Trim oldest turns to fit within budget.
