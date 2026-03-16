@@ -136,13 +136,18 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             purpose: "Classify user input into one task category".into(),
             tier: "router".into(),
             model: "qwen2.5:0.5b".into(),
-            system_prompt: "Classify the input into exactly one category. Reply with only the category name.\nCategories: code_gen, code_review, test_write, fix_compile, clippy_fix, explain, refactor, general".into(),
+            system_prompt: "Classify the input into exactly one category. Reply with ONLY the category name, nothing else.\nCategories: code_gen, code_review, test_write, fix_compile, clippy_fix, explain, refactor, general\n\nRules:\n- compiler error, type mismatch, borrow error, semicolon, missing import = fix_compile\n- check for bugs, review, audit = code_review\n- write, create, add, implement, build = code_gen\n- write tests, add tests = test_write\n- clippy warning, lint = clippy_fix\n- what does, how does, explain, why = explain\n- rename, extract, move, restructure = refactor\n- everything else = general".into(),
             few_shot: vec![
                 ("add exponential backoff to compute.rs".into(), "code_gen".into()),
                 ("fix the bug in parser".into(), "fix_compile".into()),
                 ("review this function for correctness".into(), "code_review".into()),
                 ("what does f79 do?".into(), "explain".into()),
                 ("write tests for the LRU cache".into(), "test_write".into()),
+                ("compiler error expected semicolon on line 5".into(), "fix_compile".into()),
+                ("the borrow checker says cannot move out of".into(), "fix_compile".into()),
+                ("check this code for bugs".into(), "code_review".into()),
+                ("extract this into a helper function".into(), "refactor".into()),
+                ("type mismatch: expected i32 found &str".into(), "fix_compile".into()),
             ],
             input_schema: "User prompt text".into(),
             output_schema: "Single category name".into(),
@@ -158,11 +163,19 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             purpose: "Fix a Rust compilation error given code and error message".into(),
             tier: "light".into(),
             model: "qwen2.5-coder:3b".into(),
-            system_prompt: "You fix Rust compilation errors. You receive code and a compiler error. Return ONLY the fixed code in a ```rust block. No explanation. Fix the exact error reported.".into(),
+            system_prompt: "You fix Rust compilation errors. You receive code and a compiler error. Return ONLY the fixed code in a ```rust block. No explanation. No narration. Fix the exact error reported.".into(),
             few_shot: vec![
                 (
                     "Error: mismatched types: expected `String`, found `&str`\nCode: let x: String = \"hello\";".into(),
                     "```rust\nlet x: String = \"hello\".to_string();\n```".into(),
+                ),
+                (
+                    "Error: cannot borrow `x` as mutable because it is also borrowed as immutable\nCode: let r = &x; x.push(1); println!(\"{}\", r);".into(),
+                    "```rust\nlet r_len = x.len();\nx.push(1);\nprintln!(\"{}\", r_len);\n```".into(),
+                ),
+                (
+                    "Error: expected `i32`, found `&str`\nCode: fn greet(name: i32) {} fn main() { greet(\"hello\"); }".into(),
+                    "```rust\nfn greet(name: &str) {}\nfn main() { greet(\"hello\"); }\n```".into(),
                 ),
             ],
             input_schema: "Error: <compiler error>\nCode: ```rust\n<code>\n```".into(),
@@ -221,7 +234,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             purpose: "Review Rust code for correctness, idiom violations, and bugs".into(),
             tier: "mid".into(),
             model: "qwen2.5-coder:7b".into(),
-            system_prompt: "You are a senior Rust code reviewer. Flag only real issues: correctness bugs, memory safety, logic errors, missing error handling at boundaries. If the code is fine, reply: LGTM. No style nits. No slop words (utilize/leverage/optimize/comprehensive/robust/seamlessly).".into(),
+            system_prompt: "You are a senior Rust code reviewer. Flag real issues: correctness bugs, memory safety (including raw pointer deref, unsafe without null checks), logic errors, panics on bad input, missing error handling at boundaries. If the code is safe and correct, reply: LGTM. No style nits. No slop words (utilize/leverage/optimize/comprehensive/robust/seamlessly).".into(),
             few_shot: vec![
                 (
                     "fn add(a: i32, b: i32) -> i32 { a + b }".into(),
@@ -230,6 +243,10 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
                 (
                     "fn get_index(v: &[i32], i: usize) -> i32 { v[i] }".into(),
                     "Panics if i >= v.len(). Return Option<i32> or check bounds.".into(),
+                ),
+                (
+                    "fn get_val(ptr: *const i32) -> i32 { unsafe { *ptr } }".into(),
+                    "Undefined behavior if ptr is null or dangling. Add null check: if ptr.is_null() { return 0; }".into(),
                 ),
             ],
             input_schema: "```rust\n<code to review>\n```".into(),
@@ -265,7 +282,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             purpose: "Generate Rust code from a natural language description".into(),
             tier: "heavy".into(),
             model: "qwen2.5-coder:14b".into(),
-            system_prompt: "You are a Rust systems programming expert. Write clean, idiomatic Rust. Use only the standard library unless told otherwise. All string types must match in if/else and match arms. Put all code in a single ```rust block. No explanation.".into(),
+            system_prompt: "You are a Rust systems programming expert. Write clean, idiomatic Rust. Use only the standard library unless told otherwise. All string types must match in if/else and match arms. Put all code in a single ```rust block. No explanation. No narration. NEVER use these words: utilize, leverage, optimize, comprehensive, robust, seamlessly, scalable, paradigm, synergy.".into(),
             few_shot: vec![],
             input_schema: "Natural language description of what to build".into(),
             output_schema: "```rust\n<complete code>\n```".into(),

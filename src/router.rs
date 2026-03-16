@@ -9,7 +9,15 @@ use std::thread;
 use kalosm::language::{ChatModelExt, Parse};
 
 const CLASSIFY_PROMPT: &str = r#"Classify the user's message as exactly one of: code_gen, refactor, explain, fix, run, custom, needs_clarification.
-If needs_clarification, include a "question" field with a short clarification question and optionally "choices" (array of 2-5 options).
+
+Rules:
+- compiler error, type mismatch, borrow error, "doesn't compile", "fix" = fix
+- write, create, add, implement, build, generate = code_gen
+- what does, how does, explain, why = explain
+- rename, extract, move, restructure, clean up = refactor
+- run, execute, test, deploy = run
+- If ambiguous, reply needs_clarification with a "question" field and optionally "choices" (2-5 options).
+
 Reply with valid JSON only: {"classification": "..."} or {"classification": "needs_clarification", "question": "Which file?", "choices": ["compute.rs", "plan.rs"]}"#;
 
 /// Structured output for grammar-constrained Router. Maps to RouterResult.
