@@ -18,12 +18,22 @@ use std::process::Command;
 pub async fn explain_trace(trace: &LastTrace, _model_path: &Path) -> Result<String, String> {
     let cluster = Cluster::default_hive();
 
+    let project = crate::config::default_project();
+    let cursor = crate::cursor_prompts::load_cursor_prompts(&project);
     let ddi_note = "Fix loop loses effectiveness after 2-3 attempts (DDI). We cap retries to avoid worse output.";
-    let system = format!(
-        "You are Recursive Academy. Explain this Kova execution trace. \
-         What did the user want? What failed? Why? How would a user fix it? Be concise.\n\n{}",
-        ddi_note
-    );
+    let system = if cursor.is_empty() {
+        format!(
+            "You are Recursive Academy. Explain this Kova execution trace. \
+             What did the user want? What failed? Why? How would a user fix it? Be concise.\n\n{}",
+            ddi_note
+        )
+    } else {
+        format!(
+            "You are Recursive Academy. Explain this Kova execution trace. \
+             What did the user want? What failed? Why? How would a user fix it? Be concise.\n\n{}\n\n--- Cursor rules ---\n{}",
+            ddi_note, cursor
+        )
+    };
 
     let user_msg = format!(
         "Intent: {}\nUser: {}\nStage: {}\nOutcome: {}\nRetries: {}\nStderr:\n```\n{}\n```\nChain: {}",
