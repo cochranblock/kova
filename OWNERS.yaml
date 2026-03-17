@@ -1,12 +1,19 @@
-# OWNERS.yaml — Structured Ownership Metadata for Kova
+# OWNERS.yaml — Structured Ownership Metadata
+# 
+# Purpose: Define who owns, maintains, and is on-call for a project.
+# Location: Place in the root of each project repository.
+# Format: YAML
+#
+# Example file (adapt for your project):
 
+# Project metadata
 project:
   name: "kova"
   description: "Augment engine with agentic tool loop and swarm orchestration"
   repo_url: "https://github.com/cochranblock/kova"
-  team_slack: "#team-kova"
+  team_slack: "#team-kova"  # Main Slack channel
 
-# Primary maintainers
+# Primary maintainers (high trust, can approve PRs, deploy)
 maintainers:
   - name: "Matt Cochran"
     github: "cochranblock"
@@ -18,144 +25,171 @@ maintainers:
       - "core-api"
       - "swarm-orchestration"
 
-  # Foundational Founders (AI toolchain)
-  - name: "Claude Opus 4.6"
-    email: "noreply@anthropic.com"
+  - name: "Claude (Copilot)"
+    github: "Copilot"
+    email: "copilot@github.com"
     roles:
       - "implementation"
       - "code-review"
 
-  - name: "KOVA"
-    email: "kova@cochranblock.org"
+# Contributors (can contribute, needs maintainer review)
+contributors:
+  - name: "Developer One"
+    github: "dev-one"
+    email: "dev1@example.com"
+    slack: "@dev1"
     roles:
-      - "augmentation-layer"
+      - "testing"
+      - "documentation"
+    expertise:
+      - "egui"
+      - "local-llm"
 
-  - name: "SuperNinja"
-    email: "noreply@ninjatech.ai"
+  - name: "Developer Two"
+    github: "dev-two"
+    email: "dev2@example.com"
+    slack: "@dev2"
     roles:
-      - "early-prototyping"
+      - "web-client"
+      - "http-api"
+    expertise:
+      - "axum"
+      - "websockets"
 
-  - name: "Composer 1.5"
-    email: "noreply@cursor.com"
-    roles:
-      - "implementation"
-
-  - name: "Google Gemini Pro 3"
-    email: "noreply@google.com"
-    roles:
-      - "mobile-brainstorming"
-
-# Subsystem ownership
+# Team ownership for subsystems
 subsystems:
   - name: "REPL & Chat"
     path: "src/repl.rs"
     owner: "cochranblock"
+    reviewers:
+      - "dev-one"
     slack_channel: "#repl-chat"
 
   - name: "Agent Loop"
     path: "src/agent_loop.rs"
     owner: "cochranblock"
+    reviewers:
+      - "dev-one"
+      - "dev-two"
     slack_channel: "#agent-loop"
 
-  - name: "Tools (read, write, edit, bash, glob, grep, memory)"
-    path: "src/tools.rs"
-    owner: "cochranblock"
-    slack_channel: "#tools"
-
-  - name: "Swarm Orchestration (C2)"
+  - name: "Swarm (C2)"
     path: "src/c2.rs"
     owner: "cochranblock"
+    reviewers:
+      - "dev-two"
     slack_channel: "#swarm-cluster"
 
-  - name: "Node Commands (c1-c9)"
-    path: "src/node_cmd.rs"
-    owner: "cochranblock"
-    slack_channel: "#node-commands"
-
-  - name: "Cargo Commands (x0-x9)"
-    path: "src/cargo_cmd.rs"
-    owner: "cochranblock"
-    slack_channel: "#cargo-wrapper"
-
-  - name: "Git Commands (g0-g9)"
-    path: "src/git_cmd.rs"
-    owner: "cochranblock"
-    slack_channel: "#git-commands"
-
-  - name: "GUI (egui)"
+  - name: "GUI"
     path: "src/gui.rs"
     owner: "cochranblock"
+    reviewers:
+      - "dev-one"
     slack_channel: "#gui"
 
-  - name: "HTTP Server (Axum)"
+  - name: "HTTP Server"
     path: "src/serve.rs"
     owner: "cochranblock"
+    reviewers:
+      - "dev-two"
     slack_channel: "#http-api"
 
   - name: "Web Client (WASM)"
     path: "kova-web/"
     owner: "cochranblock"
+    reviewers:
+      - "dev-two"
     slack_channel: "#web-client"
 
-  - name: "Local LLM Inference (Kalosm)"
+  - name: "Local LLM Inference"
     path: "src/inference.rs"
     owner: "cochranblock"
+    reviewers:
+      - "dev-one"
     slack_channel: "#inference"
 
-  - name: "Configuration"
-    path: "src/config.rs"
+  - name: "Node Commands"
+    path: "src/node_cmd.rs"
     owner: "cochranblock"
-    slack_channel: "#config"
+    reviewers:
+      - "dev-two"
+    slack_channel: "#node-commands"
 
-  - name: "Storage (sled)"
-    path: "src/storage.rs"
+  - name: "Cargo Commands"
+    path: "src/cargo_cmd.rs"
     owner: "cochranblock"
-    slack_channel: "#storage"
+    reviewers:
+      - "dev-one"
+    slack_channel: "#cargo-wrapper"
 
-# On-call rotation
+  - name: "Documentation & Guides"
+    path: "docs/"
+    owner: "cochranblock"
+    reviewers:
+      - "dev-one"
+      - "dev-two"
+    slack_channel: "#docs"
+
+# On-call rotation (for incidents, production issues)
 on_call:
   primary: "cochranblock"
-  secondary: "Claude Opus 4.6"
-  rotation_start_date: "2026-03-16"
+  secondary: "dev-two"
+  tertiary: "dev-one"
+  rotation_start_date: "2026-03-01"
   rotation_period_days: 7
   escalation:
-    - name: "Critical (systems down)"
+    - name: "Critical Issue"
       timeout_minutes: 15
       escalate_to: "cochranblock"
-    - name: "Major (degraded)"
+    - name: "Major Issue"
       timeout_minutes: 30
-      escalate_to: "Claude Opus 4.6"
-    - name: "Minor (warnings)"
+      escalate_to: "dev-two"
+    - name: "Minor Issue"
       timeout_minutes: 60
+      escalate_to: "dev-one"
 
-# Review policies
+# Review & approval policies
 policies:
   pull_requests:
     required_approvals: 1
     require_status_checks: true
     require_branches_up_to_date: true
     allow_auto_merge: true
+    dismissal_restrictions: false
 
   commits:
     require_signed_commits: false
-    required_co_author: "Claude Opus 4.6 <noreply@anthropic.com>"
+    require_linear_history: false
+    allowed_commit_authors:
+      - "cochranblock@github.com"
+      - "Copilot@github.com"
 
   releases:
     owner_approval_required: true
+    min_days_since_last_release: 0
     semver_required: true
+
+# Escalation contacts (emergencies)
+escalation:
+  - name: "Emergency On-Call"
+    phone: "+1-555-0123"
+    email: "oncall@cochranblock.org"
+    slack: "@incident-commander"
 
 # Documentation links
 documentation:
   onboarding: "docs/ONBOARDING.md"
-  architecture: "README.md#Architecture"
+  architecture: "docs/ARCHITECTURE.md"
   runbooks: "docs/RUNBOOKS.md"
-  tokenization: "docs/compression_map.md"
-  api_reference: "README.md#API"
+  api_reference: "docs/API_REFERENCE.md"
+  tokenization_map: "docs/compression_map.md"
 
+# Metadata
 metadata:
   created_date: "2026-03-16"
   last_updated: "2026-03-16"
-  updated_by: "GotEmCoach"
+  updated_by: "Copilot"
   version: "1.0"
   review_cadence: "quarterly"
   next_review_date: "2026-06-16"
+
