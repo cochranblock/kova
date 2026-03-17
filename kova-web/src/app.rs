@@ -1,24 +1,44 @@
 // Unlicense — cochranblock.org
-//! Kova web app. API client UI — projects, prompt, backlog, intent.
-//! Uses gloo_net (async) via spawn_local; results shown next frame.
+//! Kova web app. Themed API client — projects, backlog, intent, WebSocket streaming.
+//! THEME.md palette: neon electric blue, teal, purple. Dark cosmic.
 
+use crate::theme;
 use eframe::egui;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-#[derive(Deserialize)]
-struct BacklogResponse {
-    items: Vec<BacklogItem>,
-}
-
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct BacklogItem {
     intent: Option<String>,
     project: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct PromptsResponse {
+    system: String,
+    persona: String,
+}
+
+#[derive(Serialize)]
+struct IntentPayload {
+    s0: String,
+    s1: String,
+    project: Option<String>,
+}
+
+#[derive(Clone)]
+#[allow(dead_code)] // Code + Stream used when pipeline connected
+enum Msg {
+    User(String),
+    System(String),
+    Code(String),
+    Stream(String),
+}
+
 pub struct KovaWebApp {
     input: String,
-    messages: Vec<String>,
+    messages: Vec<Msg>,
     show_backlog: bool,
     show_prompts: bool,
     projects: Vec<String>,
@@ -28,17 +48,22 @@ pub struct KovaWebApp {
     backlog: Vec<BacklogItem>,
     status: String,
     status_ok: Option<bool>,
-    stream_output: String,
-    output_code: Option<String>,
-    output_hint: Option<String>,
-    projects_pending: Option<std::rc::Rc<std::cell::RefCell<Vec<String>>>>,
+    stream_buf: Rc<RefCell<String>>,
+    streaming: bool,
+    projects_loaded: bool,
+    prompts_loaded: bool,
+    backlog_loaded: bool,
+    theme_applied: bool,
+    projects_pending: Option<Rc<RefCell<Vec<String>>>>,
+    prompts_pending: Option<Rc<RefCell<Option<(String, String)>>>>,
+    backlog_pending: Option<Rc<RefCell<Vec<BacklogItem>>>>,
 }
 
 impl KovaWebApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self {
             input: String::new(),
-            messages: vec!["Kova — connect to kova serve.".into()],
+            messages: vec![Msg::System("Kova — augment engine. Ready.".into())],
             show_backlog: false,
             show_prompts: false,
             projects: Vec::new(),
@@ -48,10 +73,15 @@ impl KovaWebApp {
             backlog: Vec::new(),
             status: String::new(),
             status_ok: None,
-            stream_output: String::new(),
-            output_code: None,
-            output_hint: None,
+            stream_buf: Rc::new(RefCell::new(String::new())),
+            streaming: false,
+            projects_loaded: false,
+            prompts_loaded: false,
+            backlog_loaded: false,
+            theme_applied: false,
             projects_pending: None,
+            prompts_pending: None,
+            backlog_pending: None,
         }
     }
 
@@ -61,8 +91,8 @@ impl KovaWebApp {
     }
 
     fn load_projects(&mut self, ctx: &egui::Context) {
-        self.set_status("Loading…", None);
-        let projects = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+        self.set_status("Loading projects...", None);
+        let projects = Rc::new(RefCell::new(Vec::<String>::new()));
         let projects2 = projects.clone();
         let ctx2 = ctx.clone();
         wasm_bindgen_futures::spawn_local(async move {
@@ -77,127 +107,423 @@ impl KovaWebApp {
         });
         self.projects_pending = Some(projects);
     }
-}
 
-impl eframe::App for KovaWebApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn load_prompts(&mut self, ctx: &egui::Context) {
+        let sys = Rc::new(RefCell::new(None::<(String, String)>));
+        let sys2 = sys.clone();
+        let ctx2 = ctx.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(resp) = gloo_net::http::Request::get("/api/prompts").send().await {
+                if resp.ok() {
+                    if let Ok(p) = resp.json::<PromptsResponse>().await {
+                        *sys2.borrow_mut() = Some((p.system, p.persona));
+                        ctx2.request_repaint();
+                    }
+                }
+            }
+        });
+        self.prompts_pending = Some(sys);
+    }
+
+    fn load_backlog(&mut self, ctx: &egui::Context) {
+        let bl = Rc::new(RefCell::new(Vec::<BacklogItem>::new()));
+        let bl2 = bl.clone();
+        let ctx2 = ctx.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(resp) = gloo_net::http::Request::get("/api/backlog").send().await {
+                if resp.ok() {
+                    if let Ok(items) = resp.json::<Vec<BacklogItem>>().await {
+                        *bl2.borrow_mut() = items;
+                        ctx2.request_repaint();
+                    }
+                }
+            }
+        });
+        self.backlog_pending = Some(bl);
+    }
+
+    fn send_intent(&mut self, ctx: &egui::Context) {
+        let prompt = std::mem::take(&mut self.input);
+        if prompt.is_empty() {
+            return;
+        }
+        self.messages.push(Msg::User(prompt.clone()));
+        self.set_status("Sending...", None);
+        self.streaming = true;
+
+        let buf = self.stream_buf.clone();
+        *buf.borrow_mut() = String::new();
+        let ctx2 = ctx.clone();
+        let project = if self.current_project.is_empty() {
+            None
+        } else {
+            Some(self.current_project.clone())
+        };
+
+        wasm_bindgen_futures::spawn_local(async move {
+            use futures::StreamExt;
+            use gloo_net::websocket::futures::WebSocket;
+            use gloo_net::websocket::Message;
+
+            let host = web_sys::window()
+                .and_then(|w| w.location().host().ok())
+                .unwrap_or_else(|| "127.0.0.1:3002".into());
+            let proto = web_sys::window()
+                .and_then(|w| w.location().protocol().ok())
+                .map(|p| if p == "https:" { "wss" } else { "ws" })
+                .unwrap_or("ws");
+            let ws_url = format!("{}://{}/ws/stream", proto, host);
+
+            // Fire intent POST
+            let payload = IntentPayload {
+                s0: "FullPipeline".into(),
+                s1: prompt,
+                project,
+            };
+            if let Ok(req) = gloo_net::http::Request::post("/api/intent").json(&payload) {
+                wasm_bindgen_futures::spawn_local(async move {
+                    let _ = req.send().await;
+                });
+            }
+
+            // Connect WebSocket for streaming
+            if let Ok(ws) = WebSocket::open(&ws_url) {
+                let (_write, mut read) = ws.split();
+                while let Some(Ok(msg)) = read.next().await {
+                    match msg {
+                        Message::Text(t) => {
+                            buf.borrow_mut().push_str(&t);
+                            buf.borrow_mut().push('\n');
+                            ctx2.request_repaint();
+                        }
+                        Message::Bytes(_) => {}
+                    }
+                }
+            }
+        });
+    }
+
+    fn poll_pending(&mut self) {
         if let Some(ref rc) = self.projects_pending {
             let list = rc.borrow().clone();
             if !list.is_empty() {
                 self.projects = list;
-                if self.current_project.is_empty() && !self.projects.is_empty() {
-                    self.current_project = self.projects[0].clone();
+                if self.current_project.is_empty() {
+                    if let Some(first) = self.projects.first() {
+                        self.current_project = first.clone();
+                    }
                 }
+                self.projects_loaded = true;
                 self.set_status("", None);
                 self.projects_pending = None;
             }
         }
+        if let Some(ref rc) = self.prompts_pending {
+            let val = rc.borrow().clone();
+            if let Some((sys, per)) = val {
+                self.system_prompt = sys;
+                self.persona = per;
+                self.prompts_loaded = true;
+                self.prompts_pending = None;
+            }
+        }
+        if let Some(ref rc) = self.backlog_pending {
+            let items = rc.borrow().clone();
+            if !items.is_empty() {
+                self.backlog = items;
+                self.backlog_loaded = true;
+                self.backlog_pending = None;
+            }
+        }
+        // Check if stream finished
+        if self.streaming {
+            let buf = self.stream_buf.borrow().clone();
+            if !buf.is_empty() && buf.ends_with('\n') {
+                // Heuristic: stream done when no new data arrives
+                // In practice the WS close event handles this
+            }
+        }
+    }
+
+    fn draw_header(&mut self, ctx: &egui::Context) {
         let is_narrow = ctx.content_rect().width() < 600.0;
+        egui::TopBottomPanel::top("header")
+            .frame(theme::header_frame())
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.colored_label(
+                        theme::colors::PRIMARY,
+                        egui::RichText::new("KOVA").size(22.0).strong(),
+                    );
+                    ui.add_space(16.0);
 
-        egui::TopBottomPanel::top("top").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Kova");
-                ui.add_space(8.0);
-                if ui.button(if is_narrow { "☰" } else { "Backlog" }).clicked() {
-                    self.show_backlog = !self.show_backlog;
-                }
-                if ui.button("Prompts").clicked() {
-                    self.show_prompts = !self.show_prompts;
-                }
-                ui.add_space(8.0);
-                if self.projects.is_empty() && ui.button("Load projects").clicked() {
-                    self.load_projects(ctx);
-                }
-                egui::ComboBox::from_id_salt("project")
-                    .selected_text(if self.current_project.is_empty() {
-                        "(select)".into()
-                    } else {
-                        self.current_project
-                            .rsplit('/')
-                            .next()
-                            .unwrap_or(&self.current_project)
-                            .to_string()
-                    })
-                    .show_ui(ui, |ui| {
-                        for p in &self.projects.clone() {
-                            let name = p.rsplit('/').next().unwrap_or(p);
-                            if ui.selectable_label(p == &self.current_project, name).clicked() {
-                                self.current_project = p.clone();
-                                ui.close();
-                            }
+                    let backlog_label = if is_narrow { "B" } else { "Backlog" };
+                    let btn = ui.add(egui::Button::new(egui::RichText::new(backlog_label).color(
+                        if self.show_backlog {
+                            theme::colors::PRIMARY
+                        } else {
+                            theme::colors::TEXT
+                        },
+                    )));
+                    if btn.clicked() {
+                        self.show_backlog = !self.show_backlog;
+                        if self.show_backlog && !self.backlog_loaded {
+                            self.load_backlog(ctx);
                         }
-                    });
-            });
-        });
+                    }
 
+                    let prompts_label = if is_narrow { "P" } else { "Prompts" };
+                    let btn = ui.add(egui::Button::new(egui::RichText::new(prompts_label).color(
+                        if self.show_prompts {
+                            theme::colors::SECONDARY
+                        } else {
+                            theme::colors::TEXT
+                        },
+                    )));
+                    if btn.clicked() {
+                        self.show_prompts = !self.show_prompts;
+                        if self.show_prompts && !self.prompts_loaded {
+                            self.load_prompts(ctx);
+                        }
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        egui::ComboBox::from_id_salt("project_selector")
+                            .selected_text(if self.current_project.is_empty() {
+                                egui::RichText::new("select project").color(theme::colors::MUTED)
+                            } else {
+                                egui::RichText::new(
+                                    self.current_project
+                                        .rsplit('/')
+                                        .next()
+                                        .unwrap_or(&self.current_project),
+                                )
+                                .color(theme::colors::TERTIARY)
+                            })
+                            .show_ui(ui, |ui| {
+                                for p in &self.projects.clone() {
+                                    let name = p.rsplit('/').next().unwrap_or(p);
+                                    if ui
+                                        .selectable_label(p == &self.current_project, name)
+                                        .clicked()
+                                    {
+                                        self.current_project = p.clone();
+                                    }
+                                }
+                            });
+                    });
+                });
+            });
+    }
+
+    fn draw_sidebars(&mut self, ctx: &egui::Context) {
         if self.show_backlog {
-            egui::SidePanel::left("backlog")
-                .resizable(false)
-                .width_range(200.0..=400.0)
+            egui::SidePanel::left("backlog_panel")
+                .frame(theme::sidebar_frame())
+                .resizable(true)
+                .default_width(240.0)
+                .width_range(180.0..=400.0)
                 .show(ctx, |ui| {
-                    ui.heading("Backlog");
+                    ui.colored_label(
+                        theme::colors::PRIMARY,
+                        egui::RichText::new("Backlog").size(16.0).strong(),
+                    );
+                    ui.add_space(4.0);
                     ui.separator();
-                    for item in &self.backlog {
-                        ui.label(item.intent.as_deref().unwrap_or("-"));
+                    ui.add_space(4.0);
+                    if self.backlog.is_empty() {
+                        ui.colored_label(theme::colors::MUTED, "No items.");
+                    } else {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            for (i, item) in self.backlog.iter().enumerate() {
+                                let text = item.intent.as_deref().unwrap_or("-");
+                                let proj = item.project.as_deref().unwrap_or("");
+                                theme::message_frame().show(ui, |ui| {
+                                    ui.colored_label(theme::colors::MUTED, format!("#{}", i + 1));
+                                    ui.label(text);
+                                    if !proj.is_empty() {
+                                        ui.colored_label(
+                                            theme::colors::TERTIARY,
+                                            egui::RichText::new(proj).small(),
+                                        );
+                                    }
+                                });
+                                ui.add_space(4.0);
+                            }
+                        });
                     }
                 });
         }
 
         if self.show_prompts {
-            egui::SidePanel::right("prompts")
-                .resizable(false)
+            egui::SidePanel::right("prompts_panel")
+                .frame(theme::sidebar_frame())
+                .resizable(true)
+                .default_width(280.0)
                 .width_range(200.0..=400.0)
                 .show(ctx, |ui| {
-                    ui.heading("Prompts");
+                    ui.colored_label(
+                        theme::colors::SECONDARY,
+                        egui::RichText::new("Prompts").size(16.0).strong(),
+                    );
+                    ui.add_space(4.0);
                     ui.separator();
+                    ui.add_space(4.0);
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.label(&self.system_prompt);
-                        ui.separator();
-                        ui.label(&self.persona);
+                        if !self.system_prompt.is_empty() {
+                            ui.colored_label(theme::colors::MUTED, "System");
+                            theme::code_frame().show(ui, |ui| {
+                                ui.monospace(&self.system_prompt);
+                            });
+                            ui.add_space(8.0);
+                        }
+                        if !self.persona.is_empty() {
+                            ui.colored_label(theme::colors::MUTED, "Persona");
+                            theme::code_frame().show(ui, |ui| {
+                                ui.monospace(&self.persona);
+                            });
+                        }
+                        if self.system_prompt.is_empty() && self.persona.is_empty() {
+                            ui.colored_label(theme::colors::MUTED, "Loading...");
+                        }
                     });
                 });
         }
+    }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for m in &self.messages {
-                    ui.label(m);
+    fn draw_messages(&mut self, ui: &mut egui::Ui) {
+        let available = ui.available_height() - 80.0; // Reserve for input
+        egui::ScrollArea::vertical()
+            .max_height(available.max(100.0))
+            .auto_shrink([false, false])
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                ui.add_space(8.0);
+                for msg in &self.messages {
+                    match msg {
+                        Msg::User(text) => {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                ui.allocate_ui(
+                                    egui::Vec2::new(ui.available_width() * 0.75, 0.0),
+                                    |ui| {
+                                        theme::user_message_frame().show(ui, |ui| {
+                                            ui.label(
+                                                egui::RichText::new(text)
+                                                    .color(theme::colors::TEXT),
+                                            );
+                                        });
+                                    },
+                                );
+                            });
+                        }
+                        Msg::System(text) => {
+                            theme::message_frame().show(ui, |ui| {
+                                ui.colored_label(theme::colors::TERTIARY, text);
+                            });
+                        }
+                        Msg::Code(code) => {
+                            let c = code.clone();
+                            theme::code_frame().show(ui, |ui| {
+                                ui.monospace(code);
+                                if ui.small_button("Copy").clicked() {
+                                    ui.ctx().output_mut(|o| {
+                                        o.commands.push(egui::OutputCommand::CopyText(c.clone()))
+                                    });
+                                }
+                            });
+                        }
+                        Msg::Stream(text) => {
+                            theme::message_frame().show(ui, |ui| {
+                                ui.monospace(text);
+                            });
+                        }
+                    }
+                    ui.add_space(6.0);
                 }
-                if !self.stream_output.is_empty() {
-                    ui.add_space(8.0);
-                    ui.monospace(&self.stream_output);
+
+                // Live stream buffer
+                let buf = self.stream_buf.borrow().clone();
+                if !buf.is_empty() {
+                    theme::code_frame().show(ui, |ui| {
+                        ui.colored_label(
+                            theme::colors::PRIMARY,
+                            egui::RichText::new("streaming...").small(),
+                        );
+                        ui.monospace(&buf);
+                    });
                 }
             });
-            if !self.status.is_empty() {
-                ui.add_space(4.0);
-                let color = match self.status_ok {
-                    Some(true) => egui::Color32::from_rgb(0x14, 0xb8, 0xa6),
-                    Some(false) => egui::Color32::from_rgb(0xa8, 0x55, 0xf7),
-                    None => egui::Color32::GRAY,
-                };
-                ui.colored_label(color, &self.status);
-            }
-            if let (Some(ref code), Some(ref _hint)) = (&self.output_code, &self.output_hint) {
-                let code = code.clone();
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Copy").clicked() {
-                        ui.ctx().output_mut(|o| o.commands.push(egui::OutputCommand::CopyText(code)));
-                        self.set_status("Copied.", Some(true));
-                    }
-                });
-            }
-            ui.add_space(8.0);
+    }
+
+    fn draw_input(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        ui.add_space(4.0);
+
+        // Status bar
+        if !self.status.is_empty() {
+            let color = match self.status_ok {
+                Some(true) => theme::colors::TERTIARY,
+                Some(false) => theme::colors::SECONDARY,
+                None => theme::colors::MUTED,
+            };
+            ui.colored_label(color, egui::RichText::new(&self.status).small());
+            ui.add_space(2.0);
+        }
+
+        // Input
+        theme::input_frame().show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.text_edit_singleline(&mut self.input);
-                if ui.button("Send").clicked() {
-                    let prompt = std::mem::take(&mut self.input);
-                    if !prompt.is_empty() {
-                        self.messages.push(format!("You: {}", prompt));
-                        self.set_status("Use kova serve for full API.", None);
-                    }
+                let input_width = ui.available_width() - 80.0;
+                let resp = ui.add_sized(
+                    [input_width.max(100.0), 28.0],
+                    egui::TextEdit::singleline(&mut self.input)
+                        .hint_text(
+                            egui::RichText::new("augment...").color(theme::colors::MUTED),
+                        )
+                        .text_color(theme::colors::TEXT),
+                );
+                let enter =
+                    resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let send = ui
+                    .add(egui::Button::new(
+                        egui::RichText::new("Send")
+                            .color(theme::colors::PRIMARY)
+                            .strong(),
+                    ))
+                    .clicked();
+                if enter || send {
+                    self.send_intent(ctx);
                 }
             });
         });
+    }
+}
+
+impl eframe::App for KovaWebApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply theme once
+        if !self.theme_applied {
+            theme::apply(ctx);
+            self.theme_applied = true;
+            // Auto-load projects on start
+            self.load_projects(ctx);
+        }
+
+        // Poll async results
+        self.poll_pending();
+
+        // Layout
+        self.draw_header(ctx);
+        self.draw_sidebars(ctx);
+
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::default()
+                    .fill(theme::colors::BG)
+                    .inner_margin(egui::Margin::same(12)),
+            )
+            .show(ctx, |ui| {
+                self.draw_messages(ui);
+                self.draw_input(ctx, ui);
+            });
     }
 }

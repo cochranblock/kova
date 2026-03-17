@@ -50,3 +50,4 @@ chromiumoxide = { version = "0.9", optional = true, default-features = false }
 futures = { version = "0.3", optional = true }
 xcap = { version = "0.9", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
+tempfile = { workspace = true }

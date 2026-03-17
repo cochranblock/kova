@@ -644,6 +644,241 @@ pub fn f172_sim3_impl_deep_dive(project: &Path) -> SimResult {
     SimResult { sim: 3, name: "Implementation Deep Dive".to_string(), findings }
 }
 
+// ── Sim 4: Visual Verification (f173) ────────────────────────────────
+
+/// f173=sim4_visual. Spawn kova serve, hit endpoints, capture screenshots.
+/// Requires: release binary at target/{triple}/release/kova or debug binary.
+/// If binary not found, sim is skipped (info, not fail).
+#[cfg(all(feature = "interface", feature = "screenshot"))]
+pub fn f173_sim4_visual(project: &Path) -> SimResult {
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return SimResult {
+                sim: 4,
+                name: "Visual Verification".to_string(),
+                findings: vec![warn(4, "4-runtime", &format!("tokio runtime: {}", e))],
+            };
+        }
+    };
+    rt.block_on(f173_inner(project))
+}
+
+#[cfg(all(feature = "interface", feature = "screenshot"))]
+async fn f173_inner(project: &Path) -> SimResult {
+    let mut findings = Vec::new();
+
+    // Find kova binary (debug or release)
+    let kova_bin = find_kova_bin(project);
+    let Some(bin) = kova_bin else {
+        findings.push(info(4, "4-binary", "kova binary not found — skipping visual sim (build first)"));
+        return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
+    };
+
+    // Spawn serve on random port
+    let tmp = match tempfile::TempDir::new() {
+        Ok(t) => t,
+        Err(e) => {
+            findings.push(warn(4, "4-tmpdir", &format!("tempdir: {}", e)));
+            return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
+        }
+    };
+
+    let (listener, base) = match crate::interface::bind_random().await {
+        Ok(pair) => pair,
+        Err(e) => {
+            findings.push(warn(4, "4-bind", &format!("bind: {}", e)));
+            return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
+        }
+    };
+    let addr = listener.local_addr().unwrap();
+    drop(listener); // Free port for kova
+
+    // Bootstrap first so serve starts clean
+    let _ = Command::new(&bin)
+        .env("HOME", tmp.path())
+        .env("KOVA_PROJECT", project)
+        .env("KOVA_PROJECTS_ROOT", project.parent().unwrap_or(project))
+        .arg("bootstrap")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    let mut child = match Command::new(&bin)
+        .env("HOME", tmp.path())
+        .env("KOVA_BIND", addr.to_string())
+        .env("KOVA_PROJECT", project)
+        .env("KOVA_PROJECTS_ROOT", project.parent().unwrap_or(project))
+        .args(["serve"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            findings.push(warn(4, "4-spawn", &format!("spawn kova serve: {}", e)));
+            return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
+        }
+    };
+
+    // Wait for server to be ready (cold start with temp HOME needs more time)
+    let ready = wait_for_ready(&base, 15).await;
+    if !ready {
+        findings.push(warn(4, "4-startup", "kova serve did not become ready within 15s"));
+        let _ = child.kill();
+        let _ = child.wait();
+        return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap();
+
+    // Check key endpoints
+    let endpoints = [
+        ("index", "/", true),
+        ("projects", "/api/projects", true),
+        ("prompts", "/api/prompts", true),
+        ("backlog", "/api/backlog", true),
+        ("presets", "/build/presets", true),
+        ("recent", "/context/recent", true),
+        ("wasm-js", "/kova_web.js", true),
+        ("wasm-bg", "/kova_web_bg.wasm", true),
+    ];
+
+    for (name, path, required) in &endpoints {
+        let url = format!("{}{}", base, path);
+        match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                findings.push(Finding {
+                    sim: 4,
+                    severity: Severity::Pass,
+                    area: format!("4A-endpoint-{}", name),
+                    message: format!("GET {} -> {}", path, resp.status()),
+                });
+            }
+            Ok(resp) => {
+                findings.push(Finding {
+                    sim: 4,
+                    severity: if *required { Severity::Fail } else { Severity::Warning },
+                    area: format!("4A-endpoint-{}", name),
+                    message: format!("GET {} -> {}", path, resp.status()),
+                });
+            }
+            Err(e) => {
+                findings.push(Finding {
+                    sim: 4,
+                    severity: if *required { Severity::Fail } else { Severity::Warning },
+                    area: format!("4A-endpoint-{}", name),
+                    message: format!("GET {} -> {}", path, e),
+                });
+            }
+        }
+    }
+
+    // Capture screenshots
+    let pages = [
+        ("index", "/"),
+        ("api_projects", "/api/projects"),
+    ];
+    let theme = crate::screenshot::theme_cochranblock();
+    let captured = crate::screenshot::capture_project(&base, "kova", &pages, &theme).await;
+    findings.push(finding(
+        4,
+        captured,
+        "4B-screenshots",
+        "Screenshots captured",
+        "Screenshot capture failed",
+    ));
+
+    // Check HTML content of index page
+    if let Ok(resp) = client.get(&format!("{}/", base)).send().await {
+        if let Ok(body) = resp.text().await {
+            let has_canvas = body.contains("canvas");
+            let has_kova = body.contains("Kova") || body.contains("kova");
+            let has_wasm = body.contains("kova_web");
+            findings.push(finding(4, has_canvas, "4C-html-canvas", "Index has canvas element", "Index missing canvas"));
+            findings.push(finding(4, has_kova, "4C-html-title", "Index references Kova", "Index missing Kova reference"));
+            findings.push(finding(4, has_wasm, "4C-html-wasm", "Index loads kova_web WASM", "Index missing WASM load"));
+        }
+    }
+
+    // Check WASM binary size (should be > 100KB)
+    if let Ok(resp) = client.get(&format!("{}/kova_web_bg.wasm", base)).send().await {
+        if let Ok(bytes) = resp.bytes().await {
+            let size_kb = bytes.len() / 1024;
+            findings.push(finding(
+                4,
+                size_kb > 100,
+                "4D-wasm-size",
+                &format!("WASM binary {}KB", size_kb),
+                &format!("WASM binary too small ({}KB) — likely broken build", size_kb),
+            ));
+        }
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    SimResult { sim: 4, name: "Visual Verification".to_string(), findings }
+}
+
+#[cfg(all(feature = "interface", feature = "screenshot"))]
+async fn wait_for_ready(base: &str, max_secs: u64) -> bool {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .unwrap();
+    // Poll /api/projects (not just /) to ensure full stack is ready
+    let url = format!("{}/api/projects", base);
+    for _ in 0..max_secs {
+        if let Ok(resp) = client.get(&url).send().await {
+            if resp.status().is_success() {
+                return true;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+    false
+}
+
+#[cfg(all(feature = "interface", feature = "screenshot"))]
+fn find_kova_bin(project: &Path) -> Option<std::path::PathBuf> {
+    let triples = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin"];
+    let profiles = ["release", "debug"];
+
+    // Check project-local target dir AND workspace-level target dir
+    let mut target_dirs = vec![project.join("target")];
+    if let Some(parent) = project.parent() {
+        target_dirs.push(parent.join("target"));
+    }
+    // Also check CARGO_TARGET_DIR
+    if let Ok(td) = std::env::var("CARGO_TARGET_DIR") {
+        target_dirs.push(PathBuf::from(td));
+    }
+
+    for target_dir in &target_dirs {
+        for profile in &profiles {
+            for triple in &triples {
+                let bin = target_dir.join(triple).join(profile).join("kova");
+                if bin.exists() {
+                    return Some(bin);
+                }
+            }
+            // Plain target/{profile}/kova
+            let bin = target_dir.join(profile).join("kova");
+            if bin.exists() {
+                return Some(bin);
+            }
+        }
+    }
+    None
+}
+
 // ── Public API ─────────────────────────────────────────────────────────
 
 /// f60=run_async_3x. Run async closure 3 times; all must pass. Used by cochranblock-test, oakilydokily-test.
@@ -676,8 +911,16 @@ pub fn f60_triple_sims_run(project: &Path) -> SimReport {
     let sim3 = f172_sim3_impl_deep_dive(project);
     println!("  {} pass, {} fail", sim3.pass_count(), sim3.fail_count());
 
-    // Sim 4 (mural-wasm) moved out of kova gate — run separately if needed
-    let sims = vec![sim1, sim2, sim3];
+    let mut sims = vec![sim1, sim2, sim3];
+
+    // Sim 4: Visual Verification (screenshots + endpoint checks)
+    #[cfg(all(feature = "interface", feature = "screenshot"))]
+    {
+        println!("TRIPLE SIMS: Sim 4 — Visual Verification...");
+        let sim4 = f173_sim4_visual(project);
+        println!("  {} pass, {} fail", sim4.pass_count(), sim4.fail_count());
+        sims.push(sim4);
+    }
 
     SimReport { sims }
 }

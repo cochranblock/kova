@@ -1,9 +1,8 @@
 // Unlicense — cochranblock.org
 //! Kova web client. Pure Rust (egui) compiled to WASM. Connects to kova serve API.
 
-use eframe::egui;
-
 mod app;
+mod theme;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -34,7 +33,7 @@ impl WebHandle {
                 canvas,
                 eframe::WebOptions::default(),
                 Box::new(|cc| {
-                    cc.egui_ctx.set_visuals(egui::Visuals::dark());
+                    theme::apply(&cc.egui_ctx);
                     Ok(Box::new(app::KovaWebApp::new(cc)))
                 }),
             )
