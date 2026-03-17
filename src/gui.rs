@@ -455,6 +455,22 @@ impl eframe::App for KovaApp {
                         }
                     }
                 }
+                if ui.button("Visual QC").clicked() {
+                    if self.sprite_qc.is_some() {
+                        self.sprite_qc = None;
+                    } else {
+                        // Point to exopack screenshot output dir
+                        let cache = dirs::cache_dir()
+                            .unwrap_or_else(|| std::path::PathBuf::from("."))
+                            .join("screenshots")
+                            .join(std::env::consts::OS)
+                            .join("kova");
+                        self.sprite_qc_path = cache.to_string_lossy().to_string();
+                        if cache.is_dir() {
+                            self.sprite_qc = Some(crate::sprite_qc::SpriteQc::scan(&cache));
+                        }
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new("~/.kova/prompts/").color(colors::MUTED).small());
                 });
