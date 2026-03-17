@@ -2,7 +2,7 @@
 # Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 [package]
 name = "kova"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Kova — augment engine. Web GUI (Rust/WASM) + serve API. No JavaScript."
 

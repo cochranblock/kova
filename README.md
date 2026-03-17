@@ -17,13 +17,17 @@ flowchart TB
     User[User] --> GUI[GUI / egui]
     User --> Serve[HTTP / serve]
     GUI --> AgentLoop[Agent loop]
+    GUI --> SpriteQC[Sprite QC]
     Serve --> AgentLoop
     AgentLoop --> Router[Router]
     Router --> Infer[Inference]
     Router --> Cargo[cargo_cmd]
     Router --> Node[node_cmd]
+    Router --> Git[git_cmd]
+    AgentLoop --> Tools[7 tools]
     AgentLoop --> C2[c2 swarm]
     C2 --> Nodes[lf gd bt st]
+    AgentLoop --> RAG[RAG / fastembed]
 ```
 
 ---
@@ -32,26 +36,35 @@ flowchart TB
 
 | Artifact | What | Lines |
 |----------|------|-------|
-| `src/main.rs` | CLI entrypoint. 15 subcommands incl. tokenized `s`/`g` short forms | 504 |
-| `src/repl.rs` | Interactive REPL. Claude Code replacement with local LLM | 161 |
-| `src/agent_loop.rs` | Agentic tool loop: inference → parse → execute → feed back | 117 |
-| `src/tools.rs` | 7 tools: read, write, edit, bash, glob, grep, memory_write | 574 |
-| `src/node_cmd.rs` | Tokenized SSH node commands (c1-c9, ci). Parallel execution | 557 |
-| `src/cargo_cmd.rs` | Tokenized cargo wrapper (x0-x9). Compressed output for AI context | 515 |
-| `src/c2.rs` | Swarm orchestration: sync, build, broadcast to 4 worker nodes | 675 |
-| `src/serve.rs` | Axum HTTP API + WebSocket streaming + embedded web client | 782 |
-| `src/gui.rs` | Native egui desktop GUI | 834 |
-| `src/config.rs` | Config, paths, feature detection, model resolution | 641 |
-| `src/inference.rs` | Local LLM inference via Kalosm (Qwen2.5-Coder GGUF) | 156 |
-| `src/router.rs` | Intent classification and routing | 262 |
-| `src/inspect.rs` | Resource inspection: CPU, RAM, disk, GPU across all nodes | 282 |
-| `src/cursor_prompts.rs` | Load .cursorrules + .cursor/rules/*.mdc as system prompt | 241 |
-| `src/context_loader.rs` | Project context: Cargo.toml, recent changes, git state | 226 |
-| `src/ssh_ca.rs` | SSH host CA: init, sign, setup. No host key churn | 163 |
-| `src/web.rs` | Embedded kova-web (egui WASM thin client) | 72 |
-| `src/storage.rs` | sled k/v store with zstd + bincode | 119 |
-| `.kova-aliases` | 97 shell aliases for macOS + Debian. Deployed to all nodes | 160 |
-| **Total** | **8,087 lines Rust + 160 lines shell** | **8,247** |
+| `src/main.rs` | CLI entrypoint. 15+ subcommands incl. tokenized `s`/`g` short forms | 1,742 |
+| `src/tools.rs` | 7 tools: read, write, edit, bash, glob, grep, memory_write | 1,412 |
+| `src/serve.rs` | Axum HTTP API + WebSocket streaming + embedded web client | 1,239 |
+| `src/academy.rs` | Recursive academy: training, evaluation, tournament wiring | 1,072 |
+| `src/gui.rs` | Native egui desktop GUI + Sprite QC integration | 896 |
+| `src/node_cmd.rs` | Tokenized SSH node commands (c1-c9, ci). Parallel execution | 879 |
+| `src/cargo_cmd.rs` | Tokenized cargo wrapper (x0-x9). Compressed output for AI context | 787 |
+| `src/c2.rs` | Swarm orchestration: sync, build, broadcast to 4 worker nodes | 755 |
+| `src/config.rs` | Config, paths, feature detection, model resolution | 662 |
+| `src/git_cmd.rs` | Tokenized git commands (g0-g9). Compressed output | 448 |
+| `src/sprite_qc.rs` | Tinder-style swipe UI for pixel art quality control | 383 |
+| `src/inspect.rs` | Resource inspection: CPU, RAM, disk, GPU across all nodes | 317 |
+| `src/trace.rs` | Execution tracing and diagnostics | 278 |
+| `src/router.rs` | Intent classification and routing | 275 |
+| `src/cursor_prompts.rs` | Load .cursorrules + .cursor/rules/*.mdc as system prompt | 253 |
+| `src/context_loader.rs` | Project context: Cargo.toml, recent changes, git state | 227 |
+| `src/agent_loop.rs` | Agentic tool loop: inference → parse → execute → feed back | 226 |
+| `src/ssh_ca.rs` | SSH host CA: init, sign, setup. No host key churn | 178 |
+| `src/repl.rs` | Interactive REPL. Claude Code replacement with local LLM | 175 |
+| `src/inference.rs` | Local LLM inference via Kalosm (Qwen2.5-Coder GGUF) | 159 |
+| `src/recent_changes.rs` | Git-based recent change detection | 135 |
+| `src/storage.rs` | sled k/v store with zstd + bincode | 120 |
+| `src/theme.rs` | Professional dark theme: colors, layout, styled frames | 118 |
+| `src/plan.rs` | Execution planning and step resolution | 95 |
+| `src/web.rs` | Embedded kova-web (egui WASM thin client) | 73 |
+| `src/output.rs` | Code output formatting and diff display | 59 |
+| `src/model.rs` | Model management and resolution | 46 |
+| `.kova-aliases` | 97+ shell aliases for macOS + Debian. Deployed to all nodes | 263 |
+| **Total** | **25,996 lines Rust + 263 lines shell across 50 source files** | **26,259** |
 
 ## Binaries
 
