@@ -13,8 +13,10 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Run native GUI (egui).
+    /// Run native GUI (egui). Legacy — use TUI instead.
     Gui(GuiArgs),
+    /// Terminal UI. Chat + Visual QC. Like Claude Code but local.
+    Tui(TuiArgs),
     /// Run HTTP API server. Web client at /.
     Serve(ServeArgs),
     /// Worker daemon for swarm. Phase 1: schema stub.
@@ -605,6 +607,13 @@ struct GuiArgs {
 }
 
 #[derive(clap::Args)]
+struct TuiArgs {
+    /// Project directory (default: cwd).
+    #[arg(short, long)]
+    project: Option<std::path::PathBuf>,
+}
+
+#[derive(clap::Args)]
 struct ServeArgs {
     /// Open browser to web client after starting
     #[arg(long)]
@@ -676,8 +685,18 @@ fn run_gui(demo: bool) -> anyhow::Result<()> {
 
 #[cfg(not(feature = "gui"))]
 fn run_gui(_demo: bool) -> anyhow::Result<()> {
-    // No native GUI — use web UI via serve
-    anyhow::bail!("Use `kova serve --open` for the web GUI (Rust/WASM, no JS)")
+    anyhow::bail!("GUI feature not enabled. Use `kova tui` or `kova serve --open`")
+}
+
+#[cfg(feature = "tui")]
+fn run_tui(project: Option<std::path::PathBuf>) -> anyhow::Result<()> {
+    kova::bootstrap()?;
+    kova::tui::run(project)
+}
+
+#[cfg(not(feature = "tui"))]
+fn run_tui(_project: Option<std::path::PathBuf>) -> anyhow::Result<()> {
+    anyhow::bail!("Build with --features tui for terminal UI")
 }
 
 #[cfg(feature = "tests")]
@@ -1435,6 +1454,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
 
     match cmd {
         Some(Cmd::Gui(args)) => run_gui(args.demo),
+        Some(Cmd::Tui(args)) => run_tui(args.project),
         Some(Cmd::Serve(args)) => run_serve(args.open, args.demo).await,
         Some(Cmd::S(args)) => run_serve(true, args.demo).await,
         Some(Cmd::Node) => run_node(),
@@ -1563,21 +1583,24 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Review(_))
         | Some(Cmd::Feedback(_)) => unreachable!("handled before tokio"),
         None => {
-            // Default: REPL (like Claude Code). Fallback: GUI.
-            #[cfg(feature = "inference")]
+            // Default: TUI (like Claude Code). Fallback: REPL, then GUI.
+            #[cfg(feature = "tui")]
+            {
+                run_tui(None)
+            }
+            #[cfg(all(not(feature = "tui"), feature = "inference"))]
             {
                 kova::bootstrap()?;
                 kova::repl::f137(None)
             }
-            #[cfg(all(not(feature = "inference"), feature = "gui"))]
+            #[cfg(all(not(feature = "tui"), not(feature = "inference"), feature = "gui"))]
             {
                 run_gui(false)
             }
-            #[cfg(all(not(feature = "inference"), not(feature = "gui")))]
+            #[cfg(all(not(feature = "tui"), not(feature = "inference"), not(feature = "gui")))]
             {
                 eprintln!("Usage: kova <COMMAND>");
-                eprintln!("  kova chat  — interactive REPL (requires --features inference)");
-                eprintln!("  kova gui   — native GUI (requires --features gui)");
+                eprintln!("  kova tui   — terminal UI (requires --features tui)");
                 eprintln!("  kova serve — HTTP API (requires --features serve)");
                 Ok(())
             }

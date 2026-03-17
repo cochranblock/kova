@@ -42,6 +42,8 @@ pub mod context_loader;
 pub mod gui;
 #[cfg(feature = "inference")]
 pub mod inference;
+#[cfg(feature = "tui")]
+pub mod tui;
 #[cfg(feature = "inference")]
 pub mod model;
 #[cfg(any(feature = "gui", feature = "serve"))]

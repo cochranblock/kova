@@ -12,6 +12,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(feature = "video")]
+use crate::video::VideoRecorder;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -861,7 +863,8 @@ async fn f173_inner(project: &Path) -> SimResult {
     #[cfg(feature = "video")]
     if let Some((ref stop_result, (has_movement, quality, diagnosis))) = frame_result {
         match stop_result {
-            Ok(path) => {
+            Ok(ref path) => {
+                let path: &PathBuf = path;
                 findings.push(Finding {
                     sim: 4, severity: Severity::Pass,
                     area: "4E-frames-captured".to_string(),
