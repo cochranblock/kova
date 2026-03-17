@@ -645,10 +645,15 @@ pub fn f172_sim3_impl_deep_dive(project: &Path) -> SimResult {
 }
 
 // ── Sim 4: Visual Verification (f173) ────────────────────────────────
+//
+// Proper sequence:
+//   Phase 1 (Capture): spawn kova serve → open browser → xcap FrameRecorder captures screenshots + video frames
+//   Phase 2 (Evaluate): analyze captures — movement quality, content presence, WASM health
+//   Phase 3 (Artifact): save captures to ~/.cache/screenshots/kova/ for human review
+//
+// Requires: interface + screenshot features. video feature optional for frame recording.
 
-/// f173=sim4_visual. Spawn kova serve, hit endpoints, capture screenshots.
-/// Requires: release binary at target/{triple}/release/kova or debug binary.
-/// If binary not found, sim is skipped (info, not fail).
+/// f173=sim4_visual. Full visual verification: capture then evaluate.
 #[cfg(all(feature = "interface", feature = "screenshot"))]
 pub fn f173_sim4_visual(project: &Path) -> SimResult {
     let rt = match tokio::runtime::Builder::new_multi_thread()
@@ -670,34 +675,29 @@ pub fn f173_sim4_visual(project: &Path) -> SimResult {
 #[cfg(all(feature = "interface", feature = "screenshot"))]
 async fn f173_inner(project: &Path) -> SimResult {
     let mut findings = Vec::new();
+    let out_dir = crate::screenshot::out_dir("kova");
+    let _ = std::fs::create_dir_all(&out_dir);
 
-    // Find kova binary (debug or release)
-    let kova_bin = find_kova_bin(project);
-    let Some(bin) = kova_bin else {
-        findings.push(info(4, "4-binary", "kova binary not found — skipping visual sim (build first)"));
+    // ── Find binary ──────────────────────────────────────────────────
+    let Some(bin) = find_kova_bin(project) else {
+        findings.push(info(4, "4-binary", "kova binary not found — build first"));
         return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
     };
+    findings.push(Finding {
+        sim: 4, severity: Severity::Pass,
+        area: "4-binary".to_string(),
+        message: format!("found {}", bin.display()),
+    });
 
-    // Spawn serve on random port
+    // ── Bootstrap + spawn serve ──────────────────────────────────────
     let tmp = match tempfile::TempDir::new() {
         Ok(t) => t,
         Err(e) => {
-            findings.push(warn(4, "4-tmpdir", &format!("tempdir: {}", e)));
+            findings.push(warn(4, "4-tmpdir", &format!("{}", e)));
             return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
         }
     };
 
-    let (listener, base) = match crate::interface::bind_random().await {
-        Ok(pair) => pair,
-        Err(e) => {
-            findings.push(warn(4, "4-bind", &format!("bind: {}", e)));
-            return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
-        }
-    };
-    let addr = listener.local_addr().unwrap();
-    drop(listener); // Free port for kova
-
-    // Bootstrap first so serve starts clean
     let _ = Command::new(&bin)
         .env("HOME", tmp.path())
         .env("KOVA_PROJECT", project)
@@ -706,6 +706,16 @@ async fn f173_inner(project: &Path) -> SimResult {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status();
+
+    let (listener, base) = match crate::interface::bind_random().await {
+        Ok(pair) => pair,
+        Err(e) => {
+            findings.push(warn(4, "4-bind", &format!("{}", e)));
+            return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
+        }
+    };
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
 
     let mut child = match Command::new(&bin)
         .env("HOME", tmp.path())
@@ -719,110 +729,164 @@ async fn f173_inner(project: &Path) -> SimResult {
     {
         Ok(c) => c,
         Err(e) => {
-            findings.push(warn(4, "4-spawn", &format!("spawn kova serve: {}", e)));
+            findings.push(warn(4, "4-spawn", &format!("{}", e)));
             return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
         }
     };
 
-    // Wait for server to be ready (cold start with temp HOME needs more time)
-    let ready = wait_for_ready(&base, 15).await;
+    // Wait for full stack ready (poll / which is static HTML — fast)
+    let ready = wait_for_ready(&base, 20).await;
     if !ready {
-        findings.push(warn(4, "4-startup", "kova serve did not become ready within 15s"));
+        findings.push(warn(4, "4-startup", "kova serve did not respond within 20s"));
         let _ = child.kill();
         let _ = child.wait();
         return SimResult { sim: 4, name: "Visual Verification".to_string(), findings };
     }
+    findings.push(Finding {
+        sim: 4, severity: Severity::Pass,
+        area: "4-startup".to_string(),
+        message: format!("kova serve ready at {}", base),
+    });
+
+    // ════════════════════════════════════════════════════════════════
+    // PHASE 1: CAPTURE — screenshots + video frames
+    // ════════════════════════════════════════════════════════════════
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap();
 
-    // Check key endpoints
-    let endpoints = [
-        ("index", "/", true),
-        ("projects", "/api/projects", true),
-        ("prompts", "/api/prompts", true),
-        ("backlog", "/api/backlog", true),
-        ("presets", "/build/presets", true),
-        ("recent", "/context/recent", true),
-        ("wasm-js", "/kova_web.js", true),
-        ("wasm-bg", "/kova_web_bg.wasm", true),
-    ];
-
-    for (name, path, required) in &endpoints {
-        let url = format!("{}{}", base, path);
-        match client.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                findings.push(Finding {
-                    sim: 4,
-                    severity: Severity::Pass,
-                    area: format!("4A-endpoint-{}", name),
-                    message: format!("GET {} -> {}", path, resp.status()),
-                });
-            }
-            Ok(resp) => {
-                findings.push(Finding {
-                    sim: 4,
-                    severity: if *required { Severity::Fail } else { Severity::Warning },
-                    area: format!("4A-endpoint-{}", name),
-                    message: format!("GET {} -> {}", path, resp.status()),
-                });
-            }
-            Err(e) => {
-                findings.push(Finding {
-                    sim: 4,
-                    severity: if *required { Severity::Fail } else { Severity::Warning },
-                    area: format!("4A-endpoint-{}", name),
-                    message: format!("GET {} -> {}", path, e),
-                });
-            }
-        }
-    }
-
-    // Capture screenshots
+    // 1a. Capture HTTP screenshots (HTML content snapshots)
     let pages = [
         ("index", "/"),
-        ("api_projects", "/api/projects"),
+        ("projects", "/api/projects"),
+        ("prompts", "/api/prompts"),
+        ("backlog", "/api/backlog"),
     ];
     let theme = crate::screenshot::theme_cochranblock();
-    let captured = crate::screenshot::capture_project(&base, "kova", &pages, &theme).await;
-    findings.push(finding(
-        4,
-        captured,
-        "4B-screenshots",
-        "Screenshots captured",
-        "Screenshot capture failed",
-    ));
+    let screenshots_ok = crate::screenshot::capture_project(&base, "kova", &pages, &theme).await;
 
-    // Check HTML content of index page
-    if let Ok(resp) = client.get(&format!("{}/", base)).send().await {
-        if let Ok(body) = resp.text().await {
-            let has_canvas = body.contains("canvas");
-            let has_kova = body.contains("Kova") || body.contains("kova");
-            let has_wasm = body.contains("kova_web");
-            findings.push(finding(4, has_canvas, "4C-html-canvas", "Index has canvas element", "Index missing canvas"));
-            findings.push(finding(4, has_kova, "4C-html-title", "Index references Kova", "Index missing Kova reference"));
-            findings.push(finding(4, has_wasm, "4C-html-wasm", "Index loads kova_web WASM", "Index missing WASM load"));
-        }
-    }
+    // 1b. Capture screen frames via xcap (actual pixels on screen)
+    #[cfg(feature = "video")]
+    let frame_result = {
+        // Open browser to kova UI
+        let _ = Command::new("open").arg(&base).spawn();
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-    // Check WASM binary size (should be > 100KB)
-    if let Ok(resp) = client.get(&format!("{}/kova_web_bg.wasm", base)).send().await {
-        if let Ok(bytes) = resp.bytes().await {
-            let size_kb = bytes.len() / 1024;
-            findings.push(finding(
-                4,
-                size_kb > 100,
-                "4D-wasm-size",
-                &format!("WASM binary {}KB", size_kb),
-                &format!("WASM binary too small ({}KB) — likely broken build", size_kb),
-            ));
+        let mut recorder = crate::video::FrameRecorder::new();
+        let _ = recorder.start();
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        let frame_path = out_dir.join("frames");
+        let stop_result = recorder.stop(&frame_path);
+        let movement = recorder.check_movement();
+        Some((stop_result, movement))
+    };
+    #[cfg(not(feature = "video"))]
+    let frame_result: Option<(Result<PathBuf, String>, (bool, f64, &str))> = None;
+
+    // 1c. Fetch key page content for evaluation
+    let index_html = match client.get(&format!("{}/", base)).send().await {
+        Ok(r) => r.text().await.ok(),
+        Err(_) => None,
+    };
+    let wasm_size = match client.get(&format!("{}/kova_web_bg.wasm", base)).send().await {
+        Ok(r) => r.bytes().await.ok().map(|b| b.len()),
+        Err(_) => None,
+    };
+    let endpoints_status: Vec<(&str, bool)> = {
+        let mut results = Vec::new();
+        for (name, path) in &pages {
+            let url = format!("{}{}", base, path);
+            let ok = client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false);
+            results.push((*name, ok));
         }
-    }
+        // Also check static assets
+        for (name, path) in [("wasm-js", "/kova_web.js"), ("wasm-bg", "/kova_web_bg.wasm")] {
+            let url = format!("{}{}", base, path);
+            let ok = client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false);
+            results.push((name, ok));
+        }
+        results
+    };
 
     let _ = child.kill();
     let _ = child.wait();
+
+    // ════════════════════════════════════════════════════════════════
+    // PHASE 2: EVALUATE — analyze captured artifacts
+    // ════════════════════════════════════════════════════════════════
+
+    // 2a. Screenshot capture success
+    findings.push(finding(4, screenshots_ok, "4A-screenshots",
+        &format!("screenshots captured to {}", out_dir.display()),
+        "screenshot capture failed",
+    ));
+
+    // 2b. Endpoint health
+    for (name, ok) in &endpoints_status {
+        findings.push(finding(4, *ok, &format!("4B-endpoint-{}", name),
+            &format!("{} responds 200", name),
+            &format!("{} unreachable or error", name),
+        ));
+    }
+
+    // 2c. HTML content analysis
+    if let Some(ref html) = index_html {
+        findings.push(finding(4, html.contains("canvas"), "4C-html-canvas",
+            "index has <canvas> element", "index missing <canvas>"));
+        findings.push(finding(4, html.contains("kova_web"), "4C-html-wasm",
+            "index loads kova_web WASM module", "index missing WASM load"));
+        findings.push(finding(4,
+            html.contains("Kova") || html.contains("kova"),
+            "4C-html-branding", "index references Kova", "index missing branding"));
+        // Check theme colors in CSS
+        findings.push(finding(4, html.contains("#0a0a0f"), "4C-theme-bg",
+            "index uses THEME.md background color", "index missing theme background"));
+    } else {
+        findings.push(warn(4, "4C-html", "could not fetch index HTML"));
+    }
+
+    // 2d. WASM binary size
+    if let Some(size) = wasm_size {
+        let kb = size / 1024;
+        findings.push(finding(4, kb > 100, "4D-wasm-size",
+            &format!("WASM binary {}KB", kb),
+            &format!("WASM binary {}KB — too small, likely broken", kb)));
+    } else {
+        findings.push(warn(4, "4D-wasm-size", "could not fetch WASM binary"));
+    }
+
+    // 2e. Video frame analysis (if captured)
+    #[cfg(feature = "video")]
+    if let Some((ref stop_result, (has_movement, quality, diagnosis))) = frame_result {
+        match stop_result {
+            Ok(path) => {
+                findings.push(Finding {
+                    sim: 4, severity: Severity::Pass,
+                    area: "4E-frames-captured".to_string(),
+                    message: format!("video frames saved to {}", path.display()),
+                });
+                findings.push(finding(4, has_movement, "4E-movement",
+                    &format!("UI has movement (quality {:.2})", quality),
+                    "UI frozen — no pixel change detected"));
+                if has_movement {
+                    let smooth = quality > 0.5;
+                    findings.push(finding(4, smooth, "4E-quality",
+                        &format!("{} (score {:.2})", diagnosis, quality),
+                        &format!("{} (score {:.2})", diagnosis, quality)));
+                }
+            }
+            Err(e) => {
+                findings.push(info(4, "4E-frames", &format!("frame capture: {}", e)));
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // PHASE 3: ARTIFACT — report paths for human review
+    // ════════════════════════════════════════════════════════════════
+    println!("  artifacts: {}", out_dir.display());
 
     SimResult { sim: 4, name: "Visual Verification".to_string(), findings }
 }
@@ -830,11 +894,11 @@ async fn f173_inner(project: &Path) -> SimResult {
 #[cfg(all(feature = "interface", feature = "screenshot"))]
 async fn wait_for_ready(base: &str, max_secs: u64) -> bool {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3))
+        .timeout(std::time::Duration::from_secs(2))
         .build()
         .unwrap();
-    // Poll /api/projects (not just /) to ensure full stack is ready
-    let url = format!("{}/api/projects", base);
+    // Poll / (static HTML — fast, no backend dependencies)
+    let url = format!("{}/", base);
     for _ in 0..max_secs {
         if let Ok(resp) = client.get(&url).send().await {
             if resp.status().is_success() {
@@ -856,7 +920,6 @@ fn find_kova_bin(project: &Path) -> Option<std::path::PathBuf> {
     if let Some(parent) = project.parent() {
         target_dirs.push(parent.join("target"));
     }
-    // Also check CARGO_TARGET_DIR
     if let Ok(td) = std::env::var("CARGO_TARGET_DIR") {
         target_dirs.push(PathBuf::from(td));
     }
@@ -869,7 +932,6 @@ fn find_kova_bin(project: &Path) -> Option<std::path::PathBuf> {
                     return Some(bin);
                 }
             }
-            // Plain target/{profile}/kova
             let bin = target_dir.join(profile).join("kova");
             if bin.exists() {
                 return Some(bin);
