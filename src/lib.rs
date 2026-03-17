@@ -46,6 +46,8 @@ pub mod router;
 #[cfg(feature = "serve")]
 pub mod serve;
 #[cfg(feature = "gui")]
+pub mod sprite_qc;
+#[cfg(feature = "gui")]
 pub mod theme;
 #[cfg(feature = "gui")]
 pub mod web;

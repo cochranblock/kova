@@ -9,7 +9,7 @@ description = "Kova — augment engine. Web GUI (Rust/WASM) + serve API. No Java
 [features]
 default = ["serve", "inference", "rag"]
 serve = ["dep:axum", "dep:futures-util", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:similar"]
-gui = ["dep:eframe", "dep:egui", "dep:similar"]
+gui = ["dep:eframe", "dep:egui", "dep:similar", "dep:image"]
 inference = ["dep:kalosm", "dep:kalosm-sample", "dep:lru"]
 autopilot = ["dep:enigo"]
 daemon = ["dep:capnp", "dep:capnpc"]  # Requires capnp compiler: brew install capnp
@@ -35,6 +35,7 @@ similar = { version = "2", optional = true }
 
 eframe = { version = "0.33", optional = true }
 egui = { version = "0.33", optional = true }
+image = { version = "0.25", optional = true }
 axum = { version = "0.7", features = ["json", "macros", "ws"], optional = true }
 futures-util = { version = "0.3", optional = true }
 tower = { version = "0.4", features = ["util"], optional = true }

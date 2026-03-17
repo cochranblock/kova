@@ -57,6 +57,10 @@ struct KovaApp {
     restatement_pending_msg: Option<String>,
     /// Demo mode: record actions to ~/.kova/demos/
     demo_recording: Option<DemoRecording>,
+    /// Sprite QC panel state.
+    sprite_qc: Option<crate::sprite_qc::SpriteQc>,
+    /// Path input for sprite QC directory.
+    sprite_qc_path: String,
 }
 
 impl DemoRecording {
@@ -193,6 +197,8 @@ impl KovaApp {
             #[cfg(feature = "inference")]
             restatement_pending_msg: None,
             demo_recording,
+            sprite_qc: None,
+            sprite_qc_path: String::new(),
         }
     }
 
@@ -434,6 +440,21 @@ impl eframe::App for KovaApp {
                 if ui.button("Backlog").clicked() {
                     self.show_backlog = !self.show_backlog;
                 }
+                if ui.button("Sprite QC").clicked() {
+                    if self.sprite_qc.is_some() {
+                        self.sprite_qc = None;
+                    } else {
+                        // Default to rogue-runner assets if path empty
+                        if self.sprite_qc_path.is_empty() {
+                            let home = std::env::var("HOME").unwrap_or_default();
+                            self.sprite_qc_path = format!("{}/rogue-repo/rogue-runner/assets", home);
+                        }
+                        let p = std::path::Path::new(&self.sprite_qc_path);
+                        if p.is_dir() {
+                            self.sprite_qc = Some(crate::sprite_qc::SpriteQc::scan(p));
+                        }
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new("~/.kova/prompts/").color(colors::MUTED).small());
                 });
@@ -505,6 +526,28 @@ impl eframe::App for KovaApp {
                     });
                 });
                 ui.add_space(layout::GAP);
+            }
+            // Sprite QC panel — takes over the main area when active
+            if self.sprite_qc.is_some() {
+                theme::panel_frame().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Dir:").color(colors::MUTED));
+                        ui.text_edit_singleline(&mut self.sprite_qc_path);
+                        if ui.button("Rescan").clicked() {
+                            let p = std::path::Path::new(&self.sprite_qc_path);
+                            if p.is_dir() {
+                                self.sprite_qc = Some(crate::sprite_qc::SpriteQc::scan(p));
+                            }
+                        }
+                    });
+                    ui.add_space(layout::GAP);
+                    let close = self.sprite_qc.as_mut().unwrap().show(ui, ctx);
+                    if close {
+                        self.sprite_qc = None;
+                    }
+                });
+                // When sprite QC is active, skip the rest of the UI
+                return;
             }
             if self.show_prompts {
                 theme::panel_frame().show(ui, |ui| {
