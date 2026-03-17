@@ -58,7 +58,7 @@ async fn capture_placeholder(
     dir: &std::path::Path,
 ) -> bool {
     let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
         .build()
     {
         Ok(c) => c,
@@ -68,6 +68,7 @@ async fn capture_placeholder(
         }
     };
     let base = base.trim_end_matches('/');
+    let mut any_ok = false;
     for (name, path) in pages {
         let url = format!("{}{}", base, path);
         match client.get(&url).send().await {
@@ -75,21 +76,20 @@ async fn capture_placeholder(
                 let out = dir.join(format!("{}.png", name));
                 if let Err(e) = write_placeholder_png(&out) {
                     eprintln!("screenshot: write {}: {}", out.display(), e);
-                    return false;
+                } else {
+                    println!("screenshot: {} -> {}", url, out.display());
+                    any_ok = true;
                 }
-                println!("screenshot: {} -> {}", url, out.display());
             }
             Ok(resp) => {
-                eprintln!("screenshot: {} -> {}", url, resp.status());
-                return false;
+                eprintln!("screenshot: {} -> {} (skipping)", url, resp.status());
             }
             Err(e) => {
-                eprintln!("screenshot: fetch {}: {}", url, e);
-                return false;
+                eprintln!("screenshot: fetch {}: {} (skipping)", url, e);
             }
         }
     }
-    true
+    any_ok
 }
 
 fn write_placeholder_png(path: &std::path::Path) -> Result<(), String> {

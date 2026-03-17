@@ -387,7 +387,9 @@ fn safe_hint(hint: Option<&str>) -> String {
 }
 
 async fn api_projects() -> Json<Vec<String>> {
-    let projects = crate::discover_projects();
+    let projects = tokio::task::spawn_blocking(crate::discover_projects)
+        .await
+        .unwrap_or_default();
     Json(
         projects
             .iter()

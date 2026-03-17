@@ -150,6 +150,17 @@ fn collect_images(root: &Path, dir: &Path, out: &mut Vec<QcEntry>) {
     }
 }
 
+/// Message type for richer rendering.
+#[derive(Clone, PartialEq, Debug)]
+pub enum MsgKind {
+    User,
+    Assistant,
+    System,
+    ToolCall { tool: String },
+    ToolResult { tool: String, success: bool },
+    CodeBlock { lang: String },
+}
+
 /// Main TUI app state.
 struct App {
     mode: Mode,
@@ -163,12 +174,50 @@ struct App {
     qc: Option<VisualQc>,
     status: String,
     running: bool,
+    thinking: bool,
+    tick: usize,
+    show_help: bool,
+    history: Vec<String>,
+    history_pos: Option<usize>,
 }
 
 struct ChatMessage {
-    role: &'static str,
+    kind: MsgKind,
     content: String,
+    timestamp: String,
 }
+
+impl ChatMessage {
+    fn new(kind: MsgKind, content: String) -> Self {
+        Self {
+            kind,
+            content,
+            timestamp: format_time_now(),
+        }
+    }
+}
+
+fn format_time_now() -> String {
+    // Use libc localtime for HH:MM without pulling in chrono.
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let hours = ((secs % 86400) / 3600) as u32;
+    let mins = ((secs % 3600) / 60) as u32;
+    // UTC offset — approximate with env TZ. Good enough for display.
+    format!("{:02}:{:02}", hours, mins)
+}
+
+const SPINNER_FRAMES: &[&str] = &["   ", ".  ", ".. ", "...", " ..", "  .", "   "];
+const LOGO: &str = r#"
+  ██╗  ██╗ ██████╗ ██╗   ██╗ █████╗
+  ██║ ██╔╝██╔═══██╗██║   ██║██╔══██╗
+  █████╔╝ ██║   ██║██║   ██║███████║
+  ██╔═██╗ ██║   ██║╚██╗ ██╔╝██╔══██║
+  ██║  ██╗╚██████╔╝ ╚████╔╝ ██║  ██║
+  ╚═╝  ╚═╝ ╚═════╝   ╚═══╝  ╚═╝  ╚═╝
+"#;
 
 impl App {
     fn new(project: Option<PathBuf>) -> Self {
@@ -183,14 +232,15 @@ impl App {
             .to_string_lossy()
             .to_string();
 
+        let model_display = model_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "none".into());
+
         let status = format!(
-            "project: {} | model: {} | /qc /clear /quit",
-            project_name,
-            model_path
-                .as_ref()
-                .and_then(|p| p.file_name())
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "none".into())
+            " {} | {} | Ctrl+C exit | /help",
+            project_name, model_display,
         );
 
         #[cfg(feature = "inference")]
@@ -198,11 +248,30 @@ impl App {
         #[cfg(not(feature = "inference"))]
         let system_prompt = String::new();
 
+        // Build welcome message.
+        let mut welcome = String::new();
+        welcome.push_str(&format!("project  {}\n", project_dir.display()));
+        welcome.push_str(&format!("model    {}\n", model_display));
+
+        // Git info
+        if let Ok(branch) = std::process::Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&project_dir)
+            .output()
+            && branch.status.success()
+        {
+            let b = String::from_utf8_lossy(&branch.stdout).trim().to_string();
+            welcome.push_str(&format!("branch   {}\n", b));
+        }
+        welcome.push_str("\nCommands: /clear /qc /tools /project <path> /help /quit");
+
+        let messages = vec![ChatMessage::new(MsgKind::System, welcome)];
+
         Self {
             mode: Mode::Chat,
             input: String::new(),
             cursor_pos: 0,
-            messages: Vec::new(),
+            messages,
             scroll: 0,
             project_dir,
             model_path,
@@ -210,6 +279,11 @@ impl App {
             qc: None,
             status,
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         }
     }
 
@@ -218,6 +292,10 @@ impl App {
         if input.is_empty() {
             return;
         }
+
+        // Store in history.
+        self.history.push(input.clone());
+        self.history_pos = None;
         self.input.clear();
         self.cursor_pos = 0;
 
@@ -235,41 +313,41 @@ impl App {
             self.open_visual_qc();
             return;
         }
+        if input == "/help" {
+            self.show_help = !self.show_help;
+            return;
+        }
         if input.starts_with("/project ") {
             let p = input.strip_prefix("/project ").unwrap().trim();
             let path = PathBuf::from(p);
             if path.exists() {
+                let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 self.project_dir = path;
-                self.status = format!("project: {} | /qc /clear /quit", p);
-                self.messages.push(ChatMessage {
-                    role: "system",
-                    content: format!("project switched to {}", p),
-                });
+                self.status = format!(" {} | Ctrl+C exit | /help", name);
+                self.messages.push(ChatMessage::new(
+                    MsgKind::System,
+                    format!("project switched to {}", p),
+                ));
             } else {
-                self.messages.push(ChatMessage {
-                    role: "system",
-                    content: format!("not found: {}", p),
-                });
+                self.messages.push(ChatMessage::new(
+                    MsgKind::System,
+                    format!("not found: {}", p),
+                ));
             }
             return;
         }
         if input == "/tools" {
-            let mut lines = String::new();
+            let mut lines = String::from("Available tools:\n");
             for tool in crate::tools::TOOLS {
                 lines.push_str(&format!("  {} — {}\n", tool.name, tool.description));
             }
-            self.messages.push(ChatMessage {
-                role: "system",
-                content: lines,
-            });
+            self.messages.push(ChatMessage::new(MsgKind::System, lines));
             return;
         }
 
         // Chat message.
-        self.messages.push(ChatMessage {
-            role: "user",
-            content: input.clone(),
-        });
+        self.messages.push(ChatMessage::new(MsgKind::User, input.clone()));
+        self.thinking = true;
 
         // Run agent loop (blocking — tokens go to a buffer, not stdout).
         #[cfg(feature = "inference")]
@@ -291,26 +369,71 @@ impl App {
                     let _ = crate::context::f73(&store, "assistant", &response);
                 }
 
-                self.messages.push(ChatMessage {
-                    role: "assistant",
-                    content: response,
-                });
+                // Parse response for tool calls and code blocks.
+                self.parse_and_push_response(&response);
             } else {
-                self.messages.push(ChatMessage {
-                    role: "system",
-                    content: "No model loaded. Run: kova model install".into(),
-                });
+                self.messages.push(ChatMessage::new(
+                    MsgKind::System,
+                    "No model loaded. Run: kova model install".into(),
+                ));
             }
         }
         #[cfg(not(feature = "inference"))]
         {
-            self.messages.push(ChatMessage {
-                role: "system",
-                content: "Inference not available. Build with --features inference".into(),
-            });
+            self.messages.push(ChatMessage::new(
+                MsgKind::System,
+                "Inference not available. Build with --features inference".into(),
+            ));
         }
+        self.thinking = false;
         // Auto-scroll to bottom.
         self.scroll = u16::MAX;
+    }
+
+    /// Parse response into structured message blocks.
+    fn parse_and_push_response(&mut self, response: &str) {
+        let mut current_text = String::new();
+        let mut in_code_block = false;
+        let mut code_lang = String::new();
+        let mut code_content = String::new();
+
+        for line in response.lines() {
+            if line.starts_with("```") && !in_code_block {
+                // Flush text before code block.
+                if !current_text.trim().is_empty() {
+                    self.messages.push(ChatMessage::new(
+                        MsgKind::Assistant,
+                        current_text.trim().to_string(),
+                    ));
+                    current_text.clear();
+                }
+                in_code_block = true;
+                code_lang = line.trim_start_matches('`').trim().to_string();
+                code_content.clear();
+            } else if line.starts_with("```") && in_code_block {
+                // End code block.
+                self.messages.push(ChatMessage::new(
+                    MsgKind::CodeBlock { lang: code_lang.clone() },
+                    code_content.trim_end().to_string(),
+                ));
+                in_code_block = false;
+                code_lang.clear();
+            } else if in_code_block {
+                code_content.push_str(line);
+                code_content.push('\n');
+            } else {
+                current_text.push_str(line);
+                current_text.push('\n');
+            }
+        }
+
+        // Flush remaining text.
+        if !current_text.trim().is_empty() {
+            self.messages.push(ChatMessage::new(
+                MsgKind::Assistant,
+                current_text.trim().to_string(),
+            ));
+        }
     }
 
     fn open_visual_qc(&mut self) {
@@ -323,24 +446,24 @@ impl App {
         if cache.is_dir() {
             let qc = VisualQc::scan(&cache);
             if qc.total() == 0 {
-                self.messages.push(ChatMessage {
-                    role: "system",
-                    content: format!("No images found in {}", cache.display()),
-                });
+                self.messages.push(ChatMessage::new(
+                    MsgKind::System,
+                    format!("No images found in {}", cache.display()),
+                ));
             } else {
                 let count = qc.total();
                 self.qc = Some(qc);
                 self.mode = Mode::VisualQc;
-                self.messages.push(ChatMessage {
-                    role: "system",
-                    content: format!("Visual QC: {} images loaded from {}", count, cache.display()),
-                });
+                self.messages.push(ChatMessage::new(
+                    MsgKind::System,
+                    format!("Visual QC: {} images loaded from {}", count, cache.display()),
+                ));
             }
         } else {
-            self.messages.push(ChatMessage {
-                role: "system",
-                content: format!("No screenshots dir: {}", cache.display()),
-            });
+            self.messages.push(ChatMessage::new(
+                MsgKind::System,
+                format!("No screenshots dir: {}", cache.display()),
+            ));
         }
     }
 }
@@ -357,9 +480,10 @@ pub fn run(project: Option<PathBuf>) -> anyhow::Result<()> {
     let mut app = App::new(project);
 
     while app.running {
+        app.tick = app.tick.wrapping_add(1);
         terminal.draw(|f| ui(f, &app))?;
 
-        if event::poll(std::time::Duration::from_millis(50))?
+        if event::poll(std::time::Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
         {
             if key.kind != KeyEventKind::Press {
@@ -412,15 +536,44 @@ fn handle_chat_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
         KeyCode::Home => app.cursor_pos = 0,
         KeyCode::End => app.cursor_pos = app.input.len(),
         KeyCode::Up => {
-            if app.scroll > 0 {
-                app.scroll = app.scroll.saturating_sub(1);
+            if modifiers.contains(KeyModifiers::SHIFT) {
+                // Shift+Up = scroll
+                if app.scroll > 0 {
+                    app.scroll = app.scroll.saturating_sub(1);
+                }
+            } else {
+                // Up = history navigation
+                if !app.history.is_empty() {
+                    let pos = match app.history_pos {
+                        None => app.history.len() - 1,
+                        Some(p) if p > 0 => p - 1,
+                        Some(p) => p,
+                    };
+                    app.history_pos = Some(pos);
+                    app.input = app.history[pos].clone();
+                    app.cursor_pos = app.input.len();
+                }
             }
         }
         KeyCode::Down => {
-            app.scroll = app.scroll.saturating_add(1);
+            if modifiers.contains(KeyModifiers::SHIFT) {
+                app.scroll = app.scroll.saturating_add(1);
+            } else if let Some(pos) = app.history_pos {
+                if pos + 1 < app.history.len() {
+                    app.history_pos = Some(pos + 1);
+                    app.input = app.history[pos + 1].clone();
+                    app.cursor_pos = app.input.len();
+                } else {
+                    app.history_pos = None;
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                }
+            }
         }
         KeyCode::Esc => {
-            if app.mode == Mode::VisualQc {
+            if app.show_help {
+                app.show_help = false;
+            } else if app.mode == Mode::VisualQc {
                 app.mode = Mode::Chat;
             }
         }
@@ -454,10 +607,10 @@ fn handle_qc_key(app: &mut App, code: KeyCode) {
                 && qc.is_done()
             {
                 let (a, r) = qc.apply_verdicts();
-                app.messages.push(ChatMessage {
-                    role: "system",
-                    content: format!("Saved: {} approved, {} rejected", a, r),
-                });
+                app.messages.push(ChatMessage::new(
+                    MsgKind::System,
+                    format!("Saved: {} approved, {} rejected", a, r),
+                ));
                 app.qc = None;
                 app.mode = Mode::Chat;
             }
@@ -484,50 +637,215 @@ fn ui(f: &mut Frame, app: &App) {
 }
 
 fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
+    // Help overlay.
+    if app.show_help {
+        draw_help(f, area);
+        return;
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // Header
             Constraint::Min(5),    // Messages
             Constraint::Length(3), // Input
-            Constraint::Length(1), // Status
+            Constraint::Length(1), // Status bar
         ])
         .split(area);
 
-    // Header
+    // Header — KOVA badge + mode tabs.
     let header = Paragraph::new(Line::from(vec![
         Span::styled(" KOVA ", Style::default().fg(BG).bg(PRIMARY).add_modifier(Modifier::BOLD)),
-        Span::styled(" augment engine", Style::default().fg(MUTED)),
+        Span::styled("  ", Style::default()),
+        Span::styled(" Chat ", Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)),
+        Span::styled("  ", Style::default()),
+        Span::styled(" QC ", Style::default().fg(MUTED)),
+        Span::styled("  ", Style::default()),
+        Span::styled(" Help ", Style::default().fg(MUTED)),
+        Span::raw("  "),
+        Span::styled(
+            if app.thinking {
+                format!(" thinking{} ", SPINNER_FRAMES[app.tick / 3 % SPINNER_FRAMES.len()])
+            } else {
+                String::new()
+            },
+            Style::default().fg(SECONDARY),
+        ),
     ]))
-    .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(SURFACE)));
+    .block(Block::default()
+        .borders(Borders::BOTTOM)
+        .border_style(Style::default().fg(SURFACE))
+        .style(Style::default().bg(BG)));
     f.render_widget(header, chunks[0]);
 
-    // Messages
+    // Messages area.
     let msg_area = chunks[1];
     let mut lines: Vec<Line> = Vec::new();
 
-    for msg in &app.messages {
-        let (prefix, color) = match msg.role {
-            "user" => ("> ", PRIMARY),
-            "assistant" => ("  ", TEXT),
-            "system" => ("  ", MUTED),
-            _ => ("  ", TEXT),
-        };
+    if app.messages.is_empty() {
+        // Empty state with logo.
+        for line in LOGO.lines() {
+            lines.push(Line::from(Span::styled(line, Style::default().fg(PRIMARY))));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Augment engine. Type to begin.",
+            Style::default().fg(MUTED),
+        )));
+    }
 
-        // Add blank line between messages.
+    for msg in &app.messages {
         if !lines.is_empty() {
             lines.push(Line::from(""));
         }
 
-        for line in msg.content.lines() {
-            lines.push(Line::from(vec![
-                Span::styled(prefix, Style::default().fg(color)),
-                Span::styled(line, Style::default().fg(color)),
-            ]));
+        match &msg.kind {
+            MsgKind::User => {
+                lines.push(Line::from(vec![
+                    Span::styled(&msg.timestamp, Style::default().fg(MUTED)),
+                    Span::styled(" > ", Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD)),
+                    Span::styled(&msg.content, Style::default().fg(PRIMARY)),
+                ]));
+            }
+            MsgKind::Assistant => {
+                lines.push(Line::from(vec![
+                    Span::styled(&msg.timestamp, Style::default().fg(MUTED)),
+                    Span::styled("   ", Style::default()),
+                ]));
+                for line in msg.content.lines() {
+                    // Bold detection for **text**.
+                    if line.contains("**") {
+                        let mut spans = vec![Span::raw("   ")];
+                        let mut rest = line;
+                        while let Some(start) = rest.find("**") {
+                            if start > 0 {
+                                spans.push(Span::styled(&rest[..start], Style::default().fg(TEXT)));
+                            }
+                            rest = &rest[start + 2..];
+                            if let Some(end) = rest.find("**") {
+                                spans.push(Span::styled(
+                                    &rest[..end],
+                                    Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
+                                ));
+                                rest = &rest[end + 2..];
+                            }
+                        }
+                        if !rest.is_empty() {
+                            spans.push(Span::styled(rest, Style::default().fg(TEXT)));
+                        }
+                        lines.push(Line::from(spans));
+                    } else {
+                        lines.push(Line::from(vec![
+                            Span::raw("   "),
+                            Span::styled(line, Style::default().fg(TEXT)),
+                        ]));
+                    }
+                }
+            }
+            MsgKind::System => {
+                for line in msg.content.lines() {
+                    lines.push(Line::from(vec![
+                        Span::styled("   ", Style::default()),
+                        Span::styled(line, Style::default().fg(MUTED)),
+                    ]));
+                }
+            }
+            MsgKind::ToolCall { tool } => {
+                lines.push(Line::from(vec![
+                    Span::styled("   ", Style::default()),
+                    Span::styled(" ", Style::default().bg(TERTIARY)),
+                    Span::styled(
+                        format!(" {} ", tool),
+                        Style::default().fg(TERTIARY).add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                for line in msg.content.lines() {
+                    lines.push(Line::from(vec![
+                        Span::styled("   ", Style::default()),
+                        Span::styled(" ", Style::default().bg(TERTIARY)),
+                        Span::styled(format!(" {}", line), Style::default().fg(MUTED)),
+                    ]));
+                }
+            }
+            MsgKind::ToolResult { tool, success } => {
+                let (marker, color) = if *success {
+                    (" + ", APPROVE_GREEN)
+                } else {
+                    (" x ", REJECT_RED)
+                };
+                lines.push(Line::from(vec![
+                    Span::styled("   ", Style::default()),
+                    Span::styled(marker, Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("{} result", tool),
+                        Style::default().fg(color),
+                    ),
+                ]));
+                for line in msg.content.lines().take(10) {
+                    lines.push(Line::from(vec![
+                        Span::styled("     ", Style::default()),
+                        Span::styled(line, Style::default().fg(MUTED)),
+                    ]));
+                }
+                if msg.content.lines().count() > 10 {
+                    lines.push(Line::from(vec![
+                        Span::styled("     ", Style::default()),
+                        Span::styled(
+                            format!("... ({} more lines)", msg.content.lines().count() - 10),
+                            Style::default().fg(MUTED),
+                        ),
+                    ]));
+                }
+            }
+            MsgKind::CodeBlock { lang } => {
+                let lang_label = if lang.is_empty() { "code" } else { lang };
+                lines.push(Line::from(vec![
+                    Span::styled("   ", Style::default()),
+                    Span::styled(
+                        format!("  {} ", lang_label),
+                        Style::default().fg(BG).bg(SECONDARY),
+                    ),
+                    Span::styled(
+                        " ".repeat(area.width.saturating_sub(8 + lang_label.len() as u16) as usize),
+                        Style::default().bg(Color::Rgb(0x1a, 0x1a, 0x2e)),
+                    ),
+                ]));
+                for line in msg.content.lines() {
+                    lines.push(Line::from(vec![
+                        Span::styled("   ", Style::default()),
+                        Span::styled(
+                            format!("  {}", line),
+                            Style::default()
+                                .fg(Color::Rgb(0xc0, 0xc0, 0xd0))
+                                .bg(Color::Rgb(0x1a, 0x1a, 0x2e)),
+                        ),
+                    ]));
+                }
+                lines.push(Line::from(vec![
+                    Span::styled("   ", Style::default()),
+                    Span::styled(
+                        " ".repeat(area.width.saturating_sub(4) as usize),
+                        Style::default().bg(Color::Rgb(0x1a, 0x1a, 0x2e)),
+                    ),
+                ]));
+            }
         }
     }
 
-    // Calculate scroll: auto-scroll to bottom if scroll is MAX.
+    // Thinking indicator at bottom.
+    if app.thinking {
+        lines.push(Line::from(""));
+        let spinner = SPINNER_FRAMES[app.tick / 3 % SPINNER_FRAMES.len()];
+        lines.push(Line::from(vec![
+            Span::styled("   ", Style::default()),
+            Span::styled(
+                format!("thinking{}", spinner),
+                Style::default().fg(SECONDARY).add_modifier(Modifier::ITALIC),
+            ),
+        ]));
+    }
+
+    // Scroll calculation.
     let visible_height = msg_area.height as usize;
     let total_lines = lines.len();
     let scroll_offset = if app.scroll == u16::MAX {
@@ -546,14 +864,25 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
         );
     f.render_widget(messages, msg_area);
 
-    // Input
+    // Input box.
+    let border_color = if app.thinking {
+        SECONDARY
+    } else if app.input.is_empty() {
+        SURFACE
+    } else {
+        PRIMARY
+    };
     let input_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(if app.input.is_empty() { SURFACE } else { PRIMARY }))
+        .border_style(Style::default().fg(border_color))
+        .title(Span::styled(
+            if app.thinking { " waiting... " } else { " augment " },
+            Style::default().fg(border_color),
+        ))
         .style(Style::default().bg(SURFACE));
 
-    let display_input = if app.input.is_empty() {
-        Span::styled("augment...", Style::default().fg(MUTED))
+    let display_input = if app.input.is_empty() && !app.thinking {
+        Span::styled("type a message...", Style::default().fg(MUTED))
     } else {
         Span::styled(&app.input, Style::default().fg(TEXT))
     };
@@ -561,19 +890,109 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
     let input = Paragraph::new(Line::from(display_input)).block(input_block);
     f.render_widget(input, chunks[2]);
 
-    // Place cursor in input field.
-    f.set_cursor_position((
-        chunks[2].x + 1 + app.cursor_pos as u16,
-        chunks[2].y + 1,
-    ));
+    // Cursor.
+    if !app.thinking {
+        f.set_cursor_position((
+            chunks[2].x + 1 + app.cursor_pos as u16,
+            chunks[2].y + 1,
+        ));
+    }
 
-    // Status bar
-    let status = Paragraph::new(Line::from(Span::styled(
-        &app.status,
-        Style::default().fg(MUTED),
-    )))
+    // Status bar.
+    let status = Paragraph::new(Line::from(vec![
+        Span::styled(&app.status, Style::default().fg(MUTED)),
+        Span::styled(
+            format!("  {} msgs", app.messages.len()),
+            Style::default().fg(MUTED),
+        ),
+    ]))
     .style(Style::default().bg(SURFACE));
     f.render_widget(status, chunks[3]);
+}
+
+fn draw_help(f: &mut Frame, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(PRIMARY))
+        .title(Span::styled(" KOVA Help ", Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD)))
+        .style(Style::default().bg(BG));
+
+    let help_text = vec![
+        Line::from(""),
+        Line::from(Span::styled("  Commands", Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD))),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("    /clear     ", Style::default().fg(TERTIARY)),
+            Span::styled("Clear chat history", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    /qc        ", Style::default().fg(TERTIARY)),
+            Span::styled("Open Visual QC (screenshot review)", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    /tools     ", Style::default().fg(TERTIARY)),
+            Span::styled("List available tools", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    /project   ", Style::default().fg(TERTIARY)),
+            Span::styled("Switch project directory", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    /help      ", Style::default().fg(TERTIARY)),
+            Span::styled("Toggle this help panel", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    /quit      ", Style::default().fg(TERTIARY)),
+            Span::styled("Exit (also /exit, /q)", Style::default().fg(TEXT)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("  Keybindings", Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD))),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("    Ctrl+C     ", Style::default().fg(TERTIARY)),
+            Span::styled("Exit", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    Up/Down    ", Style::default().fg(TERTIARY)),
+            Span::styled("Input history", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    Shift+Up   ", Style::default().fg(TERTIARY)),
+            Span::styled("Scroll messages", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    Home/End   ", Style::default().fg(TERTIARY)),
+            Span::styled("Cursor to start/end", Style::default().fg(TEXT)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("  Visual QC Mode", Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD))),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("    D / Right  ", Style::default().fg(APPROVE_GREEN)),
+            Span::styled("Approve", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    A / Left   ", Style::default().fg(REJECT_RED)),
+            Span::styled("Reject", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    S / Down   ", Style::default().fg(MUTED)),
+            Span::styled("Skip", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    Enter      ", Style::default().fg(TERTIARY)),
+            Span::styled("Save results", Style::default().fg(TEXT)),
+        ]),
+        Line::from(vec![
+            Span::styled("    Esc        ", Style::default().fg(TERTIARY)),
+            Span::styled("Back to chat", Style::default().fg(TEXT)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("  Press /help or Esc to close", Style::default().fg(MUTED))),
+    ];
+
+    let help = Paragraph::new(help_text).block(block);
+    f.render_widget(help, area);
 }
 
 fn draw_visual_qc(f: &mut Frame, app: &App, area: Rect) {
@@ -893,6 +1312,11 @@ mod tests {
             qc: Some(VisualQc::scan(tmp.path())),
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
 
         handle_qc_key(&mut app, KeyCode::Char('d'));
@@ -919,6 +1343,11 @@ mod tests {
             qc: Some(VisualQc::scan(tmp.path())),
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
 
         handle_qc_key(&mut app, KeyCode::Esc);
@@ -939,6 +1368,11 @@ mod tests {
             qc: None,
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
 
         handle_chat_key(&mut app, KeyCode::Char('h'), KeyModifiers::empty());
@@ -965,6 +1399,11 @@ mod tests {
             qc: None,
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
 
         handle_chat_key(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
@@ -986,6 +1425,11 @@ mod tests {
                 qc: None,
                 status: String::new(),
                 running: true,
+                thinking: false,
+                tick: 0,
+                show_help: false,
+                history: Vec::new(),
+                history_pos: None,
             };
             app.submit_input();
             assert!(!app.running);
@@ -998,7 +1442,7 @@ mod tests {
             mode: Mode::Chat,
             input: "/clear".to_string(),
             cursor_pos: 6,
-            messages: vec![ChatMessage { role: "user", content: "old".into() }],
+            messages: vec![ChatMessage::new(MsgKind::User, "old".into())],
             scroll: 5,
             project_dir: PathBuf::from("."),
             model_path: None,
@@ -1006,6 +1450,11 @@ mod tests {
             qc: None,
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
         app.submit_input();
         assert!(app.messages.is_empty());
@@ -1026,6 +1475,11 @@ mod tests {
             qc: None,
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
         app.submit_input();
         assert!(app.messages.is_empty());
@@ -1045,10 +1499,15 @@ mod tests {
             qc: None,
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
         app.submit_input();
         assert_eq!(app.messages.len(), 1);
-        assert_eq!(app.messages[0].role, "system");
+        assert_eq!(app.messages[0].kind, MsgKind::System);
         assert!(app.messages[0].content.contains("read_file"));
     }
 
@@ -1066,6 +1525,11 @@ mod tests {
             qc: None,
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
 
         handle_chat_key(&mut app, KeyCode::Left, KeyModifiers::empty());
@@ -1107,11 +1571,102 @@ mod tests {
             qc: None,
             status: String::new(),
             running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
         };
 
-        handle_chat_key(&mut app, KeyCode::Up, KeyModifiers::empty());
+        // Shift+Up/Down = scroll
+        handle_chat_key(&mut app, KeyCode::Up, KeyModifiers::SHIFT);
         assert_eq!(app.scroll, 4);
-        handle_chat_key(&mut app, KeyCode::Down, KeyModifiers::empty());
+        handle_chat_key(&mut app, KeyCode::Down, KeyModifiers::SHIFT);
         assert_eq!(app.scroll, 5);
+    }
+
+    #[test]
+    fn input_history_navigation() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: vec!["first".into(), "second".into()],
+            history_pos: None,
+        };
+
+        // Up = go to last history item
+        handle_chat_key(&mut app, KeyCode::Up, KeyModifiers::empty());
+        assert_eq!(app.input, "second");
+        assert_eq!(app.history_pos, Some(1));
+
+        // Up again = go to first
+        handle_chat_key(&mut app, KeyCode::Up, KeyModifiers::empty());
+        assert_eq!(app.input, "first");
+        assert_eq!(app.history_pos, Some(0));
+
+        // Down = back to second
+        handle_chat_key(&mut app, KeyCode::Down, KeyModifiers::empty());
+        assert_eq!(app.input, "second");
+
+        // Down again = clear input
+        handle_chat_key(&mut app, KeyCode::Down, KeyModifiers::empty());
+        assert!(app.input.is_empty());
+        assert_eq!(app.history_pos, None);
+    }
+
+    #[test]
+    fn parse_and_push_response_splits_code_blocks() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+            thinking: false,
+            tick: 0,
+            show_help: false,
+            history: Vec::new(),
+            history_pos: None,
+        };
+
+        app.parse_and_push_response("Here is some code:\n```rust\nfn main() {}\n```\nDone.");
+        assert_eq!(app.messages.len(), 3);
+        assert_eq!(app.messages[0].kind, MsgKind::Assistant);
+        assert!(matches!(&app.messages[1].kind, MsgKind::CodeBlock { lang } if lang == "rust"));
+        assert_eq!(app.messages[1].content, "fn main() {}");
+        assert_eq!(app.messages[2].kind, MsgKind::Assistant);
+        assert_eq!(app.messages[2].content, "Done.");
+    }
+
+    #[test]
+    fn msg_kind_equality() {
+        assert_eq!(MsgKind::User, MsgKind::User);
+        assert_ne!(MsgKind::User, MsgKind::Assistant);
+        assert_eq!(
+            MsgKind::ToolCall { tool: "bash".into() },
+            MsgKind::ToolCall { tool: "bash".into() }
+        );
+        assert_ne!(
+            MsgKind::ToolResult { tool: "bash".into(), success: true },
+            MsgKind::ToolResult { tool: "bash".into(), success: false },
+        );
     }
 }

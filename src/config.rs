@@ -402,18 +402,22 @@ pub fn discover_projects() -> Vec<PathBuf> {
         }
     }
 
-    // 2. Scan immediate subdirs for Cargo.toml (rogue-repo, ronin-sites, kova-daemon, etc.)
-    if let Ok(entries) = std::fs::read_dir(&root) {
-        for e in entries.flatten() {
-            let path = e.path();
-            if path.is_dir() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with('.') || name == "target" || name == "vendor" {
-                    continue;
-                }
-                if path.join("Cargo.toml").exists() && seen.insert(path.clone()) {
-                    out.push(path);
-                }
+    // 2. Fast scan: use `ls` to get directory names, then check for Cargo.toml.
+    // Avoids slow read_dir + stat on large home directories.
+    if let Ok(ls_out) = std::process::Command::new("ls")
+        .arg("-1")
+        .current_dir(&root)
+        .output()
+        && ls_out.status.success()
+    {
+        let names = String::from_utf8_lossy(&ls_out.stdout);
+        for name in names.lines() {
+            if name.starts_with('.') || name == "target" || name == "vendor" {
+                continue;
+            }
+            let path = root.join(name);
+            if path.join("Cargo.toml").exists() && seen.insert(path.clone()) {
+                out.push(path);
             }
         }
     }
