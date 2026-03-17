@@ -12,7 +12,6 @@
 
 use crate::cluster::{Cluster, TaskKind};
 use std::path::Path;
-use std::process::Command;
 
 /// Factory pipeline result.
 #[derive(Debug, Clone)]
@@ -592,23 +591,7 @@ impl Factory {
 
     /// Build system prompt.
     fn build_system_prompt(&self, wants_binary: bool) -> String {
-        let code_type = if wants_binary {
-            "Write a complete program with `fn main()`. The code will be compiled as src/main.rs."
-        } else {
-            "Write library code. The code will be compiled as src/lib.rs."
-        };
-
-        format!(
-            "You are a Rust systems programming expert.\n\
-            {}\n\
-            Write clean, idiomatic Rust. No filler. No slop words.\n\
-            IMPORTANT: Use only the Rust standard library. No external crates.\n\
-            The code will be compiled in an isolated crate with zero dependencies.\n\
-            IMPORTANT: All string types must match — don't mix &str with String in if/else or match arms.\n\
-            Use `.to_string()` or `String::from()` to convert &str to String where needed.\n\
-            Put all code in a single ```rust block. No text before or after the block.",
-            code_type
-        )
+        crate::cargo::build_system_prompt(wants_binary)
     }
 }
 
@@ -649,130 +632,36 @@ pub fn run_factory(prompt: &str, project_dir: &Path, config: FactoryConfig) {
     }
 }
 
-// ── Helpers ──
+// ── Helpers (delegated to crate::cargo) ──
 
 fn extract_rust_block(s: &str) -> Option<String> {
-    // Try ```rust first, then bare ```
-    let (start_tag, tag_len) = if let Some(pos) = s.find("```rust") {
-        (pos, 7)
-    } else if let Some(pos) = s.find("```\n") {
-        (pos, 4)
-    } else {
-        return None;
-    };
-    let after_start = &s[start_tag + tag_len..];
-    let end = after_start.find("```")?;
-    Some(after_start[..end].trim().to_string())
+    crate::cargo::extract_rust_block(s)
 }
 
-/// Detect if the prompt is asking for a binary/CLI tool vs library code.
 fn prompt_wants_binary(prompt: &str) -> bool {
-    let lower = prompt.to_lowercase();
-    lower.contains("cli ")
-        || lower.contains("command line")
-        || lower.contains("command-line")
-        || lower.contains("executable")
-        || lower.contains("binary")
-        || lower.contains("tool that")
-        || lower.contains("program that")
-        || lower.contains("app that")
-        || lower.contains("main()")
-        || lower.contains("fn main")
-        || lower.contains("takes a ")  // "takes a directory path" — CLI tool pattern
-        || lower.contains("prints ")   // "prints a tree view" — implies stdout/main
-        || lower.contains("reads from") // "reads from stdin" — binary
-        || lower.contains("accept") // "accept a --flag" — CLI
+    crate::cargo::prompt_wants_binary(prompt)
 }
 
 fn write_temp_project(dir: &Path, code: &str, is_binary: bool) {
-    std::fs::write(
-        dir.join("Cargo.toml"),
-        "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    )
-    .ok();
-    std::fs::create_dir_all(dir.join("src")).ok();
-
-    let file_name = if is_binary { "main.rs" } else { "lib.rs" };
-
-    // For lib crate, suppress dead_code warnings on non-pub items
-    let content = if is_binary {
-        code.to_string()
-    } else {
-        format!("#![allow(dead_code)]\n{}", code)
-    };
-
-    std::fs::write(dir.join("src").join(file_name), content).ok();
+    crate::cargo::sandbox::write_temp_project(dir, code, is_binary);
 }
 
 fn cargo_check_local(dir: &Path) -> (bool, String) {
-    let output = Command::new("cargo")
-        .args(["check"])
-        .current_dir(dir)
-        .output();
-    match output {
-        Ok(o) => (
-            o.status.success(),
-            String::from_utf8_lossy(&o.stderr).into(),
-        ),
-        Err(e) => (false, e.to_string()),
-    }
+    crate::cargo::cargo_check(dir)
 }
 
 fn cargo_clippy_local(dir: &Path) -> (bool, String) {
-    let output = Command::new("cargo")
-        .args(["clippy", "--", "-D", "warnings"])
-        .current_dir(dir)
-        .output();
-    match output {
-        Ok(o) => (
-            o.status.success(),
-            String::from_utf8_lossy(&o.stderr).into(),
-        ),
-        Err(e) => (false, e.to_string()),
-    }
+    crate::cargo::cargo_clippy(dir)
 }
 
 fn cargo_test_local(dir: &Path) -> (bool, String) {
-    let output = Command::new("cargo")
-        .args(["test"])
-        .current_dir(dir)
-        .output();
-    match output {
-        Ok(o) => {
-            let mut out = String::from_utf8_lossy(&o.stderr).into_owned();
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            if !stdout.is_empty() {
-                out.push('\n');
-                out.push_str(&stdout);
-            }
-            (o.status.success(), out)
-        }
-        Err(e) => (false, e.to_string()),
-    }
+    crate::cargo::cargo_test(dir)
 }
 
-/// Extract the core error identifier for loop detection (error code + line number).
 fn extract_error_key(stderr: &str) -> String {
-    // Pull first error[EXXXX] line for dedup
-    for line in stderr.lines() {
-        if line.contains("error[E") {
-            return line.trim().to_string();
-        }
-    }
-    // Fallback: first error line
-    for line in stderr.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("error") {
-            return trimmed.to_string();
-        }
-    }
-    "unknown".into()
+    crate::cargo::extract_error_key(stderr)
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max])
-    }
+    crate::cargo::truncate(s, max)
 }

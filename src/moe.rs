@@ -14,7 +14,6 @@
 use crate::cluster::{Cluster, ModelTier, TaskKind};
 use crate::providers::{self, Provider};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::mpsc;
 use std::time::Instant;
 
@@ -519,122 +518,36 @@ fn save_expert(prompt: &str, code: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-// ── Helpers (shared with factory) ──
+// ── Helpers (delegated to crate::cargo) ──
 
 fn extract_rust_block(s: &str) -> Option<String> {
-    let (start_tag, tag_len) = if let Some(pos) = s.find("```rust") {
-        (pos, 7)
-    } else if let Some(pos) = s.find("```\n") {
-        (pos, 4)
-    } else {
-        return None;
-    };
-    let after_start = &s[start_tag + tag_len..];
-    let end = after_start.find("```")?;
-    Some(after_start[..end].trim().to_string())
+    crate::cargo::extract_rust_block(s)
 }
 
 fn prompt_wants_binary(prompt: &str) -> bool {
-    let lower = prompt.to_lowercase();
-    lower.contains("cli ")
-        || lower.contains("command line")
-        || lower.contains("command-line")
-        || lower.contains("executable")
-        || lower.contains("binary")
-        || lower.contains("tool that")
-        || lower.contains("program that")
-        || lower.contains("app that")
-        || lower.contains("main()")
-        || lower.contains("fn main")
-        || lower.contains("takes a ")
-        || lower.contains("prints ")
-        || lower.contains("reads from")
-        || lower.contains("accept")
+    crate::cargo::prompt_wants_binary(prompt)
 }
 
 fn build_system_prompt(wants_binary: bool) -> String {
-    let code_type = if wants_binary {
-        "Write a complete program with `fn main()`. The code will be compiled as src/main.rs."
-    } else {
-        "Write library code. The code will be compiled as src/lib.rs."
-    };
-
-    format!(
-        "You are a Rust systems programming expert.\n\
-        {}\n\
-        Write clean, idiomatic Rust. No filler. No slop words.\n\
-        IMPORTANT: Use only the Rust standard library. No external crates.\n\
-        The code will be compiled in an isolated crate with zero dependencies.\n\
-        IMPORTANT: All string types must match — don't mix &str with String in if/else or match arms.\n\
-        Use `.to_string()` or `String::from()` to convert &str to String where needed.\n\
-        Put all code in a single ```rust block. No text before or after the block.",
-        code_type
-    )
+    crate::cargo::build_system_prompt(wants_binary)
 }
 
 fn write_temp_project(dir: &Path, code: &str, is_binary: bool) {
-    std::fs::write(
-        dir.join("Cargo.toml"),
-        "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    )
-    .ok();
-    std::fs::create_dir_all(dir.join("src")).ok();
-
-    let file_name = if is_binary { "main.rs" } else { "lib.rs" };
-    let content = if is_binary {
-        code.to_string()
-    } else {
-        format!("#![allow(dead_code)]\n{}", code)
-    };
-    std::fs::write(dir.join("src").join(file_name), content).ok();
+    crate::cargo::sandbox::write_temp_project(dir, code, is_binary);
 }
 
 fn cargo_check(dir: &Path) -> (bool, String) {
-    match Command::new("cargo")
-        .args(["check"])
-        .current_dir(dir)
-        .output()
-    {
-        Ok(o) => (
-            o.status.success(),
-            String::from_utf8_lossy(&o.stderr).into(),
-        ),
-        Err(e) => (false, e.to_string()),
-    }
+    crate::cargo::cargo_check(dir)
 }
 
 fn cargo_clippy(dir: &Path) -> (bool, String) {
-    match Command::new("cargo")
-        .args(["clippy", "--", "-D", "warnings"])
-        .current_dir(dir)
-        .output()
-    {
-        Ok(o) => (
-            o.status.success(),
-            String::from_utf8_lossy(&o.stderr).into(),
-        ),
-        Err(e) => (false, e.to_string()),
-    }
+    crate::cargo::cargo_clippy(dir)
 }
 
 fn cargo_test(dir: &Path) -> (bool, String) {
-    match Command::new("cargo")
-        .args(["test"])
-        .current_dir(dir)
-        .output()
-    {
-        Ok(o) => (
-            o.status.success(),
-            String::from_utf8_lossy(&o.stderr).into(),
-        ),
-        Err(e) => (false, e.to_string()),
-    }
+    crate::cargo::cargo_test(dir)
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max])
-    }
+    crate::cargo::truncate(s, max)
 }

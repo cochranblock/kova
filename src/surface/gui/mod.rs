@@ -1,5 +1,9 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! Re-export from inference::providers for backward compat.
+//! GUI surface — egui native app.
 
-pub use crate::inference::providers::*;
+mod gui_impl;
+pub mod sprite_qc;
+pub mod theme;
+
+pub use gui_impl::*;

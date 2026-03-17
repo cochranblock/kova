@@ -12,15 +12,12 @@ use std::thread;
 use tokio::sync::{broadcast, Mutex};
 
 pub use compilation::{cargo_check, cargo_clippy, cargo_test};
-pub use error_kind::{categorize, ErrorKind};
+pub use error_kind::{categorize, error_block_with_context, ErrorKind};
 pub use fix_loop::fix_and_retry;
 
-/// Extract first ```rust ... ``` block from text.
+/// Extract first ```rust ... ``` block from text. Delegates to crate::cargo.
 pub(crate) fn extract_rust_block(s: &str) -> Option<String> {
-    let start = s.find("```rust")?;
-    let after_start = &s[start + 7..];
-    let end = after_start.find("```")?;
-    Some(after_start[..end].trim().to_string())
+    crate::cargo::extract_rust_block(s)
 }
 
 fn format_with_chain(response: &str, chain: &[String], stage: &str, stderr: &str) -> String {

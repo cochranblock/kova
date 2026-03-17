@@ -1,36 +1,21 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! f91–f93. Cargo check, clippy, test.
+//! f91–f93. Cargo check, clippy, test. Delegates to crate::cargo.
 
 use std::path::Path;
-use std::process::Command;
 
 /// f91=cargo_check. Returns (success, stderr).
 pub fn cargo_check(project_dir: &Path) -> (bool, String) {
-    run_cargo(project_dir, &["check"])
+    crate::cargo::cargo_check(project_dir)
 }
 
 /// f92=cargo_clippy. Returns (success, stderr).
 pub fn cargo_clippy(project_dir: &Path) -> (bool, String) {
-    run_cargo(project_dir, &["clippy", "--", "-D", "warnings"])
+    crate::cargo::cargo_clippy(project_dir)
 }
 
 /// f93=cargo_test. Returns (success, stderr).
 pub fn cargo_test(project_dir: &Path) -> (bool, String) {
-    run_cargo(project_dir, &["test"])
+    crate::cargo::cargo_test(project_dir)
 }
 
-/// f117=run_cargo. Invoke cargo with args. Returns (success, stderr).
-pub fn run_cargo(project_dir: &Path, args: &[&str]) -> (bool, String) {
-    match Command::new("cargo")
-        .args(args)
-        .current_dir(project_dir)
-        .output()
-    {
-        Ok(o) => {
-            let stderr = String::from_utf8_lossy(&o.stderr).into_owned();
-            (o.status.success(), stderr)
-        }
-        Err(e) => (false, e.to_string()),
-    }
-}

@@ -3,12 +3,17 @@
 //! Kova — augment engine. Core lib for GUI + serve.
 
 pub mod backlog;
+pub mod cargo;
+pub mod codegen;
 pub mod compute;
 pub mod config;
 pub mod context;
 pub mod cursor_prompts;
+pub mod error;
+pub mod kernel;
 pub mod plan;
 pub mod storage;
+pub mod surface;
 pub mod trace;
 
 pub use backlog::f25;
@@ -26,6 +31,9 @@ pub use kova_core::{entry_to_intent, f62, intent_name, t0, t1, t2, Backlog, Back
 pub use plan::{t3, t4, t5};
 #[cfg(feature = "inference")]
 pub use router::{f79, RouterResult};
+
+pub use error::{KovaError, KovaResult};
+pub use kernel::KovaKernel;
 
 pub mod academy;
 #[cfg(feature = "inference")]
@@ -129,17 +137,7 @@ pub fn run_test_suite() -> anyhow::Result<()> {
     }
 
     fn run_cargo(project: &Path, args: &[&str]) -> (bool, String) {
-        match Command::new("cargo")
-            .args(args)
-            .current_dir(project)
-            .output()
-        {
-            Ok(o) => {
-                let stderr = String::from_utf8_lossy(&o.stderr).into_owned();
-                (o.status.success(), stderr)
-            }
-            Err(e) => (false, e.to_string()),
-        }
+        crate::cargo::run_cargo(project, args)
     }
 
     println!("kova test: cargo clippy...");

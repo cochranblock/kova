@@ -999,74 +999,24 @@ fn do_git_commit(project_dir: &Path, files: &[String], msg: &str) {
     }
 }
 
-// ── Helpers ──
+// ── Helpers (delegated to crate::cargo) ──
 
 fn extract_rust_block(s: &str) -> Option<String> {
-    let (start_tag, tag_len) = if let Some(pos) = s.find("```rust") {
-        (pos, 7)
-    } else if let Some(pos) = s.find("```\n") {
-        (pos, 4)
-    } else {
-        return None;
-    };
-    let after = &s[start_tag + tag_len..];
-    let end = after.find("```")?;
-    Some(after[..end].trim().to_string())
+    crate::cargo::extract_rust_block(s)
 }
 
 fn write_temp_crate(dir: &Path, code: &str) {
-    std::fs::write(
-        dir.join("Cargo.toml"),
-        "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    )
-    .ok();
-    std::fs::create_dir_all(dir.join("src")).ok();
-    std::fs::write(
-        dir.join("src/lib.rs"),
-        format!("#![allow(dead_code)]\n{}", code),
-    )
-    .ok();
+    crate::cargo::sandbox::write_temp_crate(dir, code);
 }
 
 fn write_validation_project(dir: &Path, code: &str, rel_path: &str) {
-    std::fs::write(
-        dir.join("Cargo.toml"),
-        "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    )
-    .ok();
-    std::fs::create_dir_all(dir.join("src")).ok();
-
-    let file_name = if rel_path.contains("main") {
-        "main.rs"
-    } else {
-        "lib.rs"
-    };
-    let content = if file_name == "lib.rs" {
-        format!("#![allow(dead_code)]\n{}", code)
-    } else {
-        code.to_string()
-    };
-    std::fs::write(dir.join("src").join(file_name), content).ok();
+    crate::cargo::sandbox::write_validation_project(dir, code, rel_path);
 }
 
 fn cargo_check_local(dir: &Path) -> (bool, String) {
-    match Command::new("cargo")
-        .args(["check"])
-        .current_dir(dir)
-        .output()
-    {
-        Ok(o) => (
-            o.status.success(),
-            String::from_utf8_lossy(&o.stderr).into(),
-        ),
-        Err(e) => (false, e.to_string()),
-    }
+    crate::cargo::cargo_check(dir)
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max])
-    }
+    crate::cargo::truncate(s, max)
 }

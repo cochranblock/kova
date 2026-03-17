@@ -36,6 +36,12 @@ impl t12 {
         Ok(Self { db })
     }
 
+    /// Open a temporary in-memory sled DB. No disk I/O. For tests and ephemeral use.
+    pub fn temporary() -> Result<Self, E0> {
+        let db = sled::Config::new().temporary(true).open()?;
+        Ok(Self { db })
+    }
+
     /// f40 = put_compressed. Serialize with bincode, compress with zstd, store.
     /// Why: Internal format is compact; zstd reduces disk I/O for large payloads.
     pub fn f40<K: AsRef<[u8]>, V: Serialize>(&self, key: K, value: &V) -> Result<(), E0> {
@@ -85,11 +91,10 @@ mod tests {
         s: String,
     }
 
-    /// f39+f40+f41=open,put_compressed,get_compressed
+    /// f39+f40+f41=open,put_compressed,get_compressed (in-memory sled)
     #[test]
     fn store_put_get_compressed_roundtrip() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let store = t12::f39(tmp.path()).unwrap();
+        let store = t12::temporary().unwrap();
         let v = TestVal {
             x: 42,
             s: "hello".into(),
@@ -99,20 +104,18 @@ mod tests {
         assert_eq!(got, Some(v));
     }
 
-    /// f41=get_compressed
+    /// f41=get_compressed (in-memory sled)
     #[test]
     fn store_get_missing_returns_none() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let store = t12::f39(tmp.path()).unwrap();
+        let store = t12::temporary().unwrap();
         let got: Option<TestVal> = store.f41(b"missing").unwrap();
         assert_eq!(got, None);
     }
 
-    /// f42+f43=put_raw,get_raw
+    /// f42+f43=put_raw,get_raw (in-memory sled)
     #[test]
     fn store_put_raw_get_raw() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let store = t12::f39(tmp.path()).unwrap();
+        let store = t12::temporary().unwrap();
         store.f42(b"raw", b"bytes").unwrap();
         let got = store.f43(b"raw").unwrap();
         assert_eq!(got.as_ref().map(|v| v.as_ref()), Some(b"bytes" as &[u8]));
