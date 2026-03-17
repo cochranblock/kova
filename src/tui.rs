@@ -30,15 +30,15 @@ const APPROVE_GREEN: Color = Color::Rgb(0x16, 0xa3, 0x4a);
 const REJECT_RED: Color = Color::Rgb(0xdc, 0x26, 0x26);
 
 /// Active mode in the TUI.
-#[derive(PartialEq)]
-enum Mode {
+#[derive(PartialEq, Debug)]
+pub enum Mode {
     Chat,
     VisualQc,
 }
 
 /// Visual QC verdict.
-#[derive(Clone, Copy, PartialEq)]
-enum Verdict {
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Verdict {
     Approve,
     Reject,
     Skip,
@@ -52,14 +52,14 @@ struct QcEntry {
 }
 
 /// Visual QC state (terminal version of sprite_qc).
-struct VisualQc {
+pub struct VisualQc {
     entries: Vec<QcEntry>,
     current: usize,
     root: PathBuf,
 }
 
 impl VisualQc {
-    fn scan(root: &Path) -> Self {
+    pub fn scan(root: &Path) -> Self {
         let mut entries = Vec::new();
         collect_images(root, root, &mut entries);
         entries.sort_by(|a, b| a.path.cmp(&b.path));
@@ -70,30 +70,30 @@ impl VisualQc {
         }
     }
 
-    fn total(&self) -> usize {
+    pub fn total(&self) -> usize {
         self.entries.len()
     }
-    fn approved(&self) -> usize {
+    pub fn approved(&self) -> usize {
         self.entries.iter().filter(|e| e.verdict == Some(Verdict::Approve)).count()
     }
-    fn rejected(&self) -> usize {
+    pub fn rejected(&self) -> usize {
         self.entries.iter().filter(|e| e.verdict == Some(Verdict::Reject)).count()
     }
-    fn remaining(&self) -> usize {
+    pub fn remaining(&self) -> usize {
         self.entries.iter().filter(|e| e.verdict.is_none()).count()
     }
-    fn is_done(&self) -> bool {
+    pub fn is_done(&self) -> bool {
         self.current >= self.entries.len()
     }
 
-    fn decide(&mut self, v: Verdict) {
+    pub fn decide(&mut self, v: Verdict) {
         if self.current < self.entries.len() {
             self.entries[self.current].verdict = Some(v);
             self.current += 1;
         }
     }
 
-    fn apply_verdicts(&self) -> (usize, usize) {
+    pub fn apply_verdicts(&self) -> (usize, usize) {
         let approved_dir = self.root.join("approved");
         let rejected_dir = self.root.join("rejected");
         let _ = std::fs::create_dir_all(&approved_dir);
@@ -359,15 +359,15 @@ pub fn run(project: Option<PathBuf>) -> anyhow::Result<()> {
     while app.running {
         terminal.draw(|f| ui(f, &app))?;
 
-        if event::poll(std::time::Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
-                }
-                match app.mode {
-                    Mode::Chat => handle_chat_key(&mut app, key.code, key.modifiers),
-                    Mode::VisualQc => handle_qc_key(&mut app, key.code),
-                }
+        if event::poll(std::time::Duration::from_millis(50))?
+            && let Event::Key(key) = event::read()?
+        {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            match app.mode {
+                Mode::Chat => handle_chat_key(&mut app, key.code, key.modifiers),
+                Mode::VisualQc => handle_qc_key(&mut app, key.code),
             }
         }
     }
@@ -450,16 +450,16 @@ fn handle_qc_key(app: &mut App, code: KeyCode) {
         }
         // Save results
         KeyCode::Enter => {
-            if let Some(ref qc) = app.qc {
-                if qc.is_done() {
-                    let (a, r) = qc.apply_verdicts();
-                    app.messages.push(ChatMessage {
-                        role: "system",
-                        content: format!("Saved: {} approved, {} rejected", a, r),
-                    });
-                    app.qc = None;
-                    app.mode = Mode::Chat;
-                }
+            if let Some(ref qc) = app.qc
+                && qc.is_done()
+            {
+                let (a, r) = qc.apply_verdicts();
+                app.messages.push(ChatMessage {
+                    role: "system",
+                    content: format!("Saved: {} approved, {} rejected", a, r),
+                });
+                app.qc = None;
+                app.mode = Mode::Chat;
             }
         }
         // Exit QC
