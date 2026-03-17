@@ -1,0 +1,161 @@
+# OWNERS.yaml — Structured Ownership Metadata for Kova
+
+project:
+  name: "kova"
+  description: "Augment engine with agentic tool loop and swarm orchestration"
+  repo_url: "https://github.com/cochranblock/kova"
+  team_slack: "#team-kova"
+
+# Primary maintainers
+maintainers:
+  - name: "Matt Cochran"
+    github: "cochranblock"
+    email: "matt@cochranblock.org"
+    slack: "@matt"
+    on_call: true
+    roles:
+      - "architecture"
+      - "core-api"
+      - "swarm-orchestration"
+
+  # Foundational Founders (AI toolchain)
+  - name: "Claude Opus 4.6"
+    email: "noreply@anthropic.com"
+    roles:
+      - "implementation"
+      - "code-review"
+
+  - name: "KOVA"
+    email: "kova@cochranblock.org"
+    roles:
+      - "augmentation-layer"
+
+  - name: "SuperNinja"
+    email: "noreply@ninjatech.ai"
+    roles:
+      - "early-prototyping"
+
+  - name: "Composer 1.5"
+    email: "noreply@cursor.com"
+    roles:
+      - "implementation"
+
+  - name: "Google Gemini Pro 3"
+    email: "noreply@google.com"
+    roles:
+      - "mobile-brainstorming"
+
+# Subsystem ownership
+subsystems:
+  - name: "REPL & Chat"
+    path: "src/repl.rs"
+    owner: "cochranblock"
+    slack_channel: "#repl-chat"
+
+  - name: "Agent Loop"
+    path: "src/agent_loop.rs"
+    owner: "cochranblock"
+    slack_channel: "#agent-loop"
+
+  - name: "Tools (read, write, edit, bash, glob, grep, memory)"
+    path: "src/tools.rs"
+    owner: "cochranblock"
+    slack_channel: "#tools"
+
+  - name: "Swarm Orchestration (C2)"
+    path: "src/c2.rs"
+    owner: "cochranblock"
+    slack_channel: "#swarm-cluster"
+
+  - name: "Node Commands (c1-c9)"
+    path: "src/node_cmd.rs"
+    owner: "cochranblock"
+    slack_channel: "#node-commands"
+
+  - name: "Cargo Commands (x0-x9)"
+    path: "src/cargo_cmd.rs"
+    owner: "cochranblock"
+    slack_channel: "#cargo-wrapper"
+
+  - name: "Git Commands (g0-g9)"
+    path: "src/git_cmd.rs"
+    owner: "cochranblock"
+    slack_channel: "#git-commands"
+
+  - name: "GUI (egui)"
+    path: "src/gui.rs"
+    owner: "cochranblock"
+    slack_channel: "#gui"
+
+  - name: "HTTP Server (Axum)"
+    path: "src/serve.rs"
+    owner: "cochranblock"
+    slack_channel: "#http-api"
+
+  - name: "Web Client (WASM)"
+    path: "kova-web/"
+    owner: "cochranblock"
+    slack_channel: "#web-client"
+
+  - name: "Local LLM Inference (Kalosm)"
+    path: "src/inference.rs"
+    owner: "cochranblock"
+    slack_channel: "#inference"
+
+  - name: "Configuration"
+    path: "src/config.rs"
+    owner: "cochranblock"
+    slack_channel: "#config"
+
+  - name: "Storage (sled)"
+    path: "src/storage.rs"
+    owner: "cochranblock"
+    slack_channel: "#storage"
+
+# On-call rotation
+on_call:
+  primary: "cochranblock"
+  secondary: "Claude Opus 4.6"
+  rotation_start_date: "2026-03-16"
+  rotation_period_days: 7
+  escalation:
+    - name: "Critical (systems down)"
+      timeout_minutes: 15
+      escalate_to: "cochranblock"
+    - name: "Major (degraded)"
+      timeout_minutes: 30
+      escalate_to: "Claude Opus 4.6"
+    - name: "Minor (warnings)"
+      timeout_minutes: 60
+
+# Review policies
+policies:
+  pull_requests:
+    required_approvals: 1
+    require_status_checks: true
+    require_branches_up_to_date: true
+    allow_auto_merge: true
+
+  commits:
+    require_signed_commits: false
+    required_co_author: "Claude Opus 4.6 <noreply@anthropic.com>"
+
+  releases:
+    owner_approval_required: true
+    semver_required: true
+
+# Documentation links
+documentation:
+  onboarding: "docs/ONBOARDING.md"
+  architecture: "README.md#Architecture"
+  runbooks: "docs/RUNBOOKS.md"
+  tokenization: "docs/compression_map.md"
+  api_reference: "README.md#API"
+
+metadata:
+  created_date: "2026-03-16"
+  last_updated: "2026-03-16"
+  updated_by: "GotEmCoach"
+  version: "1.0"
+  review_cadence: "quarterly"
+  next_review_date: "2026-06-16"

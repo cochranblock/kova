@@ -1,0 +1,49 @@
+# CODEOWNERS for Kova
+
+# Format: <path or pattern> <@user or @team>
+# - Patterns are matched top-to-bottom; first match wins
+# - Add specific paths before broad patterns
+
+# Default owner for all code
+* @cochranblock
+
+# Root-level config and CI
+/.github/          @cochranblock
+/Cargo.toml        @cochranblock
+/.gitignore        @cochranblock
+/.kova-aliases     @cochranblock
+
+# Core agent loop and tools
+/src/agent_loop.rs @cochranblock
+/src/tools.rs      @cochranblock
+/src/repl.rs       @cochranblock
+
+# Command tokenization
+/src/cargo_cmd.rs  @cochranblock
+/src/node_cmd.rs   @cochranblock
+/src/git_cmd.rs    @cochranblock
+
+# Infrastructure & orchestration
+/src/c2.rs         @cochranblock
+
+# Web & GUI
+/src/serve.rs      @cochranblock
+/src/gui.rs        @cochranblock
+/src/web.rs        @cochranblock
+/kova-web/         @cochranblock
+
+# Inference & models
+/src/inference.rs  @cochranblock
+
+# Config & storage
+/src/config.rs     @cochranblock
+/src/storage.rs    @cochranblock
+
+# Tests
+/tests/            @cochranblock
+
+# Docs
+/docs/             @cochranblock
+README.md          @cochranblock
+CONTRIBUTING.md    @cochranblock
+OWNERS.yaml        @cochranblock
