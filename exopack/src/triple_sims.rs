@@ -615,6 +615,7 @@ pub fn f172_sim3_impl_deep_dive(project: &Path) -> SimResult {
         ("cursor_prompts.rs", "Baked conventions"),
         ("serve.rs", "HTTP serve"),
         ("gui.rs", "Native GUI"),
+        ("tui.rs", "Terminal UI"),
         ("inference.rs", "Model inference"),
         ("config.rs", "Configuration"),
         ("storage.rs", "Persistent storage"),
@@ -642,6 +643,98 @@ pub fn f172_sim3_impl_deep_dive(project: &Path) -> SimResult {
         "Elicitor integrated in GUI or serve",
         "Elicitor module exists but not integrated in GUI/serve flows",
     ));
+
+    // 3I: TUI quality checks
+    if let Some(tui) = read_mod(project, "src/tui.rs") {
+        // Verify ratatui + crossterm imports
+        let has_ratatui = tui.contains("ratatui");
+        let has_crossterm = tui.contains("crossterm");
+        findings.push(finding(3, has_ratatui,
+            "3I-tui-ratatui",
+            "TUI uses ratatui for terminal rendering",
+            "TUI missing ratatui import",
+        ));
+        findings.push(finding(3, has_crossterm,
+            "3I-tui-crossterm",
+            "TUI uses crossterm for terminal backend",
+            "TUI missing crossterm import",
+        ));
+
+        // Visual QC integration
+        let has_visual_qc = tui.contains("VisualQc") || tui.contains("visual_qc") || tui.contains("qc");
+        let has_verdict = tui.contains("Verdict");
+        findings.push(finding(3, has_visual_qc,
+            "3I-tui-visual-qc",
+            "TUI has Visual QC mode",
+            "TUI missing Visual QC integration",
+        ));
+        findings.push(finding(3, has_verdict,
+            "3I-tui-verdict",
+            "TUI has Approve/Reject/Skip verdicts",
+            "TUI missing verdict system for QC",
+        ));
+
+        // Chat mode
+        let has_chat = tui.contains("Chat") || tui.contains("chat");
+        let has_input = tui.contains("input") && tui.contains("submit");
+        findings.push(finding(3, has_chat,
+            "3I-tui-chat",
+            "TUI has chat mode",
+            "TUI missing chat mode",
+        ));
+        findings.push(finding(3, has_input,
+            "3I-tui-input",
+            "TUI has text input with submit",
+            "TUI missing input handling",
+        ));
+
+        // Theme colors (THEME.md palette)
+        let has_theme_colors = tui.contains("0x00, 0xd4, 0xff") || tui.contains("PRIMARY");
+        findings.push(finding(3, has_theme_colors,
+            "3I-tui-theme",
+            "TUI uses THEME.md color palette",
+            "TUI missing theme colors",
+        ));
+
+        // Keyboard handling
+        let has_keys = tui.contains("KeyCode");
+        let has_ctrl_c = tui.contains("CONTROL") || tui.contains("Ctrl");
+        findings.push(finding(3, has_keys,
+            "3I-tui-keys",
+            "TUI handles keyboard input",
+            "TUI missing keyboard handling",
+        ));
+        findings.push(finding(3, has_ctrl_c,
+            "3I-tui-exit",
+            "TUI supports Ctrl+C exit",
+            "TUI missing Ctrl+C exit handling",
+        ));
+
+        // Test coverage
+        let has_tests = tui.contains("#[cfg(test)]") || tui.contains("#[test]");
+        findings.push(finding(3, has_tests,
+            "3I-tui-tests",
+            "TUI has unit tests",
+            "TUI missing unit tests",
+        ));
+    }
+
+    // 3J: TUI feature flag in Cargo.toml
+    if let Some(cargo) = read_src(project, "Cargo.toml") {
+        let has_tui_feature = cargo.contains("tui") && cargo.contains("ratatui");
+        findings.push(finding(3, has_tui_feature,
+            "3J-tui-feature",
+            "Cargo.toml has tui feature with ratatui dep",
+            "Cargo.toml missing tui feature flag",
+        ));
+
+        let tui_in_default = cargo.contains("\"tui\"");
+        findings.push(finding(3, tui_in_default,
+            "3J-tui-default",
+            "TUI is in default features",
+            "TUI not in default features — won't build by default",
+        ));
+    }
 
     SimResult { sim: 3, name: "Implementation Deep Dive".to_string(), findings }
 }

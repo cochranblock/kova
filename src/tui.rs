@@ -696,3 +696,422 @@ fn draw_visual_qc(f: &mut Frame, app: &App, area: Rect) {
     .style(Style::default().bg(SURFACE));
     f.render_widget(status, chunks[4]);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn make_test_images(dir: &Path) -> Vec<PathBuf> {
+        let png_data: &[u8] = &[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+            0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+            0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+            0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
+            0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+            0x44, 0xAE, 0x42, 0x60, 0x82,
+        ];
+
+        let mut paths = Vec::new();
+        for name in ["alpha.png", "beta.png", "gamma.png"] {
+            let p = dir.join(name);
+            fs::write(&p, png_data).unwrap();
+            paths.push(p);
+        }
+        let sub = dir.join("zone01");
+        fs::create_dir_all(&sub).unwrap();
+        for name in ["bg.png", "fg.png"] {
+            let p = sub.join(name);
+            fs::write(&p, png_data).unwrap();
+            paths.push(p);
+        }
+        paths
+    }
+
+    #[test]
+    fn visual_qc_scan_finds_pngs() {
+        let tmp = TempDir::new().unwrap();
+        make_test_images(tmp.path());
+        let qc = VisualQc::scan(tmp.path());
+        assert_eq!(qc.total(), 5);
+        assert_eq!(qc.approved(), 0);
+        assert_eq!(qc.rejected(), 0);
+        assert_eq!(qc.remaining(), 5);
+        assert!(!qc.is_done());
+    }
+
+    #[test]
+    fn visual_qc_scan_empty_dir() {
+        let tmp = TempDir::new().unwrap();
+        let qc = VisualQc::scan(tmp.path());
+        assert_eq!(qc.total(), 0);
+        assert!(qc.is_done());
+    }
+
+    #[test]
+    fn visual_qc_scan_skips_approved_rejected_dirs() {
+        let tmp = TempDir::new().unwrap();
+        make_test_images(tmp.path());
+        let approved = tmp.path().join("approved");
+        fs::create_dir_all(&approved).unwrap();
+        fs::write(approved.join("old.png"), b"fake").unwrap();
+        let rejected = tmp.path().join("rejected");
+        fs::create_dir_all(&rejected).unwrap();
+        fs::write(rejected.join("old.png"), b"fake").unwrap();
+
+        let qc = VisualQc::scan(tmp.path());
+        assert_eq!(qc.total(), 5);
+    }
+
+    #[test]
+    fn visual_qc_decide_advances() {
+        let tmp = TempDir::new().unwrap();
+        make_test_images(tmp.path());
+        let mut qc = VisualQc::scan(tmp.path());
+
+        assert_eq!(qc.current, 0);
+        qc.decide(Verdict::Approve);
+        assert_eq!(qc.current, 1);
+        assert_eq!(qc.approved(), 1);
+
+        qc.decide(Verdict::Reject);
+        assert_eq!(qc.current, 2);
+        assert_eq!(qc.rejected(), 1);
+
+        qc.decide(Verdict::Skip);
+        assert_eq!(qc.current, 3);
+        assert_eq!(qc.remaining(), 2);
+    }
+
+    #[test]
+    fn visual_qc_decide_all_marks_done() {
+        let tmp = TempDir::new().unwrap();
+        make_test_images(tmp.path());
+        let mut qc = VisualQc::scan(tmp.path());
+
+        for _ in 0..5 {
+            qc.decide(Verdict::Approve);
+        }
+        assert!(qc.is_done());
+        assert_eq!(qc.approved(), 5);
+        assert_eq!(qc.remaining(), 0);
+    }
+
+    #[test]
+    fn visual_qc_decide_past_end_is_noop() {
+        let tmp = TempDir::new().unwrap();
+        make_test_images(tmp.path());
+        let mut qc = VisualQc::scan(tmp.path());
+
+        for _ in 0..10 {
+            qc.decide(Verdict::Approve);
+        }
+        assert!(qc.is_done());
+        assert_eq!(qc.current, 5);
+    }
+
+    #[test]
+    fn visual_qc_apply_verdicts_copies_files() {
+        let tmp = TempDir::new().unwrap();
+        make_test_images(tmp.path());
+        let mut qc = VisualQc::scan(tmp.path());
+
+        qc.decide(Verdict::Approve);
+        qc.decide(Verdict::Reject);
+        qc.decide(Verdict::Skip);
+        qc.decide(Verdict::Approve);
+        qc.decide(Verdict::Reject);
+
+        let (a, r) = qc.apply_verdicts();
+        assert_eq!(a, 2);
+        assert_eq!(r, 2);
+        assert!(tmp.path().join("approved").is_dir());
+        assert!(tmp.path().join("rejected").is_dir());
+    }
+
+    #[test]
+    fn collect_images_finds_multiple_formats() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("a.png"), b"fake").unwrap();
+        fs::write(tmp.path().join("b.jpg"), b"fake").unwrap();
+        fs::write(tmp.path().join("c.jpeg"), b"fake").unwrap();
+        fs::write(tmp.path().join("d.svg"), b"fake").unwrap();
+        fs::write(tmp.path().join("e.txt"), b"not an image").unwrap();
+
+        let mut entries = Vec::new();
+        collect_images(tmp.path(), tmp.path(), &mut entries);
+        assert_eq!(entries.len(), 4);
+    }
+
+    #[test]
+    fn collect_images_nonexistent_dir() {
+        let mut entries = Vec::new();
+        collect_images(Path::new("/nonexistent"), Path::new("/nonexistent"), &mut entries);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn verdict_equality() {
+        assert_eq!(Verdict::Approve, Verdict::Approve);
+        assert_ne!(Verdict::Approve, Verdict::Reject);
+        assert_ne!(Verdict::Reject, Verdict::Skip);
+    }
+
+    #[test]
+    fn theme_colors_are_rgb() {
+        let colors = [PRIMARY, SECONDARY, TERTIARY, TEXT, MUTED, BG, SURFACE, APPROVE_GREEN, REJECT_RED];
+        for c in colors {
+            match c {
+                Color::Rgb(_, _, _) => {}
+                _ => panic!("Expected RGB color"),
+            }
+        }
+    }
+
+    #[test]
+    fn primary_is_cyan() {
+        assert_eq!(PRIMARY, Color::Rgb(0x00, 0xd4, 0xff));
+    }
+
+    #[test]
+    fn handle_qc_key_approve_reject_skip() {
+        let tmp = TempDir::new().unwrap();
+        make_test_images(tmp.path());
+        let mut app = App {
+            mode: Mode::VisualQc,
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: tmp.path().to_path_buf(),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: Some(VisualQc::scan(tmp.path())),
+            status: String::new(),
+            running: true,
+        };
+
+        handle_qc_key(&mut app, KeyCode::Char('d'));
+        assert_eq!(app.qc.as_ref().unwrap().approved(), 1);
+        handle_qc_key(&mut app, KeyCode::Char('a'));
+        assert_eq!(app.qc.as_ref().unwrap().rejected(), 1);
+        handle_qc_key(&mut app, KeyCode::Char('s'));
+        assert_eq!(app.qc.as_ref().unwrap().current, 3);
+    }
+
+    #[test]
+    fn handle_qc_key_esc_returns_to_chat() {
+        let tmp = TempDir::new().unwrap();
+        make_test_images(tmp.path());
+        let mut app = App {
+            mode: Mode::VisualQc,
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: tmp.path().to_path_buf(),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: Some(VisualQc::scan(tmp.path())),
+            status: String::new(),
+            running: true,
+        };
+
+        handle_qc_key(&mut app, KeyCode::Esc);
+        assert_eq!(app.mode, Mode::Chat);
+    }
+
+    #[test]
+    fn handle_chat_key_typing() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+        };
+
+        handle_chat_key(&mut app, KeyCode::Char('h'), KeyModifiers::empty());
+        handle_chat_key(&mut app, KeyCode::Char('i'), KeyModifiers::empty());
+        assert_eq!(app.input, "hi");
+        assert_eq!(app.cursor_pos, 2);
+
+        handle_chat_key(&mut app, KeyCode::Backspace, KeyModifiers::empty());
+        assert_eq!(app.input, "h");
+        assert_eq!(app.cursor_pos, 1);
+    }
+
+    #[test]
+    fn handle_chat_key_ctrl_c_exits() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+        };
+
+        handle_chat_key(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert!(!app.running);
+    }
+
+    #[test]
+    fn submit_input_quit_commands() {
+        for cmd in ["/quit", "/exit", "/q"] {
+            let mut app = App {
+                mode: Mode::Chat,
+                input: cmd.to_string(),
+                cursor_pos: cmd.len(),
+                messages: Vec::new(),
+                scroll: 0,
+                project_dir: PathBuf::from("."),
+                model_path: None,
+                system_prompt: String::new(),
+                qc: None,
+                status: String::new(),
+                running: true,
+            };
+            app.submit_input();
+            assert!(!app.running);
+        }
+    }
+
+    #[test]
+    fn submit_input_clear() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: "/clear".to_string(),
+            cursor_pos: 6,
+            messages: vec![ChatMessage { role: "user", content: "old".into() }],
+            scroll: 5,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+        };
+        app.submit_input();
+        assert!(app.messages.is_empty());
+        assert_eq!(app.scroll, 0);
+    }
+
+    #[test]
+    fn submit_input_empty_is_noop() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: "   ".to_string(),
+            cursor_pos: 3,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+        };
+        app.submit_input();
+        assert!(app.messages.is_empty());
+    }
+
+    #[test]
+    fn submit_input_tools_command() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: "/tools".to_string(),
+            cursor_pos: 6,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+        };
+        app.submit_input();
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].role, "system");
+        assert!(app.messages[0].content.contains("read_file"));
+    }
+
+    #[test]
+    fn cursor_movement_boundaries() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: "abc".to_string(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll: 0,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+        };
+
+        handle_chat_key(&mut app, KeyCode::Left, KeyModifiers::empty());
+        assert_eq!(app.cursor_pos, 0);
+
+        handle_chat_key(&mut app, KeyCode::Right, KeyModifiers::empty());
+        assert_eq!(app.cursor_pos, 1);
+
+        handle_chat_key(&mut app, KeyCode::End, KeyModifiers::empty());
+        assert_eq!(app.cursor_pos, 3);
+
+        handle_chat_key(&mut app, KeyCode::Right, KeyModifiers::empty());
+        assert_eq!(app.cursor_pos, 3);
+
+        app.cursor_pos = 0;
+        handle_chat_key(&mut app, KeyCode::Backspace, KeyModifiers::empty());
+        assert_eq!(app.input, "abc");
+
+        app.cursor_pos = 3;
+        handle_chat_key(&mut app, KeyCode::Delete, KeyModifiers::empty());
+        assert_eq!(app.input, "abc");
+
+        app.cursor_pos = 1;
+        handle_chat_key(&mut app, KeyCode::Delete, KeyModifiers::empty());
+        assert_eq!(app.input, "ac");
+    }
+
+    #[test]
+    fn handle_chat_key_scroll() {
+        let mut app = App {
+            mode: Mode::Chat,
+            input: String::new(),
+            cursor_pos: 0,
+            messages: Vec::new(),
+            scroll: 5,
+            project_dir: PathBuf::from("."),
+            model_path: None,
+            system_prompt: String::new(),
+            qc: None,
+            status: String::new(),
+            running: true,
+        };
+
+        handle_chat_key(&mut app, KeyCode::Up, KeyModifiers::empty());
+        assert_eq!(app.scroll, 4);
+        handle_chat_key(&mut app, KeyCode::Down, KeyModifiers::empty());
+        assert_eq!(app.scroll, 5);
+    }
+}
