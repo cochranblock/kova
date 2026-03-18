@@ -27,7 +27,7 @@ pub fn run(demo: bool) -> anyhow::Result<()> {
     .map_err(|e| anyhow::anyhow!("eframe: {}", e))
 }
 
-struct KovaApp {
+pub struct KovaApp {
     input: String,
     messages: Vec<crate::Message>,
     store: Option<crate::storage::t12>,
@@ -140,7 +140,7 @@ fn build_system_prompt_impl(system: &str, persona: &str, project: &std::path::Pa
 }
 
 impl KovaApp {
-    fn new(_cc: &eframe::CreationContext<'_>, demo: bool) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>, demo: bool) -> Self {
         let system_prompt = crate::load_prompt("system");
         let persona = crate::load_prompt("persona");
         let store = crate::storage::t12::f39(crate::sled_path()).ok();
