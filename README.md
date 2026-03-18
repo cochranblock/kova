@@ -8,15 +8,17 @@ Augment engine. Local LLM agentic tool loop, swarm orchestration, tokenized ever
 
 ## Proof of Artifacts
 
-*Wire diagrams for quick review.*
+*Wire diagrams and GUI screenshots for quick review.*
 
 ### Wire / Architecture
 
 ```mermaid
 flowchart TB
-    User[User] --> GUI[GUI / egui]
+    User[User] --> TUI[TUI / ratatui]
+    User --> GUI[GUI / egui]
     User --> Serve[HTTP / serve]
-    GUI --> AgentLoop[Agent loop]
+    TUI --> AgentLoop[Agent loop]
+    GUI --> AgentLoop
     GUI --> SpriteQC[Sprite QC]
     Serve --> AgentLoop
     AgentLoop --> Router[Router]
@@ -28,7 +30,49 @@ flowchart TB
     AgentLoop --> C2[c2 swarm]
     C2 --> Nodes[lf gd bt st]
     AgentLoop --> RAG[RAG / fastembed]
+    AgentLoop --> Micro[Micro Olympics]
+    Micro --> Tournament[Tournament]
+    Micro --> Bench[Bench]
+    Micro --> Pipe[Pipeline]
 ```
+
+### Crate Structure
+
+```mermaid
+flowchart LR
+    kova[kova — single crate] --> exopack[exopack — test augmentation]
+    kova --> wasm[wasm/ — thin WASM manifest]
+    wasm -.->|cross-compile| src_wc[src/web_client/]
+    src_wc -.->|include_bytes| serve[src/serve.rs]
+```
+
+One crate. Source in `src/`. WASM thin client source lives in `src/web_client/`, cross-compiled via `wasm/Cargo.toml`. exopack is the only separate crate (testing).
+
+### GUI Screenshots
+
+| Surface | Screenshot | Description |
+|---------|-----------|-------------|
+| TUI | ![TUI](screenshots/tui.png) | Ratatui terminal UI — agent loop, chat, visual QC |
+| Native GUI | ![GUI](screenshots/gui.png) | egui desktop — REPL, backlog, sprite QC |
+| Web Client | ![Web](screenshots/serve.png) | WASM thin client — egui in browser via `kova s` |
+| Token Validator | ![Tokens](screenshots/tokens.png) | `kova tokens` — 100% compression coverage |
+
+> Screenshots captured via `./scripts/capture-screenshots.sh`. If images are missing, run the script or build kova with `--features serve,gui`.
+
+---
+
+## Tokenization
+
+100% compression protocol coverage. Every public function and type is tokenized.
+
+```
+$ kova tokens
+tokenization: 100.0% (368/368)
+  fn: 231/231 tokenized (highest: f365)
+  ty: 137/137 tokenized (highest: T213)
+```
+
+Canonical map: [`docs/compression_map.md`](docs/compression_map.md)
 
 ---
 
@@ -36,41 +80,40 @@ flowchart TB
 
 | Artifact | What | Lines |
 |----------|------|-------|
-| `src/main.rs` | CLI entrypoint. 15+ subcommands incl. tokenized `s`/`g` short forms | 1,742 |
+| `src/main.rs` | CLI entrypoint. 15+ subcommands incl. tokenized `s`/`g` short forms | 1,778 |
+| `src/tui.rs` | Ratatui TUI — agent chat, visual QC, swipe mode | 1,672 |
 | `src/tools.rs` | 7 tools: read, write, edit, bash, glob, grep, memory_write | 1,412 |
-| `src/serve.rs` | Axum HTTP API + WebSocket streaming + embedded web client | 1,239 |
-| `src/academy.rs` | Recursive academy: training, evaluation, tournament wiring | 1,072 |
-| `src/gui.rs` | Native egui desktop GUI + Sprite QC integration | 896 |
+| `src/serve.rs` | Axum HTTP API + WebSocket streaming + embedded WASM client | 1,240 |
+| `src/academy.rs` | Recursive academy: training, evaluation, tournament wiring | 1,022 |
+| `src/gui.rs` | Native egui desktop GUI + Sprite QC integration | 912 |
+| `src/micro/tournament.rs` | Local LLM tournament. 42 competitors, 6 events, 45 challenges | 909 |
 | `src/node_cmd.rs` | Tokenized SSH node commands (c1-c9, ci). Parallel execution | 879 |
-| `src/cargo_cmd.rs` | Tokenized cargo wrapper (x0-x9). Compressed output for AI context | 787 |
-| `src/c2.rs` | Swarm orchestration: sync, build, broadcast to 4 worker nodes | 755 |
-| `src/config.rs` | Config, paths, feature detection, model resolution | 662 |
+| `src/inference/providers.rs` | Multi-provider inference: Ollama, OpenAI, Anthropic | 808 |
+| `src/cargo_cmd.rs` | Tokenized cargo wrapper (x0-x9). Compressed output for AI context | 786 |
+| `src/c2.rs` | Swarm orchestration: sync, build, broadcast to 4 worker nodes | 753 |
+| `src/rag.rs` | RAG: fastembed vectors, sled index, chunk + search Rust files | 750 |
+| `src/feedback.rs` | Failure analysis, challenge generation, DPO training loop | 703 |
+| `src/config.rs` | Config, paths, feature detection, model resolution | 697 |
+| `src/factory.rs` | Full pipeline: classify, generate, compile, review, fix loop | 667 |
+| `src/syntax.rs` | Syntax-aware code analysis. Symbol extraction from Rust source | 637 |
+| `src/moe.rs` | Mixture of Experts: fan-out to N nodes, compile, score, pick | 553 |
+| `src/gauntlet.rs` | Hell Week stress test. 5 phases, no mercy | 539 |
+| `src/web_client/app.rs` | WASM thin client. egui in browser, API + WebSocket | 530 |
+| `src/mcp.rs` | MCP server (Model Context Protocol). JSON-RPC stdio transport | 509 |
+| `src/review.rs` | LLM code review: staged, branch diff, severity scoring | 478 |
 | `src/git_cmd.rs` | Tokenized git commands (g0-g9). Compressed output | 448 |
-| `src/sprite_qc.rs` | Tinder-style swipe UI for pixel art quality control | 383 |
-| `src/inspect.rs` | Resource inspection: CPU, RAM, disk, GPU across all nodes | 317 |
-| `src/trace.rs` | Execution tracing and diagnostics | 278 |
-| `src/router.rs` | Intent classification and routing | 275 |
-| `src/cursor_prompts.rs` | Load .cursorrules + .cursor/rules/*.mdc as system prompt | 253 |
-| `src/context_loader.rs` | Project context: Cargo.toml, recent changes, git state | 227 |
-| `src/agent_loop.rs` | Agentic tool loop: inference → parse → execute → feed back | 226 |
-| `src/ssh_ca.rs` | SSH host CA: init, sign, setup. No host key churn | 178 |
-| `src/repl.rs` | Interactive REPL. Claude Code replacement with local LLM | 175 |
-| `src/inference.rs` | Local LLM inference via Kalosm (Qwen2.5-Coder GGUF) | 159 |
-| `src/recent_changes.rs` | Git-based recent change detection | 135 |
-| `src/storage.rs` | sled k/v store with zstd + bincode | 120 |
-| `src/theme.rs` | Professional dark theme: colors, layout, styled frames | 118 |
-| `src/plan.rs` | Execution planning and step resolution | 95 |
-| `src/web.rs` | Embedded kova-web (egui WASM thin client) | 73 |
-| `src/output.rs` | Code output formatting and diff display | 59 |
-| `src/model.rs` | Model management and resolution | 46 |
-| `.kova-aliases` | 97+ shell aliases for macOS + Debian. Deployed to all nodes | 263 |
-| **Total** | **25,996 lines Rust + 263 lines shell across 50 source files** | **26,259** |
+| `src/inference/cluster.rs` | IRONHIVE cluster: distributed AI across worker nodes | 424 |
+| `src/tokenization.rs` | Compression protocol validator. `kova tokens` CLI | 305 |
+| `src/ci.rs` | CI mode: headless quality gate, watch for changes | 387 |
+| `src/imagegen.rs` | Image generation: Stable Diffusion, DALL-E dispatch | 384 |
+| `.kova-aliases` | 110+ shell aliases for macOS + Debian. Deployed to all nodes | 280 |
+| **Total** | **92 Rust source files** | **32,305** |
 
 ## Binaries
 
 | Binary | Features | Purpose |
 |--------|----------|---------|
-| `kova` | gui, serve, inference | All-inclusive: REPL, GUI, HTTP, LLM, swarm, tools |
+| `kova` | serve, inference, rag, tui | All-inclusive: TUI, GUI, HTTP, LLM, swarm, tools |
 | `kova-test` | tests (exopack) | Quality gate: clippy, TRIPLE SIMS 3x, release build, smoke |
 
 ## Tokenized Command Map
@@ -81,9 +124,16 @@ flowchart TB
 k     = kova              ks    = serve + open browser
 kc    = chat (REPL)       kg    = gui
 kt    = test              kb    = bootstrap
+ktk   = tokens            kci   = ci mode
+krv   = review            kfb   = feedback
+kex   = export            kmcp  = mcp server
+ktr   = traces            kf    = factory
+kga   = gauntlet          kmoe  = moe
+kcl   = cluster           krag  = rag
 kx0-9 = cargo tokens      kn1-9 = node tokens
 kc2b  = broadcast build   kc2s  = sync all
 p0-p9 = cd to project     p0b   = cd + build
+p0te  = kova test binary
 ```
 
 ### Cargo Tokens (`kova x`)
@@ -111,10 +161,10 @@ p0-p9 = cd to project     p0b   = cd + build
 | Token | Project | Token | Project |
 |-------|---------|-------|---------|
 | p0 | kova | p5 | ronin-sites |
-| p1 | approuter | p6 | kova-core |
-| p2 | cochranblock | p7 | exopack |
-| p3 | oakilydokily | p8 | whyyoulying |
-| p4 | rogue-repo | p9 | wowasticker |
+| p1 | approuter | p7 | exopack |
+| p2 | cochranblock | p8 | whyyoulying |
+| p3 | oakilydokily | p9 | wowasticker |
+| p4 | rogue-repo | | |
 
 ## Micro Olympics
 
@@ -138,27 +188,28 @@ Run: `kova micro tournament`
 ## Features
 
 ```toml
-default  = ["serve", "inference", "rag"]
-serve    = axum + tower + tracing (+ kova-web WASM, built automatically)
+default  = ["serve", "inference", "rag", "tui"]
+serve    = axum + tower + tracing (+ WASM thin client, built automatically)
 gui      = eframe + egui (native desktop)
+tui      = ratatui + crossterm (terminal UI)
 inference = kalosm + reqwest + lru
 autopilot = enigo (type into Cursor)
 daemon   = capnp (worker node)
 tests    = exopack (quality gate)
+rag      = fastembed + ordered-float
 ```
 
 ## Build
 
 ```sh
-cargo build                          # default (serve + inference + rag)
+cargo build                          # default (serve + inference + rag + tui)
 cargo build --release --features serve --target aarch64-apple-darwin
 cargo run --features tests --bin kova-test   # quality gate
+kova tokens                          # validate tokenization coverage
 ```
 
-**Serve (web GUI):** Builds kova-web (egui→WASM) automatically. Requires:
+**Serve (web GUI):** Builds WASM thin client automatically. Requires:
 `rustup target add wasm32-unknown-unknown` and `cargo install wasm-bindgen-cli`.
-
-If using a workspace, remove `kova/kova-web` from `members` — kova-web is built by kova's build script.
 
 ## Setup
 
@@ -167,7 +218,7 @@ If using a workspace, remove `kova/kova-web` from `members` — kova-web is buil
 echo '[ -f "$HOME/.kova-aliases" ] && . "$HOME/.kova-aliases"' >> ~/.zshrc
 
 # Deploy to worker nodes
-for n in lf gd bt st; do scp .kova-aliases "$n":~/; done
+kad   # or: for n in lf gd bt st; do scp .kova-aliases "$n":~/; done
 
 # Bootstrap kova config
 kova bootstrap

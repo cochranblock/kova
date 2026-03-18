@@ -37,32 +37,33 @@ Now you can use short commands: `kx0` (build), `kt` (test), `kg` (GUI).
 
 ### Project Structure
 ```
-kova/                          # Rust workspace root
-├── Cargo.toml                 # Workspace manifest
+kova/                          # Single crate (+ exopack)
+├── Cargo.toml                 # Package manifest
 ├── src/
-│   ├── main.rs               # CLI entrypoint (504 lines)
-│   ├── repl.rs               # Interactive REPL (161 lines)
-│   ├── agent_loop.rs         # Agentic tool loop (117 lines)
-│   ├── tools.rs              # 7 tools: read/write/edit/bash/glob/grep/memory (574 lines)
-│   ├── node_cmd.rs           # Tokenized SSH commands (c1-c9, ci) (557 lines)
-│   ├── cargo_cmd.rs          # Tokenized cargo wrapper (x0-x9) (515 lines)
-│   ├── git_cmd.rs            # Tokenized git commands (g0-g9)
-│   ├── c2.rs                 # Swarm orchestration (675 lines)
-│   ├── serve.rs              # Axum HTTP + WebSocket (782 lines)
-│   ├── gui.rs                # egui desktop GUI (834 lines)
-│   ├── inference.rs          # Local LLM via Kalosm (156 lines)
-│   ├── config.rs             # Config & paths (641 lines)
-│   ├── router.rs             # Intent classification (262 lines)
-│   ├── context_loader.rs     # Project context loading (226 lines)
-│   └── ...
-├── kova-web/                 # WASM thin client
-├── kova-core/                # Core library (WASM-safe)
-├── tests/                    # Integration tests
-├── docs/                     # Documentation
-├── .kova-aliases             # 97 shell aliases
-└── README.md                 # Architecture overview
+│   ├── main.rs               # CLI entrypoint, 15+ subcommands (1,778 lines)
+│   ├── tui.rs                # Ratatui TUI — agent chat, visual QC (1,672 lines)
+│   ├── tools.rs              # 7 tools: read/write/edit/bash/glob/grep/memory (1,412 lines)
+│   ├── serve.rs              # Axum HTTP + WebSocket + WASM client (1,240 lines)
+│   ├── academy.rs            # Recursive academy (1,022 lines)
+│   ├── gui.rs                # egui desktop GUI (912 lines)
+│   ├── node_cmd.rs           # Tokenized SSH commands c1-c9/ci (879 lines)
+│   ├── cargo_cmd.rs          # Tokenized cargo wrapper x0-x9 (786 lines)
+│   ├── c2.rs                 # Swarm orchestration (753 lines)
+│   ├── config.rs             # Config & paths (697 lines)
+│   ├── tokenization.rs       # Compression protocol validator (305 lines)
+│   ├── web_client/           # WASM thin client source (egui in browser)
+│   ├── micro/                # Micro Olympics: tournament, bench, training
+│   ├── inference/            # Providers, cluster, local LLM
+│   ├── kernel/               # Kernel: stream, commands
+│   ├── surface/              # Surface adapters: serve, gui
+│   └── ...                   # 92 files total
+├── exopack/                   # Test augmentation (screenshot, video, triple sims)
+├── wasm/                      # Thin WASM build manifest (cross-compiles src/web_client/)
+├── screenshots/               # GUI screenshots (Proof of Artifacts)
+├── docs/                      # Documentation (35 files)
+└── README.md                  # Architecture overview
 
-Total: ~8,247 lines of Rust + shell
+Total: 32,305 lines Rust + 280 lines shell across 92 source files
 ```
 
 ### Tech Stack
