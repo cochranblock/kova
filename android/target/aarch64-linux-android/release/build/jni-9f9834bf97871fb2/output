@@ -1,4 +1,0 @@
-cargo::rustc-check-cfg=cfg(use_fls_attach_guard)
-cargo::rustc-check-cfg=cfg(use_tls_attach_guard)
-cargo:rustc-cfg=use_tls_attach_guard
-cargo:rerun-if-env-changed=_JNI_WINDOWS_FORCE_USE_TLS

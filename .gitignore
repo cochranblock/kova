@@ -9,3 +9,5 @@
 .claude/worktrees/
 # WASM build output (built by kova's build script)
 wasm/target/
+# Android build output
+android/target/
