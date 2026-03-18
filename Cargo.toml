@@ -20,18 +20,17 @@ rag = ["dep:fastembed", "dep:ordered-float"]
 io_uring = []
 
 [dependencies]
-kova-core = { path = "../kova-core" }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-anyhow = { workspace = true }
-clap = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
 sled = "0.34"
 bincode = { version = "2", features = ["serde"] }
 zstd = "0.13"
 toml = "0.8"
-tokio = { workspace = true }
-tempfile = { workspace = true }
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"
 similar = { version = "2", optional = true }
 
 ratatui = { version = "0.29", optional = true }
@@ -61,7 +60,7 @@ capnp = { version = "0.25", optional = true }
 capnpc = { version = "0.25", optional = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile = "3"
 assert_matches = "1.5"
 
 [lib]

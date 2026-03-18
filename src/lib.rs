@@ -10,6 +10,7 @@ pub mod config;
 pub mod context;
 pub mod cursor_prompts;
 pub mod error;
+pub mod intent;
 pub mod kernel;
 pub mod plan;
 pub mod storage;
@@ -27,7 +28,8 @@ pub use config::{
     ModelRole,
 };
 pub use context::{f73, f74, Message};
-pub use kova_core::{entry_to_intent, f62, intent_name, t0, t1, t2, Backlog, BacklogEntry};
+pub use backlog::{entry_to_intent, Backlog, BacklogEntry};
+pub use intent::{f62, intent_name, t0, t1, t2};
 pub use plan::{t3, t4, t5};
 #[cfg(feature = "inference")]
 pub use router::{f79, RouterResult};

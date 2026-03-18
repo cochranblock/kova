@@ -30,14 +30,14 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn to_intent(self, release: bool) -> kova_core::t0 {
+    pub fn to_intent(self, release: bool) -> crate::t0 {
         match self {
-            Token::F18 => kova_core::t0::f18(release),
-            Token::F19 => kova_core::t0::f19(),
-            Token::F20 => kova_core::t0::f20(),
-            Token::F21 => kova_core::t0::f21(),
-            Token::F22 => kova_core::t0::f22(),
-            Token::F23 => kova_core::t0::f23(),
+            Token::F18 => crate::t0::f18(release),
+            Token::F19 => crate::t0::f19(),
+            Token::F20 => crate::t0::f20(),
+            Token::F21 => crate::t0::f21(),
+            Token::F22 => crate::t0::f22(),
+            Token::F23 => crate::t0::f23(),
         }
     }
 
@@ -224,7 +224,7 @@ pub fn run_build(
         );
     }
 
-    let intent = kova_core::t0::f18(release);
+    let intent = crate::t0::f18(release);
     let approuter_dir = std::env::var("HOME")
         .ok()
         .map(|h| PathBuf::from(h).join("approuter"));

@@ -59,8 +59,8 @@ impl eframe::App for KovaWebApp {
                 if ui.button("Send").clicked() {
                     let input = std::mem::take(&mut self.input);
                     if !input.is_empty() {
-                        if let Some(intent) = kova_core::f62(&input) {
-                            let name = kova_core::intent_name(&intent.s0);
+                        if let Some(intent) = crate::f62(&input) {
+                            let name = crate::intent_name(&intent.s0);
                             self.messages.push(format!("Intent: {}", name));
                         } else {
                             self.messages.push(format!("No match: {}", input));

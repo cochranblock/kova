@@ -564,7 +564,7 @@ struct RouteResponse {
 #[derive(Deserialize)]
 struct IntentRequest {
     #[serde(flatten)]
-    intent: kova_core::t0,
+    intent: crate::t0,
     /// Override project path (default: server default_project)
     project: Option<String>,
 }
@@ -574,9 +574,9 @@ async fn api_intent(
     Json(req): Json<IntentRequest>,
 ) -> Json<IntentResponse> {
     let intent = req.intent;
-    let name = kova_core::intent_name(&intent.s0);
+    let name = crate::intent_name(&intent.s0);
     let mut summary = None;
-    if matches!(intent.s0, kova_core::t1::FullPipeline) {
+    if matches!(intent.s0, crate::t1::FullPipeline) {
         #[cfg(feature = "inference")]
         {
             if let (Some(coder), Some(fix)) = (
@@ -785,7 +785,7 @@ async fn api_backlog_run(
                 .into_response()
         }
     };
-    let intent = match kova_core::entry_to_intent(&entry) {
+    let intent = match crate::entry_to_intent(&entry) {
         Some(i) => i,
         None => {
             return (
@@ -810,7 +810,7 @@ async fn api_backlog_run(
                 .map(|h| std::path::PathBuf::from(h).join("approuter"))
         });
 
-    if matches!(intent.s0, kova_core::t1::FullPipeline) {
+    if matches!(intent.s0, crate::t1::FullPipeline) {
         #[cfg(feature = "inference")]
         {
             if let (Some(coder), Some(fix)) = (
@@ -896,7 +896,7 @@ async fn api_backlog_run(
     }
 }
 
-async fn api_backlog_post(Json(entry): Json<kova_core::BacklogEntry>) -> impl IntoResponse {
+async fn api_backlog_post(Json(entry): Json<crate::BacklogEntry>) -> impl IntoResponse {
     let path = crate::backlog_path();
     let mut backlog = crate::f25(&path).unwrap_or_default();
     backlog.items.push(entry);
