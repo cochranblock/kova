@@ -6,13 +6,14 @@
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use super::template::MicroTemplate;
+use super::template::T159;
 use crate::cluster::Cluster;
 use crate::providers::{Provider, provider_generate, provider_list_models};
 
+/// T154=MicroResult
 /// Result of running a micro-model.
 #[derive(Debug, Clone)]
-pub struct MicroResult {
+pub struct T154 {
     /// Template ID that was run.
     pub template_id: String,
     /// Node ID that handled the request.
@@ -27,9 +28,10 @@ pub struct MicroResult {
     pub tokens: Option<u64>,
 }
 
+/// T155=CircuitBreaker
 /// Circuit breaker state — trips after N consecutive failures.
 /// Inspired by Mattbusel/tokio-llm's circuit breaker pattern.
-pub struct CircuitBreaker {
+pub struct T155 {
     /// Consecutive failure count.
     failures: AtomicU32,
     /// Threshold before tripping.
@@ -40,9 +42,9 @@ pub struct CircuitBreaker {
     total_failures: AtomicU64,
 }
 
-impl CircuitBreaker {
+impl T155 {
     pub fn new(threshold: u32) -> Self {
-        CircuitBreaker {
+        T155 {
             failures: AtomicU32::new(0),
             threshold,
             total: AtomicU64::new(0),
@@ -83,18 +85,19 @@ impl CircuitBreaker {
     }
 }
 
+/// T156=Budget
 /// Budget tracker — prevents runaway token usage.
 /// Inspired by Mattbusel/tokio-llm's budget enforcement.
-pub struct Budget {
+pub struct T156 {
     /// Max tokens allowed.
     pub limit: u64,
     /// Tokens used so far.
     used: AtomicU64,
 }
 
-impl Budget {
+impl T156 {
     pub fn new(limit: u64) -> Self {
-        Budget {
+        T156 {
             limit,
             used: AtomicU64::new(0),
         }
@@ -122,17 +125,18 @@ impl Budget {
     }
 }
 
+/// f244=run_micro
 /// Run a micro-model template against the cluster.
 /// Unlike cluster.dispatch(), this does NOT enforce factory-level tier minimums.
 /// Micro-models are intentionally small — a 3B fix_compile template should run
 /// on any online node, not require a 32B Heavy node.
-pub fn run_micro(
-    template: &MicroTemplate,
+pub fn f244(
+    template: &T159,
     input: &str,
     cluster: &Cluster,
-    breaker: &CircuitBreaker,
-    budget: &Budget,
-) -> Result<MicroResult, String> {
+    breaker: &T155,
+    budget: &T156,
+) -> Result<T154, String> {
     // Check circuit breaker
     if breaker.is_open() {
         return Err(format!(
@@ -186,7 +190,7 @@ pub fn run_micro(
             let est_tokens = resp.tokens_out.unwrap_or((resp.text.len() / 4) as u64);
             budget.record(est_tokens);
 
-            Ok(MicroResult {
+            Ok(T154 {
                 template_id: template.id.clone(),
                 node_id,
                 model,
@@ -229,14 +233,15 @@ fn pick_model(base_url: &str, preferred: &str) -> Option<String> {
         .map(|m| m.to_string())
 }
 
+/// f245=run_micro_direct
 /// Run a micro-model directly against a specific node URL (bypass cluster routing).
 /// Used when you know exactly which node and model to hit.
-pub fn run_micro_direct(
-    template: &MicroTemplate,
+pub fn f245(
+    template: &T159,
     input: &str,
     base_url: &str,
     model_override: Option<&str>,
-) -> Result<MicroResult, String> {
+) -> Result<T154, String> {
     let prompt = template.build_prompt(input);
     let model = model_override.unwrap_or(&template.model);
     let start = Instant::now();
@@ -251,7 +256,7 @@ pub fn run_micro_direct(
     let duration = start.elapsed();
     let est_tokens = resp.tokens_out.unwrap_or((resp.text.len() / 4) as u64);
 
-    Ok(MicroResult {
+    Ok(T154 {
         template_id: template.id.clone(),
         node_id: "direct".into(),
         model: model.to_string(),

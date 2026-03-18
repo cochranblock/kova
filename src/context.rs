@@ -10,7 +10,8 @@ const CAP: usize = 20;
 
 /// t91=Message. Chat message with role and content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
+#[allow(non_camel_case_types)]
+pub struct t91 {
     pub role: String,
     pub content: String,
 }
@@ -18,7 +19,7 @@ pub struct Message {
 /// f73 = store_message. Append role+content, cap at CAP.
 pub fn f73(store: &storage::t12, role: &str, content: &str) -> Result<(), storage::E0> {
     let mut msgs = f74(store).unwrap_or_default();
-    msgs.push(Message {
+    msgs.push(t91 {
         role: role.into(),
         content: content.into(),
     });
@@ -29,6 +30,6 @@ pub fn f73(store: &storage::t12, role: &str, content: &str) -> Result<(), storag
 }
 
 /// f74 = load_messages. Load conversation for chat.
-pub fn f74(store: &storage::t12) -> Result<Vec<Message>, storage::E0> {
+pub fn f74(store: &storage::t12) -> Result<Vec<t91>, storage::E0> {
     Ok(store.f41(KEY)?.unwrap_or_default())
 }

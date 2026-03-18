@@ -7,17 +7,18 @@ mod theme;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+/// t134=WebHandle
 /// Web handle for JavaScript to start the app.
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone)]
 #[wasm_bindgen]
-pub struct WebHandle {
+pub struct t134 {
     runner: eframe::WebRunner,
 }
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-impl WebHandle {
+impl t134 {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         eframe::WebLogger::init(log::LevelFilter::Info).ok();
@@ -33,8 +34,8 @@ impl WebHandle {
                 canvas,
                 eframe::WebOptions::default(),
                 Box::new(|cc| {
-                    theme::apply(&cc.egui_ctx);
-                    Ok(Box::new(app::KovaWebApp::new(cc)))
+                    theme::f221(&cc.egui_ctx);
+                    Ok(Box::new(app::t135::new(cc)))
                 }),
             )
             .await

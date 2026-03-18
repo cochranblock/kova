@@ -12,29 +12,31 @@ use std::process::Command;
 const DEFAULT_MODEL: &str = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit";
 const DEFAULT_ITERS: u32 = 600;
 
+/// T172=TrainFormat
 /// Training format: SFT (supervised) or DPO (preference pairs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrainFormat {
+pub enum T172 {
     Sft,
     Dpo,
 }
 
+/// f262=run_train
 /// Run mlx_lm.lora fine-tuning.
 ///
 /// Expects ~/.kova/micro/training/{sft,dpo}_chatml.jsonl.
 /// Copies to train.jsonl (mlx_lm expects that name) then runs:
 ///   mlx_lm.lora --model <model> --train --data <dir> --adapter-path <out> --iters N --mask-prompt
-pub fn run_train(
-    format: TrainFormat,
+pub fn f262(
+    format: T172,
     iters: Option<u32>,
     dry_run: bool,
 ) -> Result<(), String> {
-    let training_dir = super::train::training_path();
+    let training_dir = super::train::f261();
     let adapters_dir = training_dir.join("adapters");
 
     let source = match format {
-        TrainFormat::Sft => training_dir.join("sft_chatml.jsonl"),
-        TrainFormat::Dpo => training_dir.join("dpo_chatml.jsonl"),
+        T172::Sft => training_dir.join("sft_chatml.jsonl"),
+        T172::Dpo => training_dir.join("dpo_chatml.jsonl"),
     };
 
     if !source.exists() {
@@ -42,8 +44,8 @@ pub fn run_train(
             "training data not found: {}\n  Run: kova micro export --format {}",
             source.display(),
             match format {
-                TrainFormat::Sft => "sft",
-                TrainFormat::Dpo => "dpo",
+                T172::Sft => "sft",
+                T172::Dpo => "dpo",
             }
         ));
     }
@@ -72,7 +74,7 @@ pub fn run_train(
         return Ok(());
     }
 
-    eprintln!("[micro train] {} format, {} iters", match format { TrainFormat::Sft => "SFT", TrainFormat::Dpo => "DPO" }, iters);
+    eprintln!("[micro train] {} format, {} iters", match format { T172::Sft => "SFT", T172::Dpo => "DPO" }, iters);
     eprintln!("  data: {}", training_dir.display());
     eprintln!("  adapters: {}", adapters_dir.display());
 

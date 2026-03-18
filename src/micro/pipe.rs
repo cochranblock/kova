@@ -6,15 +6,16 @@
 
 use std::time::{Duration, Instant};
 
-use super::registry::MicroRegistry;
-use super::router::{category_to_template, classify_keywords};
-use super::runner::{run_micro, Budget, CircuitBreaker};
-use super::validate::{validate, ValidationResult};
+use super::registry::T149;
+use super::router::{f243, f242};
+use super::runner::{f244, T156, T155};
+use super::validate::{f263, T173};
 use crate::cluster::Cluster;
 
+/// T148=PipeResult
 /// Full pipeline result.
 #[derive(Debug)]
-pub struct PipeResult {
+pub struct T148 {
     /// What the classifier said.
     pub classification: String,
     /// Which template was selected.
@@ -24,7 +25,7 @@ pub struct PipeResult {
     /// Raw model response.
     pub response: String,
     /// Validation verdict.
-    pub validation: ValidationResult,
+    pub validation: T173,
     /// Node that handled the main run.
     pub node_id: String,
     /// Time for classification step.
@@ -35,49 +36,50 @@ pub struct PipeResult {
     pub total_duration: Duration,
 }
 
+/// f240=run_pipe
 /// Run the full pipeline: classify → route → run → validate.
-pub fn run_pipe(
+pub fn f240(
     input: &str,
-    registry: &MicroRegistry,
+    registry: &T149,
     cluster: &Cluster,
-) -> Result<PipeResult, String> {
+) -> Result<T148, String> {
     let total_start = Instant::now();
-    let breaker = CircuitBreaker::new(3);
-    let budget = Budget::new(100_000);
+    let breaker = T155::new(3);
+    let budget = T156::new(100_000);
 
     // Step 1: Classify via f79 (or keyword fallback if no nodes)
     let classify_start = Instant::now();
     let classification = match registry.get("f79") {
         Some(tmpl) => {
-            match run_micro(tmpl, input, cluster, &breaker, &budget) {
+            match f244(tmpl, input, cluster, &breaker, &budget) {
                 Ok(result) => result.response.trim().to_lowercase(),
                 Err(_) => {
                     // Fallback to keyword classification
-                    classify_keywords(input)
+                    f242(input)
                 }
             }
         }
-        None => classify_keywords(input),
+        None => f242(input),
     };
     let classify_duration = classify_start.elapsed();
 
     // Step 2: Map classification to template
-    let template_id = category_to_template(&classification);
+    let template_id = f243(&classification);
     let tmpl = registry
         .get(&template_id)
         .ok_or_else(|| format!("no template for category: {}", classification))?;
 
     // Step 3: Run the template
     let run_start = Instant::now();
-    let result = run_micro(tmpl, input, cluster, &breaker, &budget)?;
+    let result = f244(tmpl, input, cluster, &breaker, &budget)?;
     let run_duration = run_start.elapsed();
 
     // Step 4: Validate
-    let validation = validate(&result, input, &tmpl.output_schema);
+    let validation = f263(&result, input, &tmpl.output_schema);
 
     let total_duration = total_start.elapsed();
 
-    Ok(PipeResult {
+    Ok(T148 {
         classification,
         template_id,
         template_name: tmpl.name.clone(),
@@ -90,8 +92,9 @@ pub fn run_pipe(
     })
 }
 
+/// f241=print_pipe_result
 /// Print a pipe result in human-readable format.
-pub fn print_pipe_result(r: &PipeResult) {
+pub fn f241(r: &T148) {
     println!("{}", r.response);
     eprintln!("──────────────────────────────────────────");
     eprintln!(

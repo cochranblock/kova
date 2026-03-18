@@ -7,9 +7,10 @@ use std::path::Path;
 
 use crate::intent::{t0, t1};
 
-/// t8 = BacklogEntry. One item in backlog.json.
+/// t8=t8. One item in backlog.json.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BacklogEntry {
+#[allow(non_camel_case_types)]
+pub struct t8 {
     pub intent: String,
     #[serde(default)]
     pub project: Option<String>,
@@ -21,14 +22,15 @@ pub struct BacklogEntry {
     pub args: Option<Vec<String>>,
 }
 
-/// t9 = Backlog. items = Vec<BacklogEntry>.
+/// t9=Backlog. items = Vec<t8>.
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Backlog {
-    pub items: Vec<BacklogEntry>,
+#[allow(non_camel_case_types)]
+pub struct t9 {
+    pub items: Vec<t8>,
 }
 
-/// Map backlog entry to intent. Returns None if unsupported.
-pub fn entry_to_intent(entry: &BacklogEntry) -> Option<t0> {
+/// f293=f293. Map backlog entry to intent. Returns None if unsupported.
+pub fn f293(entry: &t8) -> Option<t0> {
     let intent = entry.intent.to_lowercase();
     let project_hint = entry.project.as_ref().and_then(|p| {
         std::path::Path::new(p)
@@ -59,10 +61,10 @@ pub fn entry_to_intent(entry: &BacklogEntry) -> Option<t0> {
     }
 }
 
-/// f25 = load_backlog. Parse backlog.json from disk.
-pub fn f25(p0: &Path) -> anyhow::Result<Backlog> {
+/// f25=load_backlog. Parse backlog.json from disk.
+pub fn f25(p0: &Path) -> anyhow::Result<t9> {
     let v0 = std::fs::read_to_string(p0)?;
-    let v1: Backlog = serde_json::from_str(&v0)?;
+    let v1: t9 = serde_json::from_str(&v0)?;
     Ok(v1)
 }
 
@@ -72,27 +74,27 @@ mod tests {
     use crate::intent::{t0, t1};
 
     #[test]
-    fn entry_to_intent_full_pipeline() {
-        let e = BacklogEntry {
+    fn f293_full_pipeline() {
+        let e = t8 {
             intent: "full-pipeline".into(),
             project: None,
             approuter_dir: None,
             cmd: None,
             args: None,
         };
-        assert!(matches!(entry_to_intent(&e), Some(t0 { s0: t1::FullPipeline, .. })));
+        assert!(matches!(f293(&e), Some(t0 { s0: t1::FullPipeline, .. })));
     }
 
     #[test]
-    fn entry_to_intent_custom() {
-        let e = BacklogEntry {
+    fn f293_custom() {
+        let e = t8 {
             intent: "custom".into(),
             project: None,
             approuter_dir: None,
             cmd: Some("cargo".into()),
             args: Some(vec!["check".into()]),
         };
-        let got = entry_to_intent(&e).unwrap();
+        let got = f293(&e).unwrap();
         match &got.s0 {
             t1::Custom { cmd, args } => {
                 assert_eq!(cmd, "cargo");
@@ -103,14 +105,14 @@ mod tests {
     }
 
     #[test]
-    fn entry_to_intent_unknown_returns_none() {
-        let e = BacklogEntry {
+    fn f293_unknown_returns_none() {
+        let e = t8 {
             intent: "unknown-intent".into(),
             project: None,
             approuter_dir: None,
             cmd: None,
             args: None,
         };
-        assert!(entry_to_intent(&e).is_none());
+        assert!(f293(&e).is_none());
     }
 }

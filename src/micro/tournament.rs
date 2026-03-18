@@ -28,16 +28,17 @@ use std::time::Instant;
 type CatBestEntry = (String, String, String, f64, u64, usize, usize);
 
 use super::bench;
-use super::registry::MicroRegistry;
+use super::registry::T149;
 use super::runner;
 use crate::cluster::Cluster;
 use crate::providers;
 
 // ── Weight Classes ──────────────────────────────────────────────
 
+/// T160=WeightClass
 /// Weight class for a model based on parameter count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
-pub enum WeightClass {
+pub enum T160 {
     /// ≤1B parameters — sub-billion tinies
     Atomweight,
     /// 1-3B parameters
@@ -48,46 +49,46 @@ pub enum WeightClass {
     Middleweight,
 }
 
-impl WeightClass {
+impl T160 {
     /// Classify a model by its name tag.
     pub fn from_model(model: &str) -> Self {
         let lower = model.to_lowercase();
         // Extract size from model name patterns like ":0.5b", ":1b", ":3b", ":7b", ":14b"
         if let Some(size) = extract_param_size(&lower) {
             if size <= 1.0 {
-                WeightClass::Atomweight
+                T160::Atomweight
             } else if size <= 3.0 {
-                WeightClass::Flyweight
+                T160::Flyweight
             } else if size <= 7.5 {
-                WeightClass::Bantamweight
+                T160::Bantamweight
             } else {
-                WeightClass::Middleweight
+                T160::Middleweight
             }
         } else {
             // Models with no explicit size tag — check known families
             if lower.contains("tinyllama") || lower.contains("smollm2") {
-                WeightClass::Atomweight
+                T160::Atomweight
             } else {
-                WeightClass::Bantamweight  // phi4-mini, etc. = 3-7B
+                T160::Bantamweight  // phi4-mini, etc. = 3-7B
             }
         }
     }
 
     pub fn label(&self) -> &'static str {
         match self {
-            WeightClass::Atomweight => "Atomweight (<=1B)",
-            WeightClass::Flyweight => "Flyweight (1-3B)",
-            WeightClass::Bantamweight => "Bantamweight (3-7B)",
-            WeightClass::Middleweight => "Middleweight (7-15B)",
+            T160::Atomweight => "Atomweight (<=1B)",
+            T160::Flyweight => "Flyweight (1-3B)",
+            T160::Bantamweight => "Bantamweight (3-7B)",
+            T160::Middleweight => "Middleweight (7-15B)",
         }
     }
 
     pub fn short(&self) -> &'static str {
         match self {
-            WeightClass::Atomweight => "ATM",
-            WeightClass::Flyweight => "FLY",
-            WeightClass::Bantamweight => "BAN",
-            WeightClass::Middleweight => "MID",
+            T160::Atomweight => "ATM",
+            T160::Flyweight => "FLY",
+            T160::Bantamweight => "BAN",
+            T160::Middleweight => "MID",
         }
     }
 
@@ -139,35 +140,37 @@ fn extract_param_size(model: &str) -> Option<f64> {
 /// Max weight class allowed on a node (arena restriction).
 /// Hardware-aware: nodes with weaker GPUs get weight caps to keep
 /// generation times fast and avoid thermal/memory issues.
-fn arena_max_weight(node_id: &str) -> WeightClass {
+fn arena_max_weight(node_id: &str) -> T160 {
     match node_id {
-        "c2" => WeightClass::Flyweight,      // Local Mac — ≤3B only
-        "n2" => WeightClass::Middleweight,    // bt (RX 6700 XT, 150W muzzle) — open weight, hardware-limited by power cap
-        _ => WeightClass::Middleweight,       // gd, st, lf — open weight
+        "c2" => T160::Flyweight,      // Local Mac — ≤3B only
+        "n2" => T160::Middleweight,    // bt (RX 6700 XT, 150W muzzle) — open weight, hardware-limited by power cap
+        _ => T160::Middleweight,       // gd, st, lf — open weight
     }
 }
 
 /// Check if a model is allowed in a node's arena.
 fn allowed_in_arena(model: &str, node_id: &str) -> bool {
-    WeightClass::from_model(model) <= arena_max_weight(node_id)
+    T160::from_model(model) <= arena_max_weight(node_id)
 }
 
 // ── Core Types ──────────────────────────────────────────────────
 
+/// T161=Competitor
 /// A competitor: one model on one node, classified by weight.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Competitor {
+pub struct T161 {
     pub node_id: String,
     pub node_url: String,
     pub model: String,
-    pub weight_class: WeightClass,
+    pub weight_class: T160,
     pub exhibition: bool,
 }
 
+/// T162=MatchResult
 /// Result of one model running one challenge.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct MatchResult {
-    pub competitor: Competitor,
+pub struct T162 {
+    pub competitor: T161,
     pub challenge: String,
     pub category: String,
     pub passed: bool,
@@ -179,12 +182,13 @@ pub struct MatchResult {
     pub response: String,
 }
 
+/// T163=ModelScore
 /// Per-model aggregate score.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ModelScore {
+pub struct T163 {
     pub model: String,
     pub node_id: String,
-    pub weight_class: WeightClass,
+    pub weight_class: T160,
     pub exhibition: bool,
     pub total: usize,
     pub passed: usize,
@@ -195,7 +199,7 @@ pub struct ModelScore {
     pub score: f64,
 }
 
-impl ModelScore {
+impl T163 {
     pub fn accuracy(&self) -> f64 {
         if self.total == 0 { 0.0 } else { self.passed as f64 / self.total as f64 }
     }
@@ -204,35 +208,38 @@ impl ModelScore {
     }
 }
 
+/// T164=CategoryWinner
 /// Category winner: best model for a specific task type.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CategoryWinner {
+pub struct T164 {
     pub category: String,
     pub model: String,
     pub node_id: String,
     pub node_url: String,
-    pub weight_class: WeightClass,
+    pub weight_class: T160,
     pub accuracy: f64,
     pub avg_ms: u64,
     pub score: f64,
 }
 
+/// T165=TournamentResult
 /// Full tournament results.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TournamentResult {
+pub struct T165 {
     pub timestamp: String,
-    pub competitors: Vec<Competitor>,
-    pub scores: Vec<ModelScore>,
-    pub category_winners: Vec<CategoryWinner>,
-    pub weight_class_winners: Vec<(WeightClass, ModelScore)>,
-    pub exhibition_results: Vec<ModelScore>,
-    pub matches: Vec<MatchResult>,
+    pub competitors: Vec<T161>,
+    pub scores: Vec<T163>,
+    pub category_winners: Vec<T164>,
+    pub weight_class_winners: Vec<(T160, T163)>,
+    pub exhibition_results: Vec<T163>,
+    pub matches: Vec<T162>,
     pub easy_challenges: Vec<String>,
     pub impossible_challenges: Vec<String>,
 }
 
+/// T166=TournamentChallenge
 /// Held-out challenge for the tournament.
-pub struct TournamentChallenge {
+pub struct T166 {
     pub template_id: String,
     pub category: String,
     pub event_type: &'static str,
@@ -241,8 +248,9 @@ pub struct TournamentChallenge {
     pub description: String,
 }
 
+/// f248=get_challenges
 /// Get all tournament challenges (for training data export).
-pub fn get_challenges(registry: &MicroRegistry) -> Vec<TournamentChallenge> {
+pub fn f248(registry: &T149) -> Vec<T166> {
     tournament_challenges(registry)
 }
 
@@ -251,12 +259,12 @@ pub fn get_challenges(registry: &MicroRegistry) -> Vec<TournamentChallenge> {
 /// Max time (ms) a model gets on the first challenge of an event.
 /// If it exceeds this, it's DQ'd from the rest of that event —
 /// "wasn't supposed to make it to the event."
-fn prequal_cutoff_ms(weight_class: WeightClass) -> u64 {
+fn prequal_cutoff_ms(weight_class: T160) -> u64 {
     match weight_class {
-        WeightClass::Atomweight   => 30_000,   // 30s — tiny models should be fast
-        WeightClass::Flyweight    => 60_000,   // 60s
-        WeightClass::Bantamweight => 120_000,  // 2min
-        WeightClass::Middleweight => 180_000,  // 3min
+        T160::Atomweight   => 30_000,   // 30s — tiny models should be fast
+        T160::Flyweight    => 60_000,   // 60s
+        T160::Bantamweight => 120_000,  // 2min
+        T160::Middleweight => 180_000,  // 3min
     }
 }
 
@@ -265,8 +273,9 @@ fn prequal_cutoff_ms(weight_class: WeightClass) -> u64 {
 /// Models too slow for tournament.
 const EXCLUDED_MODELS: &[&str] = &["32b", "70b", "72b"];
 
+/// f249=discover_competitors
 /// Discover all competitors with weight classification and arena filtering.
-pub fn discover_competitors(cluster: &Cluster) -> Vec<Competitor> {
+pub fn f249(cluster: &Cluster) -> Vec<T161> {
     let mut competitors = Vec::new();
     let online = cluster.online_nodes();
 
@@ -282,9 +291,9 @@ pub fn discover_competitors(cluster: &Cluster) -> Vec<Competitor> {
                     eprintln!("  SKIP {} on {} (exceeds arena weight limit)", m.name, node.id);
                     continue;
                 }
-                let weight_class = WeightClass::from_model(&m.name);
-                let exhibition = WeightClass::is_exhibition(&m.name);
-                competitors.push(Competitor {
+                let weight_class = T160::from_model(&m.name);
+                let exhibition = T160::is_exhibition(&m.name);
+                competitors.push(T161 {
                     node_id: node.id.clone(),
                     node_url: url.clone(),
                     model: m.name.clone(),
@@ -300,7 +309,7 @@ pub fn discover_competitors(cluster: &Cluster) -> Vec<Competitor> {
 
 // ── Challenges ──────────────────────────────────────────────────
 
-fn tournament_challenges(_registry: &MicroRegistry) -> Vec<TournamentChallenge> {
+fn tournament_challenges(_registry: &T149) -> Vec<T166> {
     vec![
         // SPRINT events — classifier
         tce("f79", "classify", "sprint", "refactor the database module to use connection pooling", "single_word", "classify: refactor"),
@@ -378,8 +387,8 @@ fn tournament_challenges(_registry: &MicroRegistry) -> Vec<TournamentChallenge> 
     ]
 }
 
-fn tce(tid: &str, cat: &str, event: &'static str, input: &str, verify: &str, desc: &str) -> TournamentChallenge {
-    TournamentChallenge {
+fn tce(tid: &str, cat: &str, event: &'static str, input: &str, verify: &str, desc: &str) -> T166 {
+    T166 {
         template_id: tid.to_string(),
         category: cat.to_string(),
         event_type: event,
@@ -391,13 +400,14 @@ fn tce(tid: &str, cat: &str, event: &'static str, input: &str, verify: &str, des
 
 // ── Tournament Execution ────────────────────────────────────────
 
+/// f250=run_tournament
 /// Run the full Olympic-style tournament.
-pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> TournamentResult {
-    let competitors = discover_competitors(cluster);
+pub fn f250(registry: &T149, cluster: &Cluster) -> T165 {
+    let competitors = f249(cluster);
     let challenges = tournament_challenges(registry);
 
     // Group competitors by weight class
-    let mut by_weight: HashMap<&str, Vec<&Competitor>> = HashMap::new();
+    let mut by_weight: HashMap<&str, Vec<&T161>> = HashMap::new();
     for c in &competitors {
         by_weight.entry(c.weight_class.short()).or_default().push(c);
     }
@@ -420,7 +430,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
         matches: Vec::new(),
         completed: Vec::new(),
     });
-    let mut all_matches: Vec<MatchResult> = checkpoint.matches.clone();
+    let mut all_matches: Vec<T162> = checkpoint.matches.clone();
     let resuming = !checkpoint.completed.is_empty();
     if resuming {
         eprintln!("RESUMING — {} matches from checkpoint, {} competitor/events done",
@@ -432,7 +442,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
     let event_names = ["SPRINT", "TECHNICAL", "FREESTYLE", "JUDGED", "ENDURANCE", "DOPING TEST"];
 
     for (event, event_name) in event_order.iter().zip(event_names.iter()) {
-        let event_challenges: Vec<&TournamentChallenge> =
+        let event_challenges: Vec<&T166> =
             challenges.iter().filter(|c| c.event_type == *event).collect();
         if event_challenges.is_empty() { continue; }
 
@@ -459,7 +469,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                 };
 
                 let start = Instant::now();
-                let result = runner::run_micro_direct(
+                let result = runner::f245(
                     tmpl,
                     &ch.input,
                     &competitor.node_url,
@@ -471,7 +481,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
 
                 match result {
                     Ok(r) => {
-                        let passed = bench::verify_response(&r.response, &ch.verify);
+                        let passed = bench::f234(&r.response, &ch.verify);
                         let tokens = r.tokens.unwrap_or(0);
                         let status = if passed { "PASS" } else { "FAIL" };
                         eprintln!(
@@ -479,7 +489,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             status, exh, competitor.weight_class.short(),
                             competitor.model, duration_ms, ch.description
                         );
-                        all_matches.push(MatchResult {
+                        all_matches.push(T162 {
                             competitor: competitor.clone(),
                             challenge: ch.description.clone(),
                             category: ch.category.clone(),
@@ -490,7 +500,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
 
                         // WIRE-2: Record failures into feedback loop for challenge mining.
                         if !passed {
-                            crate::feedback::record_failure(crate::feedback::FailureRecord {
+                            crate::feedback::f194(crate::feedback::FailureRecord {
                                 challenge_desc: ch.description.clone(),
                                 input: ch.input.clone(),
                                 expected_verify: ch.verify.clone(),
@@ -518,7 +528,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                             exh, competitor.weight_class.short(),
                             competitor.model, duration_ms, ch.description, e
                         );
-                        all_matches.push(MatchResult {
+                        all_matches.push(T162 {
                             competitor: competitor.clone(),
                             challenge: ch.description.clone(),
                             category: ch.category.clone(),
@@ -527,7 +537,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
                         });
 
                         // WIRE-2: Record errors into feedback loop.
-                        crate::feedback::record_failure(crate::feedback::FailureRecord {
+                        crate::feedback::f194(crate::feedback::FailureRecord {
                             challenge_desc: ch.description.clone(),
                             input: ch.input.clone(),
                             expected_verify: ch.verify.clone(),
@@ -563,10 +573,10 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
     clear_checkpoint();
 
     // Aggregate scores
-    let mut score_map: HashMap<String, ModelScore> = HashMap::new();
+    let mut score_map: HashMap<String, T163> = HashMap::new();
     for m in &all_matches {
         let key = format!("{}@{}", m.competitor.model, m.competitor.node_id);
-        let entry = score_map.entry(key).or_insert_with(|| ModelScore {
+        let entry = score_map.entry(key).or_insert_with(|| T163 {
             model: m.competitor.model.clone(),
             node_id: m.competitor.node_id.clone(),
             weight_class: m.competitor.weight_class,
@@ -593,12 +603,12 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
         s.score = s.accuracy() * 100.0 + speed_bonus;
     }
 
-    let mut scores: Vec<ModelScore> = score_map.into_values().collect();
+    let mut scores: Vec<T163> = score_map.into_values().collect();
     scores.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
     // Weight class winners (best non-exhibition model per weight class)
     let mut weight_class_winners = Vec::new();
-    for wc in [WeightClass::Atomweight, WeightClass::Flyweight, WeightClass::Bantamweight, WeightClass::Middleweight] {
+    for wc in [T160::Atomweight, T160::Flyweight, T160::Bantamweight, T160::Middleweight] {
         if let Some(best) = scores.iter().filter(|s| s.weight_class == wc && !s.exhibition).max_by(|a, b| {
             a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal)
         }) {
@@ -607,7 +617,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
     }
 
     // Exhibition results (non-coder models doing code tasks)
-    let exhibition_results: Vec<ModelScore> = scores.iter().filter(|s| s.exhibition).cloned().collect();
+    let exhibition_results: Vec<T163> = scores.iter().filter(|s| s.exhibition).cloned().collect();
 
     // Category winners (best overall per task type, excluding exhibition)
     let mut cat_best: HashMap<String, CatBestEntry> = HashMap::new();
@@ -639,11 +649,11 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
         }) {
             let acc = best.6 as f64 / best.5.max(1) as f64;
             let avg = best.4 / best.5.max(1) as u64;
-            let wc = WeightClass::from_model(&best.1);
+            let wc = T160::from_model(&best.1);
             let node_url = competitors.iter()
                 .find(|c| c.node_id == best.2 && c.model == best.1)
                 .map(|c| c.node_url.clone()).unwrap_or_default();
-            category_winners.push(CategoryWinner {
+            category_winners.push(T164 {
                 category: cat.clone(), model: best.1.clone(), node_id: best.2.clone(),
                 node_url, weight_class: wc, accuracy: acc, avg_ms: avg,
                 score: acc * 100.0 + 20.0 * (1.0 - avg as f64 / max_avg_ms as f64),
@@ -664,7 +674,7 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
     let impossible_challenges: Vec<String> = ch_results.iter()
         .filter(|(_, (t, p))| *t > 1 && *p == 0).map(|(k, _)| k.clone()).collect();
 
-    TournamentResult {
+    T165 {
         timestamp: chrono_now(),
         competitors, scores, category_winners, weight_class_winners,
         exhibition_results, matches: all_matches,
@@ -674,8 +684,9 @@ pub fn run_tournament(registry: &MicroRegistry, cluster: &Cluster) -> Tournament
 
 // ── Display ─────────────────────────────────────────────────────
 
+/// f251=print_results
 /// Print Olympic-style tournament results.
-pub fn print_results(r: &TournamentResult) {
+pub fn f251(r: &T165) {
     println!("\nKOVA MICRO OLYMPICS — RESULTS ({})", r.timestamp);
     println!("═══════════════════════════════════════════════════════════════════════");
 
@@ -741,9 +752,9 @@ pub fn print_results(r: &TournamentResult) {
     // Cross-weight analysis
     println!("\nCROSS-WEIGHT ANALYSIS");
     println!("───────────────────────────────────────────────────────────────────────");
-    let wc_order = [WeightClass::Atomweight, WeightClass::Flyweight, WeightClass::Bantamweight, WeightClass::Middleweight];
+    let wc_order = [T160::Atomweight, T160::Flyweight, T160::Bantamweight, T160::Middleweight];
     for wc in &wc_order {
-        let class_scores: Vec<&ModelScore> = r.scores.iter()
+        let class_scores: Vec<&T163> = r.scores.iter()
             .filter(|s| s.weight_class == *wc && !s.exhibition).collect();
         if class_scores.is_empty() { continue; }
         let avg_acc = class_scores.iter().map(|s| s.accuracy()).sum::<f64>() / class_scores.len() as f64;
@@ -771,9 +782,10 @@ pub fn print_results(r: &TournamentResult) {
     println!("\n═══════════════════════════════════════════════════════════════════════");
 }
 
+/// f252=save_results
 /// Save tournament results.
-pub fn save_results(r: &TournamentResult) -> Result<(), String> {
-    let path = tournament_path();
+pub fn f252(r: &T165) -> Result<(), String> {
+    let path = f253();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -814,7 +826,8 @@ struct TournamentSummary {
     winner_score: f64,
 }
 
-pub fn tournament_path() -> PathBuf {
+/// f253=tournament_path
+pub fn f253() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     PathBuf::from(home)
         .join(".kova")
@@ -830,7 +843,8 @@ fn history_path() -> PathBuf {
         .join("tournament_history.json")
 }
 
-pub fn checkpoint_path() -> PathBuf {
+/// f254=checkpoint_path
+pub fn f254() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     PathBuf::from(home)
         .join(".kova")
@@ -842,7 +856,7 @@ pub fn checkpoint_path() -> PathBuf {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct Checkpoint {
     /// Completed matches so far.
-    matches: Vec<MatchResult>,
+    matches: Vec<T162>,
     /// Set of "model@node::event" keys already finished.
     completed: Vec<String>,
 }
@@ -862,7 +876,7 @@ impl Checkpoint {
 }
 
 fn load_checkpoint() -> Option<Checkpoint> {
-    let path = checkpoint_path();
+    let path = f254();
     if !path.exists() {
         return None;
     }
@@ -871,7 +885,7 @@ fn load_checkpoint() -> Option<Checkpoint> {
 }
 
 fn save_checkpoint(cp: &Checkpoint) {
-    let path = checkpoint_path();
+    let path = f254();
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -881,7 +895,7 @@ fn save_checkpoint(cp: &Checkpoint) {
 }
 
 fn clear_checkpoint() {
-    let path = checkpoint_path();
+    let path = f254();
     let _ = std::fs::remove_file(path);
 }
 

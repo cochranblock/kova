@@ -31,7 +31,9 @@ pub use config::{
     code_gen_structured, default_model, fast_localhost, hive_local_base, hive_shared_base,
     model_cache_size, model_idle_unload_secs, ollama_url, router_structured,
 };
-pub use context::{f73, f74, Message};
+pub use context::{f73, f74, t91};
+/// Backward compat alias.
+pub type Message = t91;
 pub use backlog::{f293, t8, t9};
 pub use intent::{f62, intent_name, t0, t1, t2};
 pub use plan::{t3, t4, t5};
@@ -105,7 +107,7 @@ pub mod training_data;
 mod test_utils;
 
 /// f25 alias for integration tests.
-pub fn load_backlog(p: &std::path::Path) -> anyhow::Result<Backlog> {
+pub fn load_backlog(p: &std::path::Path) -> anyhow::Result<t9> {
     f25(p)
 }
 

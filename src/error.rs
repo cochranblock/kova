@@ -4,7 +4,7 @@
 
 use thiserror::Error;
 
-/// KovaError. One error type for all Kova operations.
+/// t176=KovaError. One error type for all Kova operations.
 #[derive(Debug, Error)]
 pub enum KovaError {
     #[error("{0}")]

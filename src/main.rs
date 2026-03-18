@@ -834,10 +834,10 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
 
 fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
     use kova::micro::{
-        bench, pipe, registry::MicroRegistry, router::MicroRouter, runner, stats, validate,
+        bench, pipe, registry::T149, router::T153, runner, stats, validate,
     };
 
-    let mut registry = MicroRegistry::new();
+    let mut registry = T149::new();
 
     // Load user templates from ~/.kova/micro/
     let micro_dir = kova::kova_dir().join("micro");
@@ -875,13 +875,13 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             };
 
             let result = if let Some(url) = node {
-                runner::run_micro_direct(tmpl, &input_text, &url, model.as_deref())
+                runner::f245(tmpl, &input_text, &url, model.as_deref())
                     .map_err(|e| anyhow::anyhow!("{}", e))?
             } else {
                 let cluster = kova::cluster::Cluster::default_hive();
-                let breaker = runner::CircuitBreaker::new(3);
-                let budget = runner::Budget::new(100_000);
-                runner::run_micro(tmpl, &input_text, &cluster, &breaker, &budget)
+                let breaker = runner::T155::new(3);
+                let budget = runner::T156::new(100_000);
+                runner::f244(tmpl, &input_text, &cluster, &breaker, &budget)
                     .map_err(|e| anyhow::anyhow!("{}", e))?
             };
 
@@ -892,11 +892,11 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             );
 
             // Record stats
-            let sp = stats::stats_path();
-            let mut st = stats::MicroStats::load(&sp);
+            let sp = stats::f246();
+            let mut st = stats::T158::load(&sp);
             let dur_ms = result.duration.as_millis() as u64;
             let tokens = result.tokens.unwrap_or(0);
-            if validate::quick_validate(&result.response) {
+            if validate::f264(&result.response) {
                 st.record_pass(&result.template_id, dur_ms, tokens);
             } else {
                 st.record_fail(&result.template_id, dur_ms, tokens);
@@ -915,7 +915,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 .or_else(|| registry.get_by_name(&template))
                 .ok_or_else(|| anyhow::anyhow!("unknown template: {}", template))?;
 
-            let mock_result = runner::MicroResult {
+            let mock_result = runner::T154 {
                 template_id: tmpl.id.clone(),
                 node_id: "validate".into(),
                 model: tmpl.model.clone(),
@@ -925,7 +925,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             };
 
             let input_text = input.as_deref().unwrap_or("");
-            let result = validate::validate(&mock_result, input_text, &tmpl.output_schema);
+            let result = validate::f263(&mock_result, input_text, &tmpl.output_schema);
 
             println!("{}", result.summary);
             for check in &result.checks {
@@ -941,7 +941,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
         }
         MicroCmd::Route { input } => {
             let input_text = input.join(" ");
-            let router = MicroRouter::new();
+            let router = T153::new();
             let decision = router.route(&input_text, &registry, None);
             let tmpl = registry.get(&decision.template_id);
             println!(
@@ -963,13 +963,13 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 anyhow::bail!("pipe requires input text");
             }
             let cluster = kova::cluster::Cluster::default_hive();
-            match pipe::run_pipe(&input_text, &registry, &cluster) {
+            match pipe::f240(&input_text, &registry, &cluster) {
                 Ok(result) => {
-                    pipe::print_pipe_result(&result);
+                    pipe::f241(&result);
 
                     // Record stats
-                    let sp = stats::stats_path();
-                    let mut st = stats::MicroStats::load(&sp);
+                    let sp = stats::f246();
+                    let mut st = stats::T158::load(&sp);
                     let dur_ms = result.total_duration.as_millis() as u64;
                     if result.validation.passed {
                         st.record_pass(&result.template_id, dur_ms, 0);
@@ -984,12 +984,12 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
         }
         MicroCmd::Bench => {
             let cluster = kova::cluster::Cluster::default_hive();
-            let results = bench::run_bench(&registry, &cluster);
-            bench::print_bench_results(&results);
+            let results = bench::f233(&registry, &cluster);
+            bench::f236(&results);
 
             // Record bench results into stats
-            let sp = stats::stats_path();
-            let mut st = stats::MicroStats::load(&sp);
+            let sp = stats::f246();
+            let mut st = stats::T158::load(&sp);
             for r in &results {
                 let tokens = (r.response.len() / 4) as u64;
                 if r.error.is_some() {
@@ -1004,8 +1004,8 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             Ok(())
         }
         MicroCmd::Stats => {
-            let sp = stats::stats_path();
-            let st = stats::MicroStats::load(&sp);
+            let sp = stats::f246();
+            let st = stats::T158::load(&sp);
             if st.templates.is_empty() {
                 println!("No stats yet. Run `kova micro run` or `kova micro bench` first.");
             } else {
@@ -1016,13 +1016,13 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
         MicroCmd::Tournament => {
             use kova::micro::tournament;
             let cluster = kova::cluster::Cluster::default_hive();
-            let result = tournament::run_tournament(&registry, &cluster);
-            tournament::print_results(&result);
+            let result = tournament::f250(&registry, &cluster);
+            tournament::f251(&result);
 
             // Save results + feed stats
-            let _ = tournament::save_results(&result);
-            let sp = stats::stats_path();
-            let mut st = stats::MicroStats::load(&sp);
+            let _ = tournament::f252(&result);
+            let sp = stats::f246();
+            let mut st = stats::T158::load(&sp);
             for m in &result.matches {
                 let key = format!("{}:{}", m.competitor.model, m.category);
                 if m.passed {
@@ -1038,7 +1038,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
         }
         MicroCmd::TournamentClear => {
             use kova::micro::tournament;
-            let cp = tournament::checkpoint_path();
+            let cp = tournament::f254();
             if cp.exists() {
                 std::fs::remove_file(&cp)?;
                 println!("Checkpoint cleared. Next tournament starts fresh.");
@@ -1049,62 +1049,62 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
         }
         MicroCmd::Export { format } => {
             use kova::micro::{tournament, train};
-            let tp = tournament::tournament_path();
+            let tp = tournament::f253();
             if !tp.exists() {
                 anyhow::bail!("no tournament results found — run `kova micro tournament` first");
             }
             let json = std::fs::read_to_string(&tp)?;
-            let result: tournament::TournamentResult = serde_json::from_str(&json)?;
-            train::export_training_data(&result, &registry, &format)
+            let result: tournament::T165 = serde_json::from_str(&json)?;
+            train::f259(&result, &registry, &format)
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
             Ok(())
         }
         MicroCmd::TrainStats => {
             use kova::micro::{tournament, train};
-            let tp = tournament::tournament_path();
+            let tp = tournament::f253();
             if !tp.exists() {
                 anyhow::bail!("no tournament results found — run `kova micro tournament` first");
             }
             let json = std::fs::read_to_string(&tp)?;
-            let result: tournament::TournamentResult = serde_json::from_str(&json)?;
-            train::training_stats(&result, &registry);
+            let result: tournament::T165 = serde_json::from_str(&json)?;
+            train::f260(&result, &registry);
             Ok(())
         }
         MicroCmd::Academy => {
             use kova::micro::{tournament, academy};
-            let tp = tournament::tournament_path();
+            let tp = tournament::f253();
             if !tp.exists() {
                 anyhow::bail!("no tournament results found — run `kova micro tournament` first");
             }
             let json = std::fs::read_to_string(&tp)?;
-            let result: tournament::TournamentResult = serde_json::from_str(&json)?;
-            let report = academy::analyze(&result);
-            academy::print_report(&report);
-            let path = academy::save_report(&report).map_err(|e| anyhow::anyhow!("{}", e))?;
+            let result: tournament::T165 = serde_json::from_str(&json)?;
+            let report = academy::f230(&result);
+            academy::f231(&report);
+            let path = academy::f232(&report).map_err(|e| anyhow::anyhow!("{}", e))?;
             eprintln!("Report saved: {}", path.display());
             Ok(())
         }
         MicroCmd::Mine => {
             use kova::micro::logmine;
-            let (examples, stats) = logmine::mine_logs().map_err(|e| anyhow::anyhow!("{}", e))?;
-            logmine::print_mine_stats(&stats, &examples);
+            let (examples, stats) = logmine::f237().map_err(|e| anyhow::anyhow!("{}", e))?;
+            logmine::f239(&stats, &examples);
             Ok(())
         }
         MicroCmd::MineExport => {
             use kova::micro::logmine;
-            let (examples, stats) = logmine::mine_logs().map_err(|e| anyhow::anyhow!("{}", e))?;
-            logmine::print_mine_stats(&stats, &examples);
-            logmine::export_mined(&examples).map_err(|e| anyhow::anyhow!("{}", e))?;
+            let (examples, stats) = logmine::f237().map_err(|e| anyhow::anyhow!("{}", e))?;
+            logmine::f239(&stats, &examples);
+            logmine::f238(&examples).map_err(|e| anyhow::anyhow!("{}", e))?;
             Ok(())
         }
         MicroCmd::Train { format, iters, dry_run } => {
-            use kova::micro::train_harness::{run_train, TrainFormat};
+            use kova::micro::train_harness::{f262, T172};
             let fmt = match format.as_str() {
-                "sft" => TrainFormat::Sft,
-                "dpo" => TrainFormat::Dpo,
+                "sft" => T172::Sft,
+                "dpo" => T172::Dpo,
                 _ => anyhow::bail!("format must be sft or dpo"),
             };
-            run_train(fmt, iters, dry_run).map_err(anyhow::Error::msg)
+            f262(fmt, iters, dry_run).map_err(anyhow::Error::msg)
         }
     }
 }
@@ -1276,7 +1276,7 @@ fn run_review(args: ReviewArgs) -> anyhow::Result<()> {
 fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
     match args.cmd {
         FeedbackCmd::Stats => {
-            let stats = kova::feedback::feedback_stats();
+            let stats = kova::feedback::f198();
             println!("Failures: {}", stats.total_failures);
             println!("Generated challenges: {}", stats.generated_challenges);
             if !stats.by_model.is_empty() {
@@ -1294,7 +1294,7 @@ fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
             Ok(())
         }
         FeedbackCmd::Recent { limit } => {
-            let failures = kova::feedback::recent_failures(limit);
+            let failures = kova::feedback::f195(limit);
             if failures.is_empty() {
                 println!("No failures recorded.");
                 return Ok(());
@@ -1312,7 +1312,7 @@ fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
             Ok(())
         }
         FeedbackCmd::Export => {
-            let failures = kova::feedback::recent_failures(100);
+            let failures = kova::feedback::f195(100);
             if failures.is_empty() {
                 println!("No failures to generate challenges from.");
                 return Ok(());
@@ -1320,7 +1320,7 @@ fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
             let provider = kova::providers::default_provider();
             let mut challenges = Vec::new();
             for f in &failures {
-                match kova::feedback::generate_challenge_from_failure(f, &provider) {
+                match kova::feedback::f196(f, &provider) {
                     Ok(ch) => challenges.push(ch),
                     Err(e) => eprintln!("skip: {}", e),
                 }
@@ -1328,7 +1328,7 @@ fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
             if challenges.is_empty() {
                 println!("No challenges generated.");
             } else {
-                println!("{}", kova::feedback::export_generated_challenges(&challenges));
+                println!("{}", kova::feedback::f197(&challenges));
             }
             Ok(())
         }
@@ -1501,7 +1501,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         Some(Cmd::Prompts) => {
             kova::bootstrap()?;
             let project = kova::default_project();
-            let out = kova::cursor_prompts::load_cursor_prompts(&project);
+            let out = kova::cursor_prompts::f111(&project);
             if out.is_empty() {
                 eprintln!(
                     "Prompts disabled (config [cursor] prompts_enabled = false or no rules found)"
@@ -1732,14 +1732,14 @@ fn run_ci(args: CiArgs) -> anyhow::Result<()> {
         } => {
             let dir =
                 project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let config = kova::ci::CiConfig {
+            let config = kova::ci::t114 {
                 project_dir: dir.clone(),
                 run_clippy: !no_clippy,
                 run_tests: !no_tests,
                 ..Default::default()
             };
-            let result = kova::ci::ci_check(&dir, &config);
-            kova::ci::print_ci_result(&result);
+            let result = kova::ci::f177(&dir, &config);
+            kova::ci::f180(&result);
             if !result.passed {
                 std::process::exit(1);
             }
@@ -1753,13 +1753,13 @@ fn run_ci(args: CiArgs) -> anyhow::Result<()> {
         } => {
             let dir =
                 project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let config = kova::ci::CiConfig {
+            let config = kova::ci::t114 {
                 project_dir: dir,
                 watch_interval_secs: interval,
                 run_clippy: !no_clippy,
                 run_tests: !no_tests,
             };
-            kova::ci::ci_watch(&config)
+            kova::ci::f178(&config)
         }
     }
 }

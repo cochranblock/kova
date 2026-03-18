@@ -36,7 +36,8 @@ enum Msg {
     Stream(String),
 }
 
-pub struct KovaWebApp {
+/// t135=KovaWebApp
+pub struct t135 {
     input: String,
     messages: Vec<Msg>,
     show_backlog: bool,
@@ -59,7 +60,7 @@ pub struct KovaWebApp {
     backlog_pending: Option<Rc<RefCell<Vec<BacklogItem>>>>,
 }
 
-impl KovaWebApp {
+impl t135 {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self {
             input: String::new(),
@@ -248,7 +249,7 @@ impl KovaWebApp {
     fn draw_header(&mut self, ctx: &egui::Context) {
         let is_narrow = ctx.content_rect().width() < 600.0;
         egui::TopBottomPanel::top("header")
-            .frame(theme::header_frame())
+            .frame(theme::f222())
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.colored_label(
@@ -319,7 +320,7 @@ impl KovaWebApp {
     fn draw_sidebars(&mut self, ctx: &egui::Context) {
         if self.show_backlog {
             egui::SidePanel::left("backlog_panel")
-                .frame(theme::sidebar_frame())
+                .frame(theme::f227())
                 .resizable(true)
                 .default_width(240.0)
                 .width_range(180.0..=400.0)
@@ -338,7 +339,7 @@ impl KovaWebApp {
                             for (i, item) in self.backlog.iter().enumerate() {
                                 let text = item.intent.as_deref().unwrap_or("-");
                                 let proj = item.project.as_deref().unwrap_or("");
-                                theme::message_frame().show(ui, |ui| {
+                                theme::f223().show(ui, |ui| {
                                     ui.colored_label(theme::colors::MUTED, format!("#{}", i + 1));
                                     ui.label(text);
                                     if !proj.is_empty() {
@@ -357,7 +358,7 @@ impl KovaWebApp {
 
         if self.show_prompts {
             egui::SidePanel::right("prompts_panel")
-                .frame(theme::sidebar_frame())
+                .frame(theme::f227())
                 .resizable(true)
                 .default_width(280.0)
                 .width_range(200.0..=400.0)
@@ -372,14 +373,14 @@ impl KovaWebApp {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         if !self.system_prompt.is_empty() {
                             ui.colored_label(theme::colors::MUTED, "System");
-                            theme::code_frame().show(ui, |ui| {
+                            theme::f225().show(ui, |ui| {
                                 ui.monospace(&self.system_prompt);
                             });
                             ui.add_space(8.0);
                         }
                         if !self.persona.is_empty() {
                             ui.colored_label(theme::colors::MUTED, "Persona");
-                            theme::code_frame().show(ui, |ui| {
+                            theme::f225().show(ui, |ui| {
                                 ui.monospace(&self.persona);
                             });
                         }
@@ -406,7 +407,7 @@ impl KovaWebApp {
                                 ui.allocate_ui(
                                     egui::Vec2::new(ui.available_width() * 0.75, 0.0),
                                     |ui| {
-                                        theme::user_message_frame().show(ui, |ui| {
+                                        theme::f224().show(ui, |ui| {
                                             ui.label(
                                                 egui::RichText::new(text)
                                                     .color(theme::colors::TEXT),
@@ -417,13 +418,13 @@ impl KovaWebApp {
                             });
                         }
                         Msg::System(text) => {
-                            theme::message_frame().show(ui, |ui| {
+                            theme::f223().show(ui, |ui| {
                                 ui.colored_label(theme::colors::TERTIARY, text);
                             });
                         }
                         Msg::Code(code) => {
                             let c = code.clone();
-                            theme::code_frame().show(ui, |ui| {
+                            theme::f225().show(ui, |ui| {
                                 ui.monospace(code);
                                 if ui.small_button("Copy").clicked() {
                                     ui.ctx().output_mut(|o| {
@@ -433,7 +434,7 @@ impl KovaWebApp {
                             });
                         }
                         Msg::Stream(text) => {
-                            theme::message_frame().show(ui, |ui| {
+                            theme::f223().show(ui, |ui| {
                                 ui.monospace(text);
                             });
                         }
@@ -444,7 +445,7 @@ impl KovaWebApp {
                 // Live stream buffer
                 let buf = self.stream_buf.borrow().clone();
                 if !buf.is_empty() {
-                    theme::code_frame().show(ui, |ui| {
+                    theme::f225().show(ui, |ui| {
                         ui.colored_label(
                             theme::colors::PRIMARY,
                             egui::RichText::new("streaming...").small(),
@@ -470,7 +471,7 @@ impl KovaWebApp {
         }
 
         // Input
-        theme::input_frame().show(ui, |ui| {
+        theme::f226().show(ui, |ui| {
             ui.horizontal(|ui| {
                 let input_width = ui.available_width() - 80.0;
                 let resp = ui.add_sized(
@@ -498,11 +499,11 @@ impl KovaWebApp {
     }
 }
 
-impl eframe::App for KovaWebApp {
+impl eframe::App for t135 {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Apply theme once
         if !self.theme_applied {
-            theme::apply(ctx);
+            theme::f221(ctx);
             self.theme_applied = true;
             // Auto-load projects on start
             self.load_projects(ctx);

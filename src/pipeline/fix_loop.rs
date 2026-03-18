@@ -19,7 +19,7 @@ pub async fn fix_and_retry(
         "Fix this Rust code. {}\n\nCode:\n```rust\n{}\n```\n\nReply with only the fixed code in ```rust ... ```.",
         error_block, code
     );
-    let cursor = crate::cursor_prompts::load_cursor_prompts(project_dir);
+    let cursor = crate::cursor_prompts::f111(project_dir);
     let fix_system = if cursor.is_empty() {
         format!("You fix Rust {} errors.", stage)
     } else {

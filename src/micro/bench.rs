@@ -7,8 +7,8 @@
 use std::process::Command;
 use std::time::Instant;
 
-use super::registry::MicroRegistry;
-use super::runner::{run_micro, Budget, CircuitBreaker};
+use super::registry::T149;
+use super::runner::{f244, T156, T155};
 use super::validate;
 use crate::cluster::Cluster;
 
@@ -154,9 +154,10 @@ fn challenges() -> Vec<Challenge> {
     ]
 }
 
+/// T145=BenchResult
 /// Result of one challenge.
 #[derive(Debug)]
-pub struct BenchResult {
+pub struct T145 {
     pub template_id: String,
     pub description: String,
     pub passed: bool,
@@ -165,8 +166,9 @@ pub struct BenchResult {
     pub error: Option<String>,
 }
 
+/// f233=run_bench
 /// Run all held-out challenges.
-pub fn run_bench(registry: &MicroRegistry, cluster: &Cluster) -> Vec<BenchResult> {
+pub fn f233(registry: &T149, cluster: &Cluster) -> Vec<T145> {
     let mut results = Vec::new();
 
     for ch in challenges() {
@@ -178,14 +180,14 @@ pub fn run_bench(registry: &MicroRegistry, cluster: &Cluster) -> Vec<BenchResult
             }
         };
 
-        let breaker = CircuitBreaker::new(3);
-        let budget = Budget::new(100_000);
+        let breaker = T155::new(3);
+        let budget = T156::new(100_000);
         let start = Instant::now();
 
-        match run_micro(tmpl, ch.input, cluster, &breaker, &budget) {
+        match f244(tmpl, ch.input, cluster, &breaker, &budget) {
             Ok(result) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
-                let passed = verify_response(&result.response, ch.verify);
+                let passed = f234(&result.response, ch.verify);
 
                 if passed {
                     eprintln!("  PASS  {:>5}ms  {}", duration_ms, ch.description);
@@ -198,7 +200,7 @@ pub fn run_bench(registry: &MicroRegistry, cluster: &Cluster) -> Vec<BenchResult
                     );
                 }
 
-                results.push(BenchResult {
+                results.push(T145 {
                     template_id: ch.template_id.to_string(),
                     description: ch.description.to_string(),
                     passed,
@@ -211,7 +213,7 @@ pub fn run_bench(registry: &MicroRegistry, cluster: &Cluster) -> Vec<BenchResult
                 let duration_ms = start.elapsed().as_millis() as u64;
                 eprintln!("  ERR   {:>5}ms  {} — {}", duration_ms, ch.description, e);
 
-                results.push(BenchResult {
+                results.push(T145 {
                     template_id: ch.template_id.to_string(),
                     description: ch.description.to_string(),
                     passed: false,
@@ -226,8 +228,9 @@ pub fn run_bench(registry: &MicroRegistry, cluster: &Cluster) -> Vec<BenchResult
     results
 }
 
+/// f234=verify_response
 /// Verify a response against a check string.
-pub fn verify_response(response: &str, check: &str) -> bool {
+pub fn f234(response: &str, check: &str) -> bool {
     let trimmed = response.trim();
 
     if check == "not_empty" {
@@ -255,26 +258,26 @@ pub fn verify_response(response: &str, check: &str) -> bool {
     // Combined: must compile AND pass a secondary check.
     // Format: "compiles_and:<sub-check>" e.g. "compiles_and:contains:fn"
     if let Some(sub) = check.strip_prefix("compiles_and:") {
-        return try_compile(trimmed) && verify_response(response, sub);
+        return try_compile(trimmed) && f234(response, sub);
     }
 
     // Combined: must compile AND be slop-free
     if check == "compiles_no_slop" {
-        return try_compile(trimmed) && !contains_slop(trimmed);
+        return try_compile(trimmed) && !f235(trimmed);
     }
 
     // P12 anti-slop: response must not contain any banned words
     if check == "no_slop" {
-        return !trimmed.is_empty() && !contains_slop(trimmed);
+        return !trimmed.is_empty() && !f235(trimmed);
     }
 
     // Combined: must contain something AND be slop-free
     if let Some(text) = check.strip_prefix("contains_no_slop:") {
-        return trimmed.to_lowercase().contains(&text.to_lowercase()) && !contains_slop(trimmed);
+        return trimmed.to_lowercase().contains(&text.to_lowercase()) && !f235(trimmed);
     }
 
     // Default: non-empty + passes quick_validate
-    validate::quick_validate(trimmed)
+    validate::f264(trimmed)
 }
 
 /// P12 banned words — AI slop that must never appear in generated output.
@@ -285,8 +288,9 @@ const SLOP_WORDS: &[&str] = &[
     "empowering", "streamlining", "leveraged", "optimized",
 ];
 
+/// f235=contains_slop
 /// Returns true if the text contains any P12 banned slop words.
-pub fn contains_slop(text: &str) -> bool {
+pub fn f235(text: &str) -> bool {
     let lower = text.to_lowercase();
     SLOP_WORDS.iter().any(|w| lower.contains(w))
 }
@@ -328,8 +332,9 @@ fn try_compile(code: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// f236=print_bench_results
 /// Print bench results as a summary table.
-pub fn print_bench_results(results: &[BenchResult]) {
+pub fn f236(results: &[T145]) {
     let pass_count = results.iter().filter(|r| r.passed).count();
     let fail_count = results
         .iter()

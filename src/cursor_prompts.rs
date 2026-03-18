@@ -21,7 +21,7 @@ pub(crate) fn baked_prompts() -> String {
 
 /// f111=load_cursor_prompts. Discover and concatenate all Cursor prompts. Returns empty if disabled.
 /// Baked-in rules (blocking, augment, tokenization, compression_map) are always included.
-pub fn load_cursor_prompts(workspace_root: &Path) -> String {
+pub fn f111(workspace_root: &Path) -> String {
     if !crate::cursor_prompts_enabled() {
         return String::new();
     }
@@ -225,7 +225,7 @@ mod tests {
     fn load_cursor_prompts_includes_baked_when_enabled() {
         let tmp = tempfile::TempDir::new().unwrap();
         unsafe { std::env::set_var("KOVA_PROJECTS_ROOT", tmp.path()) };
-        let out = load_cursor_prompts(tmp.path());
+        let out = f111(tmp.path());
         unsafe { std::env::remove_var("KOVA_PROJECTS_ROOT") };
         if crate::cursor_prompts_enabled() {
             assert!(

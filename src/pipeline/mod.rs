@@ -97,7 +97,7 @@ async fn run_pipeline(
     };
 
     let ctx = crate::context_loader::f82_with_recent(project_dir, user_input, Some(30));
-    let context_block = crate::context_loader::format_context(&ctx);
+    let context_block = crate::context_loader::f112(&ctx);
 
     let code_gen_prompt = format!(
         "{}{}\n\nGenerate Rust code only. Put code in ```rust ... ``` blocks. Be concise.",

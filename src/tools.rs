@@ -905,9 +905,9 @@ fn f208(call: &t103, project_dir: &Path) -> t104 {
     };
     let path = resolve_path(raw_path, project_dir);
 
-    match crate::syntax::outline_file(&path) {
+    match crate::syntax::f206(&path) {
         Ok(symbols) => {
-            let outline = crate::syntax::format_outline(&symbols);
+            let outline = crate::syntax::f205(&symbols);
             t104 {
                 tool: call.tool.clone(),
                 success: true,
@@ -951,7 +951,7 @@ fn f209(call: &t103) -> t104 {
         Err(e) => return e,
     };
 
-    crate::feedback::record_failure(crate::feedback::FailureRecord {
+    crate::feedback::f194(crate::feedback::FailureRecord {
         challenge_desc: challenge,
         input,
         expected_verify: expected,

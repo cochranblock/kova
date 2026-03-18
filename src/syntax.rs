@@ -54,7 +54,7 @@ pub struct Symbol {
 // ── Extraction ───────────────────────────────────────────────────
 
 /// f201=extract_symbols. Extract all symbols from Rust source.
-pub fn extract_symbols(source: &str) -> Vec<Symbol> {
+pub fn f201(source: &str) -> Vec<Symbol> {
     let lines: Vec<&str> = source.lines().collect();
     let mut symbols = Vec::new();
     let mut i = 0;
@@ -72,31 +72,31 @@ pub fn extract_symbols(source: &str) -> Vec<Symbol> {
 }
 
 /// f202=extract_functions. Extract only function symbols.
-pub fn extract_functions(source: &str) -> Vec<Symbol> {
-    extract_symbols(source)
+pub fn f202(source: &str) -> Vec<Symbol> {
+    f201(source)
         .into_iter()
         .filter(|s| s.kind == SymbolKind::Function)
         .collect()
 }
 
 /// f203=extract_structs. Extract struct and enum symbols.
-pub fn extract_structs(source: &str) -> Vec<Symbol> {
-    extract_symbols(source)
+pub fn f203(source: &str) -> Vec<Symbol> {
+    f201(source)
         .into_iter()
         .filter(|s| matches!(s.kind, SymbolKind::Struct | SymbolKind::Enum))
         .collect()
 }
 
 /// f204=extract_impls. Extract impl blocks.
-pub fn extract_impls(source: &str) -> Vec<Symbol> {
-    extract_symbols(source)
+pub fn f204(source: &str) -> Vec<Symbol> {
+    f201(source)
         .into_iter()
         .filter(|s| s.kind == SymbolKind::Impl)
         .collect()
 }
 
 /// f205=format_outline. Format symbols as a code outline.
-pub fn format_outline(symbols: &[Symbol]) -> String {
+pub fn f205(symbols: &[Symbol]) -> String {
     let mut out = String::new();
     for s in symbols {
         let vis = if s.is_public { "pub " } else { "" };
@@ -112,9 +112,9 @@ pub fn format_outline(symbols: &[Symbol]) -> String {
 }
 
 /// f206=outline_file. Parse a file and return its outline.
-pub fn outline_file(path: &std::path::Path) -> anyhow::Result<Vec<Symbol>> {
+pub fn f206(path: &std::path::Path) -> anyhow::Result<Vec<Symbol>> {
     let content = std::fs::read_to_string(path)?;
-    Ok(extract_symbols(&content))
+    Ok(f201(&content))
 }
 
 // ── Internal Parsing ─────────────────────────────────────────────
@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn extract_basic_function() {
         let src = "pub fn hello() {\n    println!(\"hi\");\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "hello");
         assert_eq!(syms[0].kind, SymbolKind::Function);
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn extract_struct_and_impl() {
         let src = "struct Foo {\n    x: i32,\n}\n\nimpl Foo {\n    fn new() -> Self {\n        Foo { x: 0 }\n    }\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert!(syms.len() >= 2);
         assert_eq!(syms[0].name, "Foo");
         assert_eq!(syms[0].kind, SymbolKind::Struct);
@@ -466,7 +466,7 @@ mod tests {
     #[test]
     fn extract_enum() {
         let src = "pub enum Color {\n    Red,\n    Green,\n    Blue,\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "Color");
         assert_eq!(syms[0].kind, SymbolKind::Enum);
@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn extract_trait() {
         let src = "pub trait Display {\n    fn fmt(&self) -> String;\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert!(syms.len() >= 1);
         assert_eq!(syms[0].name, "Display");
         assert_eq!(syms[0].kind, SymbolKind::Trait);
@@ -484,7 +484,7 @@ mod tests {
     #[test]
     fn extract_async_fn() {
         let src = "pub async fn fetch() -> Result<(), Error> {\n    Ok(())\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "fetch");
         assert_eq!(syms[0].kind, SymbolKind::Function);
@@ -493,15 +493,15 @@ mod tests {
     #[test]
     fn format_outline_shows_lines() {
         let src = "fn foo() {}\nstruct Bar {}";
-        let syms = extract_symbols(src);
-        let outline = format_outline(&syms);
+        let syms = f201(src);
+        let outline = f205(&syms);
         assert!(outline.contains("fn foo"));
         assert!(outline.contains("struct Bar"));
     }
 
     #[test]
     fn empty_source() {
-        let syms = extract_symbols("");
+        let syms = f201("");
         assert!(syms.is_empty());
     }
 
@@ -515,7 +515,7 @@ mod tests {
     #[test]
     fn find_block_end_ignores_braces_in_strings() {
         let src = "fn foo() {\n    let s = \"{ not a block }\";\n    let x = 1;\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "foo");
         assert_eq!(syms[0].line_end, 3);
@@ -524,7 +524,7 @@ mod tests {
     #[test]
     fn find_block_end_ignores_braces_in_comments() {
         let src = "fn bar() {\n    // { this is a comment }\n    let x = 2;\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "bar");
         assert_eq!(syms[0].line_end, 3);
@@ -533,7 +533,7 @@ mod tests {
     #[test]
     fn find_block_end_ignores_block_comment() {
         let src = "fn baz() {\n    /* { nested } */\n    let y = 3;\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "baz");
         assert_eq!(syms[0].line_end, 3);
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn extract_const_and_static() {
         let src = "pub const MAX: usize = 100;\nstatic COUNT: usize = 0;";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 2);
         assert_eq!(syms[0].name, "MAX");
         assert_eq!(syms[0].kind, SymbolKind::Const);
@@ -553,7 +553,7 @@ mod tests {
     #[test]
     fn extract_type_alias() {
         let src = "pub type Result<T> = std::result::Result<T, Error>;";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "Result");
         assert_eq!(syms[0].kind, SymbolKind::TypeAlias);
@@ -562,14 +562,14 @@ mod tests {
     #[test]
     fn extract_mod_with_body() {
         let src = "mod inner {\n    fn private() {}\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert!(syms.iter().any(|s| s.name == "inner" && s.kind == SymbolKind::Mod));
     }
 
     #[test]
     fn find_block_end_ignores_braces_in_raw_string() {
         let src = "fn raw() {\n    let s = r#\"{ not a block }\"#;\n    let x = 1;\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "raw");
         assert_eq!(syms[0].line_end, 3);
@@ -578,7 +578,7 @@ mod tests {
     #[test]
     fn extract_pub_crate_fn() {
         let src = "pub(crate) fn internal() {\n    42\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "internal");
         assert!(syms[0].is_public);
@@ -587,7 +587,7 @@ mod tests {
     #[test]
     fn extract_pub_in_path_fn() {
         let src = "pub(in crate::module) fn scoped() {\n    1\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "scoped");
     }
@@ -595,7 +595,7 @@ mod tests {
     #[test]
     fn find_block_end_escaped_quote_in_string() {
         let src = "fn esc() {\n    let s = \"she said \\\"{ hi }\\\"\";\n    let x = 1;\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "esc");
         assert_eq!(syms[0].line_end, 3);
@@ -604,7 +604,7 @@ mod tests {
     #[test]
     fn extract_impl_trait_for() {
         let src = "impl std::fmt::Display for Foo {\n    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n        Ok(())\n    }\n}";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         let impl_sym = syms.iter().find(|s| s.kind == SymbolKind::Impl).unwrap();
         assert!(impl_sym.name.contains("Display"));
         assert!(impl_sym.name.contains("Foo"));
@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn extract_fn_nested_generics() {
         let src = "fn foo<T: Clone, U: Into<T>>(a: T, b: U) -> T where T: Default, U: Send { a }";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "foo");
         assert_eq!(syms[0].kind, SymbolKind::Function);
@@ -622,7 +622,7 @@ mod tests {
     #[test]
     fn extract_fn_lifetime_bounds() {
         let src = "fn bar<'a, 'b: 'a>(x: &'a str, y: &'b str) -> &'a str where 'b: 'a { x }";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "bar");
     }
@@ -630,7 +630,7 @@ mod tests {
     #[test]
     fn extract_fn_where_clause() {
         let src = "fn baz<T>(v: T) -> T where T: std::fmt::Debug + Send { v }";
-        let syms = extract_symbols(src);
+        let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "baz");
     }

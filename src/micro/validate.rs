@@ -4,24 +4,26 @@
 //! Inspired by Mattbusel/LLM-Hallucination-Detection-Script's multi-method approach:
 //! confidence patterns, factual density, coherence scoring, contradiction detection.
 
-use super::runner::MicroResult;
+use super::runner::T154;
 
+/// T173=ValidationResult
 /// Validation verdict.
 #[derive(Debug, Clone)]
-pub struct ValidationResult {
+pub struct T173 {
     /// Overall pass/fail.
     pub passed: bool,
     /// Individual check results.
-    pub checks: Vec<ValidationCheck>,
+    pub checks: Vec<T174>,
     /// Overall confidence (0.0-1.0).
     pub confidence: f32,
     /// One-line summary.
     pub summary: String,
 }
 
+/// T174=ValidationCheck
 /// A single validation check.
 #[derive(Debug, Clone)]
-pub struct ValidationCheck {
+pub struct T174 {
     pub name: String,
     pub passed: bool,
     pub detail: String,
@@ -33,7 +35,8 @@ pub struct ValidationCheck {
 /// - Confidence patterns: detect hedging language that signals low confidence
 /// - Coherence: response should relate to the input (basic overlap check)
 /// - Format: response should match expected output schema
-pub fn validate(result: &MicroResult, input: &str, expected_format: &str) -> ValidationResult {
+/// f263=validate
+pub fn f263(result: &T154, input: &str, expected_format: &str) -> T173 {
     let mut checks = Vec::new();
     let response = &result.response;
 
@@ -54,7 +57,7 @@ pub fn validate(result: &MicroResult, input: &str, expected_format: &str) -> Val
     checks.push(format);
 
     // 5. Non-empty
-    let nonempty = ValidationCheck {
+    let nonempty = T174 {
         name: "non_empty".into(),
         passed: !response.trim().is_empty(),
         detail: if response.trim().is_empty() {
@@ -82,7 +85,7 @@ pub fn validate(result: &MicroResult, input: &str, expected_format: &str) -> Val
         format!("FAIL — failed: {}", failed.join(", "))
     };
 
-    ValidationResult {
+    T173 {
         passed: all_passed,
         checks,
         confidence: confidence_score,
@@ -91,7 +94,7 @@ pub fn validate(result: &MicroResult, input: &str, expected_format: &str) -> Val
 }
 
 /// Check for placeholder/incomplete markers.
-fn check_completeness(response: &str) -> ValidationCheck {
+fn check_completeness(response: &str) -> T174 {
     let markers = [
         "todo!()",
         "unimplemented!()",
@@ -105,7 +108,7 @@ fn check_completeness(response: &str) -> ValidationCheck {
 
     let found: Vec<&&str> = markers.iter().filter(|m| response.contains(**m)).collect();
 
-    ValidationCheck {
+    T174 {
         name: "completeness".into(),
         passed: found.is_empty(),
         detail: if found.is_empty() {
@@ -121,7 +124,7 @@ fn check_completeness(response: &str) -> ValidationCheck {
 
 /// Detect hedging language that signals low model confidence.
 /// From Mattbusel's confidence pattern detection.
-fn check_confidence_patterns(response: &str) -> ValidationCheck {
+fn check_confidence_patterns(response: &str) -> T174 {
     let hedges = [
         "i'm not sure",
         "i think",
@@ -137,7 +140,7 @@ fn check_confidence_patterns(response: &str) -> ValidationCheck {
     let lower = response.to_lowercase();
     let found: Vec<&&str> = hedges.iter().filter(|h| lower.contains(**h)).collect();
 
-    ValidationCheck {
+    T174 {
         name: "confidence".into(),
         passed: found.is_empty(),
         detail: if found.is_empty() {
@@ -152,7 +155,7 @@ fn check_confidence_patterns(response: &str) -> ValidationCheck {
 }
 
 /// Basic coherence: check that response shares some terms with input.
-fn check_coherence(response: &str, input: &str) -> ValidationCheck {
+fn check_coherence(response: &str, input: &str) -> T174 {
     let input_words: std::collections::HashSet<&str> = input
         .split_whitespace()
         .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
@@ -171,7 +174,7 @@ fn check_coherence(response: &str, input: &str) -> ValidationCheck {
         overlap as f32 / input_words.len() as f32
     };
 
-    ValidationCheck {
+    T174 {
         name: "coherence".into(),
         passed: ratio > 0.1 || input_words.len() < 3,
         detail: format!(
@@ -184,9 +187,9 @@ fn check_coherence(response: &str, input: &str) -> ValidationCheck {
 }
 
 /// Check if response matches expected format hints.
-fn check_format(response: &str, expected: &str) -> ValidationCheck {
+fn check_format(response: &str, expected: &str) -> T174 {
     if expected.is_empty() {
-        return ValidationCheck {
+        return T174 {
             name: "format".into(),
             passed: true,
             detail: "no format constraint".into(),
@@ -206,7 +209,7 @@ fn check_format(response: &str, expected: &str) -> ValidationCheck {
         true
     };
 
-    ValidationCheck {
+    T174 {
         name: "format".into(),
         passed,
         detail: if passed {
@@ -217,8 +220,9 @@ fn check_format(response: &str, expected: &str) -> ValidationCheck {
     }
 }
 
+/// f264=quick_validate
 /// Quick pass/fail validation — just checks if the response looks valid.
-pub fn quick_validate(response: &str) -> bool {
+pub fn f264(response: &str) -> bool {
     !response.trim().is_empty()
         && !response.contains("todo!()")
         && !response.contains("unimplemented!()")

@@ -7,9 +7,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// T157=TemplateStats
 /// Per-template stats.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TemplateStats {
+pub struct T157 {
     pub runs: u64,
     pub passes: u64,
     pub failures: u64,
@@ -18,9 +19,9 @@ pub struct TemplateStats {
     pub total_tokens: u64,
 }
 
-impl TemplateStats {
+impl T157 {
     fn new() -> Self {
-        TemplateStats {
+        T157 {
             runs: 0,
             passes: 0,
             failures: 0,
@@ -47,21 +48,22 @@ impl TemplateStats {
     }
 }
 
+/// T158=MicroStats
 /// All stats, keyed by template ID.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct MicroStats {
-    pub templates: HashMap<String, TemplateStats>,
+pub struct T158 {
+    pub templates: HashMap<String, T157>,
 }
 
-impl Default for MicroStats {
+impl Default for T158 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MicroStats {
+impl T158 {
     pub fn new() -> Self {
-        MicroStats {
+        T158 {
             templates: HashMap::new(),
         }
     }
@@ -69,8 +71,8 @@ impl MicroStats {
     /// Load from JSON file. Returns empty stats if file doesn't exist.
     pub fn load(path: &Path) -> Self {
         match std::fs::read_to_string(path) {
-            Ok(content) => serde_json::from_str(&content).unwrap_or_else(|_| MicroStats::new()),
-            Err(_) => MicroStats::new(),
+            Ok(content) => serde_json::from_str(&content).unwrap_or_else(|_| T158::new()),
+            Err(_) => T158::new(),
         }
     }
 
@@ -88,7 +90,7 @@ impl MicroStats {
         let entry = self
             .templates
             .entry(template_id.to_string())
-            .or_insert_with(TemplateStats::new);
+            .or_insert_with(T157::new);
         entry.runs += 1;
         entry.passes += 1;
         entry.total_duration_ms += duration_ms;
@@ -100,7 +102,7 @@ impl MicroStats {
         let entry = self
             .templates
             .entry(template_id.to_string())
-            .or_insert_with(TemplateStats::new);
+            .or_insert_with(T157::new);
         entry.runs += 1;
         entry.failures += 1;
         entry.total_duration_ms += duration_ms;
@@ -112,7 +114,7 @@ impl MicroStats {
         let entry = self
             .templates
             .entry(template_id.to_string())
-            .or_insert_with(TemplateStats::new);
+            .or_insert_with(T157::new);
         entry.runs += 1;
         entry.errors += 1;
         entry.total_duration_ms += duration_ms;
@@ -160,8 +162,9 @@ impl MicroStats {
     }
 }
 
+/// f246=stats_path
 /// Default stats file path: ~/.kova/micro/stats.json
-pub fn stats_path() -> PathBuf {
+pub fn f246() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     PathBuf::from(home)
         .join(".kova")

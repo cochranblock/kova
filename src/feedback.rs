@@ -89,7 +89,7 @@ pub struct FeedbackStats {
 // ── Core Functions ───────────────────────────────────────────────
 
 /// f194=record_failure. Store a failure record in sled.
-pub fn record_failure(mut record: FailureRecord) {
+pub fn f194(mut record: FailureRecord) {
     if record.ts == 0 {
         record.ts = now_ms();
     }
@@ -103,7 +103,7 @@ pub fn record_failure(mut record: FailureRecord) {
 }
 
 /// f195=recent_failures. Query recent failure records (newest first).
-pub fn recent_failures(limit: usize) -> Vec<FailureRecord> {
+pub fn f195(limit: usize) -> Vec<FailureRecord> {
     let mut out = Vec::new();
     let db = match feedback_db() {
         Some(db) => db,
@@ -130,7 +130,7 @@ pub fn recent_failures(limit: usize) -> Vec<FailureRecord> {
 
 /// f196=generate_challenge_from_failure. Use an LLM to create a harder
 /// variant of the failed challenge. Returns one generated challenge.
-pub fn generate_challenge_from_failure(
+pub fn f196(
     failure: &FailureRecord,
     provider: &crate::providers::Provider,
 ) -> Result<GeneratedChallenge, String> {
@@ -179,7 +179,7 @@ pub fn generate_challenge_from_failure(
 
 /// f197=export_generated_challenges. Format generated challenges as Rust
 /// code (tce() calls) that can be pasted into tournament.rs.
-pub fn export_generated_challenges(challenges: &[GeneratedChallenge]) -> String {
+pub fn f197(challenges: &[GeneratedChallenge]) -> String {
     let mut out = String::new();
     out.push_str("// ── Generated from feedback loop ──────────────────────────────\n");
     out.push_str("// Paste into tournament_challenges() in tournament.rs\n\n");
@@ -204,7 +204,7 @@ pub fn export_generated_challenges(challenges: &[GeneratedChallenge]) -> String 
 }
 
 /// f198=feedback_stats. Count failures by model, event type, and generated challenges.
-pub fn feedback_stats() -> FeedbackStats {
+pub fn f198() -> FeedbackStats {
     let mut stats = FeedbackStats {
         total_failures: 0,
         by_model: Vec::new(),
@@ -437,7 +437,7 @@ mod tests {
             },
         ];
 
-        let output = export_generated_challenges(&challenges);
+        let output = f197(&challenges);
 
         // Each challenge should produce one tce() line
         let tce_lines: Vec<&str> = output.lines().filter(|l| l.starts_with("tce(")).collect();
@@ -672,7 +672,7 @@ DIFFICULTY: hard";
 
     #[test]
     fn export_generated_challenges_empty() {
-        let output = export_generated_challenges(&[]);
+        let output = f197(&[]);
         // Header comment is always emitted, but no tce() lines
         let tce_lines: Vec<&str> = output.lines().filter(|l| l.starts_with("tce(")).collect();
         assert!(tce_lines.is_empty());

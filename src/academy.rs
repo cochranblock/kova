@@ -19,7 +19,7 @@ pub async fn explain_trace(trace: &LastTrace, _model_path: &Path) -> Result<Stri
     let cluster = Cluster::default_hive();
 
     let project = crate::config::default_project();
-    let cursor = crate::cursor_prompts::load_cursor_prompts(&project);
+    let cursor = crate::cursor_prompts::f111(&project);
     let ddi_note = "Fix loop loses effectiveness after 2-3 attempts (DDI). We cap retries to avoid worse output.";
     let system = if cursor.is_empty() {
         format!(

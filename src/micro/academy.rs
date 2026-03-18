@@ -17,13 +17,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use super::tournament::TournamentResult;
+use super::tournament::T165;
 
 // ── Difficulty Scoring ──────────────────────────────────────────
 
+/// T140=ChallengeDifficulty
 /// Per-challenge difficulty score derived from tournament pass rates.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ChallengeDifficulty {
+pub struct T140 {
     pub description: String,
     pub category: String,
     pub total_attempts: usize,
@@ -37,13 +38,14 @@ pub struct ChallengeDifficulty {
     pub broken: bool,
 }
 
+/// T141=ModelProfile
 /// Per-model skill profile from tournament results.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ModelProfile {
+pub struct T141 {
     pub model: String,
     pub node_id: String,
     /// Per-category accuracy: category → (passed, total, accuracy)
-    pub categories: HashMap<String, CategorySkill>,
+    pub categories: HashMap<String, T142>,
     /// Overall accuracy
     pub overall_accuracy: f64,
     /// Weakest categories (sorted worst → best)
@@ -52,32 +54,35 @@ pub struct ModelProfile {
     pub strengths: Vec<String>,
 }
 
+/// T142=CategorySkill
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CategorySkill {
+pub struct T142 {
     pub passed: usize,
     pub total: usize,
     pub accuracy: f64,
 }
 
+/// T143=AcademyReport
 /// Full academy analysis of a tournament.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct AcademyReport {
+pub struct T143 {
     pub timestamp: String,
-    pub challenge_difficulties: Vec<ChallengeDifficulty>,
-    pub model_profiles: Vec<ModelProfile>,
+    pub challenge_difficulties: Vec<T140>,
+    pub model_profiles: Vec<T141>,
     /// Challenges to retire (too easy)
     pub retire_candidates: Vec<String>,
     /// Challenges to review (possibly broken)
     pub broken_candidates: Vec<String>,
     /// Categories needing more challenges (high fail rate + few challenges)
-    pub curriculum_gaps: Vec<CurriculumGap>,
+    pub curriculum_gaps: Vec<T144>,
     /// Recommended next actions
     pub recommendations: Vec<String>,
 }
 
+/// T144=CurriculumGap
 /// A gap in the curriculum that needs new challenges.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurriculumGap {
+pub struct T144 {
     pub category: String,
     /// Average pass rate across all models in this category
     pub avg_pass_rate: f64,
@@ -91,8 +96,9 @@ pub struct CurriculumGap {
 
 // ── Analysis ────────────────────────────────────────────────────
 
+/// f230=analyze
 /// Analyze tournament results and produce an academy report.
-pub fn analyze(result: &TournamentResult) -> AcademyReport {
+pub fn f230(result: &T165) -> T143 {
     let difficulties = score_difficulties(result);
     let profiles = build_profiles(result);
     let curriculum_gaps = detect_gaps(result, &difficulties);
@@ -109,7 +115,7 @@ pub fn analyze(result: &TournamentResult) -> AcademyReport {
 
     let recommendations = generate_recommendations(&difficulties, &profiles, &curriculum_gaps);
 
-    AcademyReport {
+    T143 {
         timestamp: format!("{}", std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default().as_secs()),
@@ -123,7 +129,7 @@ pub fn analyze(result: &TournamentResult) -> AcademyReport {
 }
 
 /// Score each challenge's difficulty from pass rates.
-fn score_difficulties(result: &TournamentResult) -> Vec<ChallengeDifficulty> {
+fn score_difficulties(result: &T165) -> Vec<T140> {
     let mut by_challenge: HashMap<String, (String, usize, usize)> = HashMap::new();
 
     for m in &result.matches {
@@ -137,7 +143,7 @@ fn score_difficulties(result: &TournamentResult) -> Vec<ChallengeDifficulty> {
 
     by_challenge.into_iter().map(|(desc, (cat, total, passed))| {
         let pass_rate = if total > 0 { passed as f64 / total as f64 } else { 0.0 };
-        ChallengeDifficulty {
+        T140 {
             description: desc,
             category: cat,
             total_attempts: total,
@@ -151,7 +157,7 @@ fn score_difficulties(result: &TournamentResult) -> Vec<ChallengeDifficulty> {
 }
 
 /// Build per-model skill profiles.
-fn build_profiles(result: &TournamentResult) -> Vec<ModelProfile> {
+fn build_profiles(result: &T165) -> Vec<T141> {
     let mut by_model: HashMap<String, HashMap<String, (usize, usize)>> = HashMap::new();
     let mut model_nodes: HashMap<String, String> = HashMap::new();
 
@@ -168,10 +174,10 @@ fn build_profiles(result: &TournamentResult) -> Vec<ModelProfile> {
         let model = key.split('@').next().unwrap_or(&key).to_string();
         let node_id = model_nodes.get(&key).cloned().unwrap_or_default();
 
-        let categories: HashMap<String, CategorySkill> = cats.into_iter()
+        let categories: HashMap<String, T142> = cats.into_iter()
             .map(|(cat, (total, passed))| {
                 let accuracy = if total > 0 { passed as f64 / total as f64 } else { 0.0 };
-                (cat, CategorySkill { passed, total, accuracy })
+                (cat, T142 { passed, total, accuracy })
             })
             .collect();
 
@@ -197,7 +203,7 @@ fn build_profiles(result: &TournamentResult) -> Vec<ModelProfile> {
             .map(|(k, _)| k.clone())
             .collect();
 
-        ModelProfile {
+        T141 {
             model,
             node_id,
             categories,
@@ -210,9 +216,9 @@ fn build_profiles(result: &TournamentResult) -> Vec<ModelProfile> {
 
 /// Detect curriculum gaps — categories that need more/better challenges.
 fn detect_gaps(
-    result: &TournamentResult,
-    difficulties: &[ChallengeDifficulty],
-) -> Vec<CurriculumGap> {
+    result: &T165,
+    difficulties: &[T140],
+) -> Vec<T144> {
     // Group by category
     let mut cat_stats: HashMap<String, (f64, usize, usize)> = HashMap::new(); // (sum_pass_rate, count, model_count)
     for d in difficulties {
@@ -250,7 +256,7 @@ fn detect_gaps(
             0.5 // balanced
         };
 
-        CurriculumGap {
+        T144 {
             category: cat,
             avg_pass_rate,
             challenge_count: count,
@@ -262,9 +268,9 @@ fn detect_gaps(
 
 /// Generate actionable recommendations from the analysis.
 fn generate_recommendations(
-    difficulties: &[ChallengeDifficulty],
-    profiles: &[ModelProfile],
-    gaps: &[CurriculumGap],
+    difficulties: &[T140],
+    profiles: &[T141],
+    gaps: &[T144],
 ) -> Vec<String> {
     let mut recs = Vec::new();
 
@@ -326,8 +332,9 @@ fn generate_recommendations(
 
 // ── Display ─────────────────────────────────────────────────────
 
+/// f231=print_report
 /// Print academy report.
-pub fn print_report(report: &AcademyReport) {
+pub fn f231(report: &T143) {
     println!("\nKOVA ACADEMY — CURRICULUM ANALYSIS");
     println!("═══════════════════════════════════════════════════════════════════");
 
@@ -398,8 +405,9 @@ pub fn print_report(report: &AcademyReport) {
     println!("\n═══════════════════════════════════════════════════════════════════");
 }
 
+/// f232=save_report
 /// Save academy report to disk.
-pub fn save_report(report: &AcademyReport) -> Result<PathBuf, String> {
+pub fn f232(report: &T143) -> Result<PathBuf, String> {
     let path = academy_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;

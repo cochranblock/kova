@@ -27,7 +27,8 @@ pub const GAP: f32 = 8.0;
 pub const PADDING_SM: f32 = 6.0;
 pub const PADDING_MD: f32 = 12.0;
 
-pub fn apply(ctx: &egui::Context) {
+/// f221=apply
+pub fn f221(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
     style.visuals = visuals();
     style.spacing = spacing();
@@ -85,14 +86,16 @@ fn text_styles() -> std::collections::BTreeMap<TextStyle, FontId> {
     map
 }
 
-pub fn header_frame() -> egui::Frame {
+/// f222=header_frame
+pub fn f222() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::SURFACE)
         .inner_margin(egui::Margin::symmetric(16, 10))
         .stroke(Stroke::new(1.0, colors::BORDER))
 }
 
-pub fn message_frame() -> egui::Frame {
+/// f223=message_frame
+pub fn f223() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::SURFACE)
         .corner_radius(CornerRadius::same(RADIUS))
@@ -100,7 +103,8 @@ pub fn message_frame() -> egui::Frame {
         .stroke(Stroke::new(1.0, colors::BORDER))
 }
 
-pub fn user_message_frame() -> egui::Frame {
+/// f224=user_message_frame
+pub fn f224() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::SURFACE_ELEVATED)
         .corner_radius(CornerRadius::same(RADIUS))
@@ -108,7 +112,8 @@ pub fn user_message_frame() -> egui::Frame {
         .stroke(Stroke::new(1.0, colors::PRIMARY))
 }
 
-pub fn code_frame() -> egui::Frame {
+/// f225=code_frame
+pub fn f225() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::BG)
         .corner_radius(CornerRadius::same(RADIUS_SM))
@@ -116,7 +121,8 @@ pub fn code_frame() -> egui::Frame {
         .stroke(Stroke::new(1.0, colors::BORDER))
 }
 
-pub fn input_frame() -> egui::Frame {
+/// f226=input_frame
+pub fn f226() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::SURFACE)
         .corner_radius(CornerRadius::same(RADIUS))
@@ -124,7 +130,8 @@ pub fn input_frame() -> egui::Frame {
         .stroke(Stroke::new(1.0, colors::BORDER))
 }
 
-pub fn sidebar_frame() -> egui::Frame {
+/// f227=sidebar_frame
+pub fn f227() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::SURFACE)
         .inner_margin(egui::Margin::same(12))

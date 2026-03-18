@@ -17,14 +17,15 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use super::tournament::{TournamentResult, MatchResult};
-use super::registry::MicroRegistry;
+use super::tournament::{T165, T162};
+use super::registry::T149;
 
 // ── DPO Pair ────────────────────────────────────────────────────
 
+/// T167=DpoPair
 /// A single DPO preference pair.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DpoPair {
+pub struct T167 {
     /// System prompt context (from template).
     pub system: String,
     /// The challenge input / user prompt.
@@ -42,9 +43,10 @@ pub struct DpoPair {
     pub rejected_model: String,
 }
 
+/// T168=SftExample
 /// A supervised fine-tuning example.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SftExample {
+pub struct T168 {
     pub system: String,
     pub prompt: String,
     pub response: String,
@@ -52,14 +54,16 @@ pub struct SftExample {
     pub model: String,
 }
 
+/// T169=ChatMlExample
 /// ChatML formatted example (for MLX/unsloth).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ChatMlExample {
-    pub messages: Vec<ChatMlMessage>,
+pub struct T169 {
+    pub messages: Vec<T170>,
 }
 
+/// T170=ChatMlMessage
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ChatMlMessage {
+pub struct T170 {
     pub role: String,
     pub content: String,
 }
@@ -67,11 +71,11 @@ pub struct ChatMlMessage {
 // ── Export Functions ─────────────────────────────────────────────
 
 /// Build challenge-to-input lookup from registry.
-fn challenge_inputs(registry: &MicroRegistry) -> HashMap<String, (String, String)> {
-    let challenges = super::tournament::get_challenges(registry);
+fn challenge_inputs(registry: &T149) -> HashMap<String, (String, String)> {
+    let challenges = super::tournament::f248(registry);
     let mut map = HashMap::new();
     for ch in challenges {
-        // key = challenge description (matches MatchResult.challenge)
+        // key = challenge description (matches T162.challenge)
         let sys = registry.get(&ch.template_id)
             .map(|t| t.system_prompt.clone())
             .unwrap_or_default();
@@ -80,16 +84,17 @@ fn challenge_inputs(registry: &MicroRegistry) -> HashMap<String, (String, String
     map
 }
 
+/// f255=extract_dpo_pairs
 /// Extract DPO preference pairs from tournament results.
 ///
 /// For each challenge, pairs every passing response with every failing response.
 /// More pairs = more signal. Filters out error responses (no useful rejected signal).
-pub fn extract_dpo_pairs(result: &TournamentResult, registry: &MicroRegistry) -> Vec<DpoPair> {
+pub fn f255(result: &T165, registry: &T149) -> Vec<T167> {
     let inputs = challenge_inputs(registry);
     let mut pairs = Vec::new();
 
     // Group matches by challenge description
-    let mut by_challenge: HashMap<String, Vec<&MatchResult>> = HashMap::new();
+    let mut by_challenge: HashMap<String, Vec<&T162>> = HashMap::new();
     for m in &result.matches {
         by_challenge.entry(m.challenge.clone()).or_default().push(m);
     }
@@ -100,17 +105,17 @@ pub fn extract_dpo_pairs(result: &TournamentResult, registry: &MicroRegistry) ->
             None => continue,
         };
 
-        let passed: Vec<&&MatchResult> = matches.iter()
+        let passed: Vec<&&T162> = matches.iter()
             .filter(|m| m.passed && !m.response.is_empty())
             .collect();
-        let failed: Vec<&&MatchResult> = matches.iter()
+        let failed: Vec<&&T162> = matches.iter()
             .filter(|m| !m.passed && !m.response.is_empty() && !m.response.starts_with("ERROR:"))
             .collect();
 
         // Cross-product: every passing response paired with every failing response
         for p in &passed {
             for f in &failed {
-                pairs.push(DpoPair {
+                pairs.push(T167 {
                     system: system.clone(),
                     prompt: input.clone(),
                     chosen: p.response.clone(),
@@ -127,8 +132,9 @@ pub fn extract_dpo_pairs(result: &TournamentResult, registry: &MicroRegistry) ->
     pairs
 }
 
+/// f256=extract_sft
 /// Extract supervised fine-tuning examples (passing responses only).
-pub fn extract_sft(result: &TournamentResult, registry: &MicroRegistry) -> Vec<SftExample> {
+pub fn f256(result: &T165, registry: &T149) -> Vec<T168> {
     let inputs = challenge_inputs(registry);
     let mut examples = Vec::new();
 
@@ -140,7 +146,7 @@ pub fn extract_sft(result: &TournamentResult, registry: &MicroRegistry) -> Vec<S
             None => continue,
         };
 
-        examples.push(SftExample {
+        examples.push(T168 {
             system,
             prompt: input,
             response: m.response.clone(),
@@ -152,57 +158,60 @@ pub fn extract_sft(result: &TournamentResult, registry: &MicroRegistry) -> Vec<S
     examples
 }
 
+/// f257=to_chatml
 /// Convert SFT examples to ChatML format.
-pub fn to_chatml(examples: &[SftExample]) -> Vec<ChatMlExample> {
+pub fn f257(examples: &[T168]) -> Vec<T169> {
     examples.iter().map(|ex| {
         let mut messages = Vec::new();
         if !ex.system.is_empty() {
-            messages.push(ChatMlMessage {
+            messages.push(T170 {
                 role: "system".into(),
                 content: ex.system.clone(),
             });
         }
-        messages.push(ChatMlMessage {
+        messages.push(T170 {
             role: "user".into(),
             content: ex.prompt.clone(),
         });
-        messages.push(ChatMlMessage {
+        messages.push(T170 {
             role: "assistant".into(),
             content: ex.response.clone(),
         });
-        ChatMlExample { messages }
+        T169 { messages }
     }).collect()
 }
 
+/// T171=ChatMlDpo
 /// Convert DPO pairs to ChatML-DPO format (for TRL/unsloth).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ChatMlDpo {
-    pub prompt: Vec<ChatMlMessage>,
-    pub chosen: Vec<ChatMlMessage>,
-    pub rejected: Vec<ChatMlMessage>,
+pub struct T171 {
+    pub prompt: Vec<T170>,
+    pub chosen: Vec<T170>,
+    pub rejected: Vec<T170>,
 }
 
-pub fn to_chatml_dpo(pairs: &[DpoPair]) -> Vec<ChatMlDpo> {
+/// f258=to_chatml_dpo
+pub fn f258(pairs: &[T167]) -> Vec<T171> {
     pairs.iter().map(|p| {
         let mut prompt_msgs = Vec::new();
         if !p.system.is_empty() {
-            prompt_msgs.push(ChatMlMessage {
+            prompt_msgs.push(T170 {
                 role: "system".into(),
                 content: p.system.clone(),
             });
         }
-        prompt_msgs.push(ChatMlMessage {
+        prompt_msgs.push(T170 {
             role: "user".into(),
             content: p.prompt.clone(),
         });
 
-        ChatMlDpo {
+        T171 {
             prompt: prompt_msgs,
-            chosen: vec![ChatMlMessage {
+            chosen: vec![T170 {
                 role: "assistant".into(),
                 content: p.chosen.clone(),
             }],
-            rejected: vec![ChatMlMessage {
+            rejected: vec![T170 {
                 role: "assistant".into(),
                 content: p.rejected.clone(),
             }],
@@ -212,10 +221,11 @@ pub fn to_chatml_dpo(pairs: &[DpoPair]) -> Vec<ChatMlDpo> {
 
 // ── Export to disk ───────────────────────────────────────────────
 
+/// f259=export_training_data
 /// Export training data to ~/.kova/micro/training/
-pub fn export_training_data(
-    result: &TournamentResult,
-    registry: &MicroRegistry,
+pub fn f259(
+    result: &T165,
+    registry: &T149,
     format: &str,
 ) -> Result<PathBuf, String> {
     let base = training_dir();
@@ -223,7 +233,7 @@ pub fn export_training_data(
 
     match format {
         "dpo" => {
-            let pairs = extract_dpo_pairs(result, registry);
+            let pairs = f255(result, registry);
             if pairs.is_empty() {
                 return Err("no DPO pairs found — need both passing and failing responses for same challenges".into());
             }
@@ -237,7 +247,7 @@ pub fn export_training_data(
             std::fs::write(&path, lines.join("\n")).map_err(|e| e.to_string())?;
 
             // Also export ChatML-DPO format for TRL
-            let chatml = to_chatml_dpo(&pairs);
+            let chatml = f258(&pairs);
             let chatml_path = base.join("dpo_chatml.jsonl");
             let mut chatml_lines = Vec::new();
             for c in &chatml {
@@ -251,7 +261,7 @@ pub fn export_training_data(
             Ok(path)
         }
         "sft" => {
-            let examples = extract_sft(result, registry);
+            let examples = f256(result, registry);
             if examples.is_empty() {
                 return Err("no SFT examples found — need passing responses".into());
             }
@@ -265,7 +275,7 @@ pub fn export_training_data(
             std::fs::write(&path, lines.join("\n")).map_err(|e| e.to_string())?;
 
             // ChatML format
-            let chatml = to_chatml(&examples);
+            let chatml = f257(&examples);
             let chatml_path = base.join("sft_chatml.jsonl");
             let mut chatml_lines = Vec::new();
             for c in &chatml {
@@ -280,12 +290,12 @@ pub fn export_training_data(
         }
         "all" => {
             // Export both
-            let _ = export_training_data(result, registry, "dpo");
-            let _ = export_training_data(result, registry, "sft");
+            let _ = f259(result, registry, "dpo");
+            let _ = f259(result, registry, "sft");
 
             // Summary stats
-            let dpo = extract_dpo_pairs(result, registry);
-            let sft = extract_sft(result, registry);
+            let dpo = f255(result, registry);
+            let sft = f256(result, registry);
             let summary_path = base.join("summary.json");
             let summary = serde_json::json!({
                 "timestamp": result.timestamp,
@@ -305,10 +315,11 @@ pub fn export_training_data(
     }
 }
 
+/// f260=training_stats
 /// Stats about exported training data.
-pub fn training_stats(result: &TournamentResult, registry: &MicroRegistry) {
-    let dpo = extract_dpo_pairs(result, registry);
-    let sft = extract_sft(result, registry);
+pub fn f260(result: &T165, registry: &T149) {
+    let dpo = f255(result, registry);
+    let sft = f256(result, registry);
 
     let total = result.matches.len();
     let with_response = result.matches.iter().filter(|m| !m.response.is_empty()).count();
@@ -349,7 +360,8 @@ fn training_dir() -> PathBuf {
     PathBuf::from(home).join(".kova").join("micro").join("training")
 }
 
+/// f261=training_path
 /// Path to the training data directory.
-pub fn training_path() -> PathBuf {
+pub fn f261() -> PathBuf {
     training_dir()
 }

@@ -1,33 +1,34 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, Mattbusel (registry pattern)
 //! registry — Central registry of all micro-model templates.
-//! Maps compression tokens (f79, f80, etc) to their MicroTemplate.
+//! Maps compression tokens (f79, f80, etc) to their T159.
 //! Inspired by Mattbusel/tokio-prompt-orchestrator's task registry pattern.
 
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::template::{builtin_templates, MicroTemplate};
+use super::template::{f247, T159};
 
+/// T149=MicroRegistry
 /// The micro-model registry. Holds all known templates indexed by ID.
-pub struct MicroRegistry {
-    templates: HashMap<String, MicroTemplate>,
+pub struct T149 {
+    templates: HashMap<String, T159>,
 }
 
-impl Default for MicroRegistry {
+impl Default for T149 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MicroRegistry {
+impl T149 {
     /// Build registry from built-in templates.
     pub fn new() -> Self {
         let mut templates = HashMap::new();
-        for t in builtin_templates() {
+        for t in f247() {
             templates.insert(t.id.clone(), t);
         }
-        MicroRegistry { templates }
+        T149 { templates }
     }
 
     /// Load additional templates from a directory of TOML files.
@@ -38,7 +39,7 @@ impl MicroRegistry {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("toml") {
-                match MicroTemplate::from_toml(&path) {
+                match T159::from_toml(&path) {
                     Ok(t) => {
                         self.templates.insert(t.id.clone(), t);
                         count += 1;
@@ -53,12 +54,12 @@ impl MicroRegistry {
     }
 
     /// Get a template by compression token.
-    pub fn get(&self, id: &str) -> Option<&MicroTemplate> {
+    pub fn get(&self, id: &str) -> Option<&T159> {
         self.templates.get(id)
     }
 
     /// Get a template by human name.
-    pub fn get_by_name(&self, name: &str) -> Option<&MicroTemplate> {
+    pub fn get_by_name(&self, name: &str) -> Option<&T159> {
         self.templates.values().find(|t| t.name == name)
     }
 
@@ -68,7 +69,7 @@ impl MicroRegistry {
     }
 
     /// All registered templates.
-    pub fn all(&self) -> Vec<&MicroTemplate> {
+    pub fn all(&self) -> Vec<&T159> {
         self.templates.values().collect()
     }
 
@@ -83,8 +84,8 @@ impl MicroRegistry {
     }
 
     /// List templates grouped by tier.
-    pub fn by_tier(&self) -> HashMap<&str, Vec<&MicroTemplate>> {
-        let mut groups: HashMap<&str, Vec<&MicroTemplate>> = HashMap::new();
+    pub fn by_tier(&self) -> HashMap<&str, Vec<&T159>> {
+        let mut groups: HashMap<&str, Vec<&T159>> = HashMap::new();
         for t in self.templates.values() {
             groups.entry(t.tier.as_str()).or_default().push(t);
         }

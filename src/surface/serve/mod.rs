@@ -588,7 +588,7 @@ async fn api_intent(
                     .unwrap_or_else(crate::default_project);
                 let system = crate::load_prompt("system");
                 let persona = crate::load_prompt("persona");
-                let cursor = crate::cursor_prompts::load_cursor_prompts(&project);
+                let cursor = crate::cursor_prompts::f111(&project);
                 let system_prompt = if cursor.is_empty() {
                     format!("{}\n\n{}", system, persona)
                 } else {
@@ -783,7 +783,7 @@ async fn api_backlog_run(
                 .into_response()
         }
     };
-    let intent = match crate::entry_to_intent(&entry) {
+    let intent = match crate::f293(&entry) {
         Some(i) => i,
         None => {
             return (
@@ -817,7 +817,7 @@ async fn api_backlog_run(
             ) {
                 let system = crate::load_prompt("system");
                 let persona = crate::load_prompt("persona");
-                let cursor = crate::cursor_prompts::load_cursor_prompts(&project);
+                let cursor = crate::cursor_prompts::f111(&project);
                 let system_prompt = if cursor.is_empty() {
                     format!("{}\n\n{}", system, persona)
                 } else {
@@ -894,7 +894,7 @@ async fn api_backlog_run(
     }
 }
 
-async fn api_backlog_post(Json(entry): Json<crate::BacklogEntry>) -> impl IntoResponse {
+async fn api_backlog_post(Json(entry): Json<crate::t8>) -> impl IntoResponse {
     let path = crate::backlog_path();
     let mut backlog = crate::f25(&path).unwrap_or_default();
     backlog.items.push(entry);

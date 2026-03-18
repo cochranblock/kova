@@ -12,9 +12,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// T146=MinedExample
 /// A mined training example from conversation logs.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct MinedExample {
+pub struct T146 {
     /// The user's instruction/request.
     pub instruction: String,
     /// The assistant's response (code or explanation).
@@ -28,9 +29,10 @@ pub struct MinedExample {
     pub session_id: String,
 }
 
+/// T147=MineStats
 /// Stats about mined data.
 #[derive(Debug)]
-pub struct MineStats {
+pub struct T147 {
     pub sessions: usize,
     pub total_messages: usize,
     pub user_messages: usize,
@@ -40,15 +42,16 @@ pub struct MineStats {
     pub total_examples: usize,
 }
 
+/// f237=mine_logs
 /// Mine all Claude Code JSONL logs in ~/.claude/projects/.
-pub fn mine_logs() -> Result<(Vec<MinedExample>, MineStats), String> {
+pub fn f237() -> Result<(Vec<T146>, T147), String> {
     let log_dir = log_directory();
     if !log_dir.exists() {
         return Err(format!("log directory not found: {}", log_dir.display()));
     }
 
     let mut all_examples = Vec::new();
-    let mut stats = MineStats {
+    let mut stats = T147 {
         sessions: 0, total_messages: 0, user_messages: 0,
         code_edits: 0, code_writes: 0, explanations: 0, total_examples: 0,
     };
@@ -86,7 +89,7 @@ pub fn mine_logs() -> Result<(Vec<MinedExample>, MineStats), String> {
 }
 
 /// Mine a single JSONL conversation log.
-fn mine_single_log(path: &PathBuf) -> Result<(Vec<MinedExample>, usize, usize), String> {
+fn mine_single_log(path: &PathBuf) -> Result<(Vec<T146>, usize, usize), String> {
     let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let session_id = path.file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -163,7 +166,7 @@ fn mine_single_log(path: &PathBuf) -> Result<(Vec<MinedExample>, usize, usize), 
                                                 .unwrap_or("");
 
                                             if !new_string.is_empty() && new_string.len() > 20 {
-                                                examples.push(MinedExample {
+                                                examples.push(T146 {
                                                     instruction: instruction.clone(),
                                                     response: new_string.to_string(),
                                                     response_type: "code_edit".into(),
@@ -181,7 +184,7 @@ fn mine_single_log(path: &PathBuf) -> Result<(Vec<MinedExample>, usize, usize), 
                                                 .unwrap_or("");
 
                                             if !content.is_empty() && content.len() > 50 {
-                                                examples.push(MinedExample {
+                                                examples.push(T146 {
                                                     instruction: instruction.clone(),
                                                     response: content.to_string(),
                                                     response_type: "code_write".into(),
@@ -203,7 +206,7 @@ fn mine_single_log(path: &PathBuf) -> Result<(Vec<MinedExample>, usize, usize), 
                                         && !text.contains("API Error")
                                         && !text.contains("error")
                                     {
-                                        examples.push(MinedExample {
+                                        examples.push(T146 {
                                             instruction: instruction.clone(),
                                             response: text.to_string(),
                                             response_type: "explanation".into(),
@@ -224,8 +227,9 @@ fn mine_single_log(path: &PathBuf) -> Result<(Vec<MinedExample>, usize, usize), 
     Ok((examples, msg_count, user_count))
 }
 
+/// f238=export_mined
 /// Export mined examples to JSONL for training.
-pub fn export_mined(examples: &[MinedExample]) -> Result<PathBuf, String> {
+pub fn f238(examples: &[T146]) -> Result<PathBuf, String> {
     let dir = training_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -245,7 +249,7 @@ pub fn export_mined(examples: &[MinedExample]) -> Result<PathBuf, String> {
     std::fs::write(&path, lines.join("\n")).map_err(|e| e.to_string())?;
 
     // Also export code-only examples (Edit/Write responses only)
-    let code_examples: Vec<&MinedExample> = examples.iter()
+    let code_examples: Vec<&T146> = examples.iter()
         .filter(|e| e.response_type == "code_edit" || e.response_type == "code_write")
         .collect();
 
@@ -271,8 +275,9 @@ pub fn export_mined(examples: &[MinedExample]) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// f239=print_mine_stats
 /// Group mined examples by response type for stats.
-pub fn print_mine_stats(stats: &MineStats, examples: &[MinedExample]) {
+pub fn f239(stats: &T147, examples: &[T146]) {
     println!("CONVERSATION LOG MINING");
     println!("─────────────────────────────────────────────────────────────────");
     println!("  Sessions scanned:    {}", stats.sessions);

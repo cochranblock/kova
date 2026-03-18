@@ -7,21 +7,23 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use super::registry::MicroRegistry;
+use super::registry::T149;
 
+/// T150=RouteDecision
 /// Routing decision: which micro-model handles this input.
 #[derive(Debug, Clone)]
-pub struct RouteDecision {
+pub struct T150 {
     /// Template ID selected.
     pub template_id: String,
     /// Confidence (0.0-1.0). Higher = more certain.
     pub confidence: f32,
     /// How the decision was made.
-    pub method: RouteMethod,
+    pub method: T151,
 }
 
+/// T151=RouteMethod
 #[derive(Debug, Clone)]
-pub enum RouteMethod {
+pub enum T151 {
     /// Keyword match (no history).
     Keyword,
     /// Epsilon-greedy bandit (learned from outcomes).
@@ -30,9 +32,10 @@ pub enum RouteMethod {
     Explicit,
 }
 
+/// T152=RouteOutcome
 /// Outcome of a micro-model run, fed back to the router for learning.
 #[derive(Debug, Clone)]
-pub struct RouteOutcome {
+pub struct T152 {
     pub template_id: String,
     /// 0.0 = total failure, 1.0 = perfect.
     pub reward: f32,
@@ -41,23 +44,24 @@ pub struct RouteOutcome {
 /// Per-category reward history: category -> template_id -> (total_reward, count).
 type CatHistory = HashMap<String, HashMap<String, (f32, u32)>>;
 
+/// T153=MicroRouter
 /// Learned router state. Epsilon-greedy bandit over template selection.
 /// Inspired by Mattbusel/tokio-prompt-orchestrator's epsilon-greedy routing.
-pub struct MicroRouter {
+pub struct T153 {
     history: Mutex<CatHistory>,
     /// Exploration rate (0.0 = pure exploit, 1.0 = pure explore).
     pub epsilon: f32,
 }
 
-impl Default for MicroRouter {
+impl Default for T153 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MicroRouter {
+impl T153 {
     pub fn new() -> Self {
-        MicroRouter {
+        T153 {
             history: Mutex::new(HashMap::new()),
             epsilon: 0.1,
         }
@@ -68,20 +72,20 @@ impl MicroRouter {
     pub fn route(
         &self,
         input: &str,
-        registry: &MicroRegistry,
+        registry: &T149,
         explicit_id: Option<&str>,
-    ) -> RouteDecision {
+    ) -> T150 {
         // Explicit override
         if let Some(id) = explicit_id && registry.get(id).is_some() {
-            return RouteDecision {
+            return T150 {
                     template_id: id.to_string(),
                     confidence: 1.0,
-                    method: RouteMethod::Explicit,
+                    method: T151::Explicit,
                 };
         }
 
         // Classify the input into a category via keywords
-        let category = classify_keywords(input);
+        let category = f242(input);
 
         // Check bandit history for this category
         let history = self.history.lock().unwrap();
@@ -100,26 +104,26 @@ impl MicroRouter {
                     });
 
                 if let Some((id, (total, count))) = best {
-                    return RouteDecision {
+                    return T150 {
                         template_id: id.clone(),
                         confidence: total / (*count as f32).max(1.0),
-                        method: RouteMethod::Bandit,
+                        method: T151::Bandit,
                     };
                 }
         }
         drop(history);
 
         // Keyword fallback: map category to default template
-        let template_id = category_to_template(&category);
-        RouteDecision {
+        let template_id = f243(&category);
+        T150 {
             template_id,
             confidence: 0.5,
-            method: RouteMethod::Keyword,
+            method: T151::Keyword,
         }
     }
 
     /// Record the outcome of a micro-model run for future routing.
-    pub fn record(&self, category: &str, outcome: RouteOutcome) {
+    pub fn record(&self, category: &str, outcome: T152) {
         let mut history = self.history.lock().unwrap();
         let cat = history.entry(category.to_string()).or_default();
         let entry = cat.entry(outcome.template_id).or_insert((0.0, 0));
@@ -137,8 +141,9 @@ impl MicroRouter {
     }
 }
 
+/// f242=classify_keywords
 /// Classify input into a category via keyword matching.
-pub fn classify_keywords(input: &str) -> String {
+pub fn f242(input: &str) -> String {
     let lower = input.to_lowercase();
 
     if lower.contains("fix") || lower.contains("compile") || lower.contains("error") {
@@ -164,8 +169,9 @@ pub fn classify_keywords(input: &str) -> String {
     }
 }
 
+/// f243=category_to_template
 /// Map a category name to its default template ID.
-pub fn category_to_template(category: &str) -> String {
+pub fn f243(category: &str) -> String {
     match category {
         "fix_compile" => "f81".into(),
         "clippy_fix" => "f_clippy_fix".into(),

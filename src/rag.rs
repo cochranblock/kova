@@ -205,7 +205,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 // ── Code Chunking ────────────────────────────────────────────────
 
 /// Chunk a Rust source file into logical blocks using syntax-aware symbol extraction.
-/// Uses crate::syntax::extract_symbols() for AST-aware boundaries.
+/// Uses crate::syntax::f201() for AST-aware boundaries.
 /// Fallback: sliding window of ~50 lines with 25% overlap (non-Rust or empty).
 pub fn chunk_rust_file(_file_path: &str, content: &str) -> Vec<(usize, usize, String)> {
     let lines: Vec<&str> = content.lines().collect();
@@ -214,7 +214,7 @@ pub fn chunk_rust_file(_file_path: &str, content: &str) -> Vec<(usize, usize, St
     }
 
     // Use syntax module for symbol-aware chunking.
-    let symbols = crate::syntax::extract_symbols(content);
+    let symbols = crate::syntax::f201(content);
 
     let mut chunks = Vec::new();
 

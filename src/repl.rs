@@ -28,7 +28,7 @@ pub fn f139(project_dir: &Path) -> String {
 
     // Cursor rules.
     if crate::config::cursor_prompts_enabled() {
-        let cursor = crate::cursor_prompts::load_cursor_prompts(project_dir);
+        let cursor = crate::cursor_prompts::f111(project_dir);
         if !cursor.is_empty() {
             parts.push(cursor);
         }
@@ -55,7 +55,7 @@ pub fn f139(project_dir: &Path) -> String {
 
     // Project context (Cargo.toml, recent changes).
     let ctx = crate::context_loader::f82_with_recent(project_dir, "", Some(30));
-    let context_block = crate::context_loader::format_context(&ctx);
+    let context_block = crate::context_loader::f112(&ctx);
     if !context_block.is_empty() {
         parts.push(context_block);
     }

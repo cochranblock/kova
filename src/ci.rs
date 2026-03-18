@@ -7,15 +7,16 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// t114=CiConfig. Controls what CI runs and how often.
-pub struct CiConfig {
+/// t114=t114. Controls what CI runs and how often.
+#[allow(non_camel_case_types)]
+pub struct t114 {
     pub project_dir: PathBuf,
     pub watch_interval_secs: u64,
     pub run_clippy: bool,
     pub run_tests: bool,
 }
 
-impl Default for CiConfig {
+impl Default for t114 {
     fn default() -> Self {
         Self {
             project_dir: std::env::current_dir().unwrap_or_default(),
@@ -26,8 +27,9 @@ impl Default for CiConfig {
     }
 }
 
-/// t115=CiResult. Structured output from a CI run.
-pub struct CiResult {
+/// t115=t115. Structured output from a CI run.
+#[allow(non_camel_case_types)]
+pub struct t115 {
     pub passed: bool,
     pub check_ok: bool,
     pub clippy_ok: Option<bool>,
@@ -37,7 +39,7 @@ pub struct CiResult {
 }
 
 /// f177=ci_check. Run cargo check, optionally clippy and tests. Returns structured result.
-pub fn ci_check(project_dir: &Path, config: &CiConfig) -> CiResult {
+pub fn f177(project_dir: &Path, config: &t114) -> t115 {
     let start = Instant::now();
     let mut errors = Vec::new();
 
@@ -78,7 +80,7 @@ pub fn ci_check(project_dir: &Path, config: &CiConfig) -> CiResult {
         && clippy_ok.unwrap_or(true)
         && tests_ok.unwrap_or(true);
 
-    CiResult {
+    t115 {
         passed,
         check_ok,
         clippy_ok,
@@ -88,8 +90,8 @@ pub fn ci_check(project_dir: &Path, config: &CiConfig) -> CiResult {
     }
 }
 
-/// f178=ci_watch. Poll loop: detect file changes via mtime, run ci_check on change.
-pub fn ci_watch(config: &CiConfig) -> anyhow::Result<()> {
+/// f178=ci_watch. Poll loop: detect file changes via mtime, run f177 on change.
+pub fn f178(config: &t114) -> anyhow::Result<()> {
     let interval = std::time::Duration::from_secs(config.watch_interval_secs);
     let mut snapshots = snapshot_mtimes(&config.project_dir);
 
@@ -97,8 +99,8 @@ pub fn ci_watch(config: &CiConfig) -> anyhow::Result<()> {
     println!("ci: check=on clippy={} tests={}", on_off(config.run_clippy), on_off(config.run_tests));
 
     // Run once at start
-    let result = ci_check(&config.project_dir, config);
-    print_ci_result(&result);
+    let result = f177(&config.project_dir, config);
+    f180(&result);
 
     loop {
         std::thread::sleep(interval);
@@ -110,22 +112,22 @@ pub fn ci_watch(config: &CiConfig) -> anyhow::Result<()> {
         snapshots = current;
 
         println!("\nci: change detected, running...");
-        let result = ci_check(&config.project_dir, config);
-        print_ci_result(&result);
+        let result = f177(&config.project_dir, config);
+        f180(&result);
     }
 }
 
 /// f179=ci_once. Single CI run on a project directory.
-pub fn ci_once(project_dir: &Path) -> anyhow::Result<CiResult> {
-    let config = CiConfig {
+pub fn f179(project_dir: &Path) -> anyhow::Result<t115> {
+    let config = t114 {
         project_dir: project_dir.to_path_buf(),
         ..Default::default()
     };
-    Ok(ci_check(project_dir, &config))
+    Ok(f177(project_dir, &config))
 }
 
 /// f180=print_ci_result. Formatted output with pass/fail status.
-pub fn print_ci_result(result: &CiResult) {
+pub fn f180(result: &t115) {
     let status = if result.passed { "PASS" } else { "FAIL" };
     println!("ci: {} ({}ms)", status, result.duration_ms);
     println!("  check: {}", pass_fail(result.check_ok));
@@ -245,13 +247,13 @@ edition = "2021"
         )
         .unwrap();
 
-        let config = CiConfig {
+        let config = t114 {
             project_dir: tmp.path().to_path_buf(),
             run_clippy: true,
             run_tests: true,
             ..Default::default()
         };
-        let result = ci_check(tmp.path(), &config);
+        let result = f177(tmp.path(), &config);
         assert!(result.passed, "valid project must pass CI");
         assert!(result.check_ok);
         assert_eq!(result.clippy_ok, Some(true));
@@ -275,13 +277,13 @@ edition = "2021"
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
         std::fs::write(tmp.path().join("src/lib.rs"), "fn broken( {").unwrap();
 
-        let config = CiConfig {
+        let config = t114 {
             project_dir: tmp.path().to_path_buf(),
             run_clippy: true,
             run_tests: true,
             ..Default::default()
         };
-        let result = ci_check(tmp.path(), &config);
+        let result = f177(tmp.path(), &config);
         assert!(!result.passed, "broken code must fail CI");
         assert!(!result.check_ok);
         assert!(!result.errors.is_empty());
@@ -290,7 +292,7 @@ edition = "2021"
     /// f180=print_ci_result. Formatting includes status and stages.
     #[test]
     fn ci_result_formatting() {
-        let result = CiResult {
+        let result = t115 {
             passed: true,
             check_ok: true,
             clippy_ok: Some(true),
@@ -299,7 +301,7 @@ edition = "2021"
             duration_ms: 42,
         };
         // Verify print_ci_result doesn't panic
-        print_ci_result(&result);
+        f180(&result);
 
         // Verify pass/fail labels
         assert_eq!(pass_fail(true), "ok");
@@ -322,7 +324,7 @@ edition = "2021"
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
         std::fs::write(tmp.path().join("src/lib.rs"), "").unwrap();
 
-        let result = ci_once(tmp.path()).unwrap();
+        let result = f179(tmp.path()).unwrap();
         assert!(result.passed);
         assert!(result.check_ok);
     }
@@ -345,13 +347,13 @@ edition = "2021"
         std::fs::write(tmp.path().join("src/foo/mod.rs"), "pub mod bar;").unwrap();
         std::fs::write(tmp.path().join("src/foo/bar.rs"), "pub fn f() {}").unwrap();
 
-        let config = CiConfig {
+        let config = t114 {
             project_dir: tmp.path().to_path_buf(),
             run_clippy: true,
             run_tests: true,
             ..Default::default()
         };
-        let result = ci_check(tmp.path(), &config);
+        let result = f177(tmp.path(), &config);
         assert!(result.passed, "nested src should compile");
     }
 
@@ -371,13 +373,13 @@ edition = "2021"
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
         std::fs::write(tmp.path().join("src/lib.rs"), "pub fn add(a: i32, b: i32) -> i32 { a + b }").unwrap();
 
-        let config = CiConfig {
+        let config = t114 {
             project_dir: tmp.path().to_path_buf(),
             run_clippy: true,
             run_tests: false,
             ..Default::default()
         };
-        let result = ci_check(tmp.path(), &config);
+        let result = f177(tmp.path(), &config);
         assert!(result.passed);
         assert_eq!(result.tests_ok, None);
         assert_eq!(result.clippy_ok, Some(true));

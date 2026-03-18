@@ -6,10 +6,11 @@
 
 use std::path::Path;
 
+/// T159=MicroTemplate
 /// A micro-model template. One per kova function that needs AI.
 /// Like Mattbusel's single-header libs — self-contained, zero coupling.
 #[derive(Debug, Clone)]
-pub struct MicroTemplate {
+pub struct T159 {
     /// Compression token (f79, f80, f81, etc).
     pub id: String,
     /// Human name.
@@ -36,7 +37,7 @@ pub struct MicroTemplate {
     pub temperature: f32,
 }
 
-impl MicroTemplate {
+impl T159 {
     /// Load template from TOML file.
     pub fn from_toml(path: &Path) -> Result<Self, String> {
         let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
@@ -84,7 +85,7 @@ impl MicroTemplate {
             })
             .unwrap_or_default();
 
-        Ok(MicroTemplate {
+        Ok(T159 {
             id: get_str("id"),
             name: get_str("name"),
             purpose: get_str("purpose"),
@@ -123,14 +124,15 @@ impl MicroTemplate {
     }
 }
 
+/// f247=builtin_templates
 /// All built-in micro-templates for kova functions.
 /// Each maps a compression token to its AI task definition.
-pub fn builtin_templates() -> Vec<MicroTemplate> {
+pub fn f247() -> Vec<T159> {
     vec![
         // ── Deterministic (no model needed, but template exists for the registry) ──
 
         // ── Router tier (0.5B-1B) ──
-        MicroTemplate {
+        T159 {
             id: "f79".into(),
             name: "classify_intent".into(),
             purpose: "Classify user input into one task category".into(),
@@ -157,7 +159,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
         },
 
         // ── Light tier (1B-3B) ──
-        MicroTemplate {
+        T159 {
             id: "f81".into(),
             name: "fix_compile".into(),
             purpose: "Fix a Rust compilation error given code and error message".into(),
@@ -184,7 +186,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             max_tokens: 2048,
             temperature: 0.1,
         },
-        MicroTemplate {
+        T159 {
             id: "f_clippy_fix".into(),
             name: "clippy_fix".into(),
             purpose: "Fix a Rust clippy warning given code and warning message".into(),
@@ -207,7 +209,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             max_tokens: 2048,
             temperature: 0.1,
         },
-        MicroTemplate {
+        T159 {
             id: "f115".into(),
             name: "explain_trace".into(),
             purpose: "Explain a pipeline execution trace in plain English".into(),
@@ -228,7 +230,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
         },
 
         // ── Mid tier (7B) ──
-        MicroTemplate {
+        T159 {
             id: "f_code_review".into(),
             name: "code_review".into(),
             purpose: "Review Rust code for correctness, idiom violations, and bugs".into(),
@@ -255,7 +257,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
             max_tokens: 1024,
             temperature: 0.2,
         },
-        MicroTemplate {
+        T159 {
             id: "f_test_write".into(),
             name: "test_write".into(),
             purpose: "Generate unit tests for a Rust function".into(),
@@ -276,7 +278,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
         },
 
         // ── Heavy tier (14B+) ──
-        MicroTemplate {
+        T159 {
             id: "f80".into(),
             name: "code_gen".into(),
             purpose: "Generate Rust code from a natural language description".into(),
@@ -292,7 +294,7 @@ pub fn builtin_templates() -> Vec<MicroTemplate> {
         },
 
         // ── Validation (inspired by Mattbusel/LLM-Hallucination-Detection-Script) ──
-        MicroTemplate {
+        T159 {
             id: "f_validate".into(),
             name: "validate_output".into(),
             purpose: "Check if generated code is valid, complete, and matches the request".into(),

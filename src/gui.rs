@@ -128,7 +128,7 @@ fn is_confirm(s: &str) -> bool {
 
 /// Shared logic for building system prompt with Cursor rules. Testable.
 fn build_system_prompt_impl(system: &str, persona: &str, project: &std::path::Path) -> String {
-    let cursor = crate::cursor_prompts::load_cursor_prompts(project);
+    let cursor = crate::cursor_prompts::f111(project);
     if cursor.is_empty() {
         format!("{}\n\n{}", system, persona)
     } else {
@@ -480,7 +480,7 @@ impl eframe::App for KovaApp {
                 let backlog_path = crate::backlog_path();
                 let backlog = std::fs::read_to_string(&backlog_path)
                     .ok()
-                    .and_then(|s| serde_json::from_str::<crate::Backlog>(&s).ok())
+                    .and_then(|s| serde_json::from_str::<crate::t9>(&s).ok())
                     .unwrap_or_default();
                 theme::panel_frame().show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -491,7 +491,7 @@ impl eframe::App for KovaApp {
                             .ok()
                             .map(|h| std::path::PathBuf::from(h).join("approuter"));
                         for entry in &backlog.items {
-                            if let Some(intent) = crate::entry_to_intent(entry) {
+                            if let Some(intent) = crate::f293(entry) {
                                 let project = entry
                                     .project
                                     .as_ref()
@@ -517,7 +517,7 @@ impl eframe::App for KovaApp {
                                     ui.label(egui::RichText::new(entry.project.as_deref().unwrap_or("-")).color(colors::MUTED).small());
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         if ui.button("Run").clicked()
-                                            && let Some(intent) = crate::entry_to_intent(entry)
+                                            && let Some(intent) = crate::f293(entry)
                                         {
                                             let project = entry
                                                 .project

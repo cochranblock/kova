@@ -106,7 +106,7 @@ fn try_read_rs_file(project_dir: &Path, name: &str) -> Option<String> {
 /// Format context for injection into coder prompt.
 /// Includes recent changes (f86/f87) when present — helps LLM stay on task.
 /// f112=format_context. Format ProjectContext for LLM prompt injection.
-pub fn format_context(ctx: &ProjectContext) -> String {
+pub fn f112(ctx: &ProjectContext) -> String {
     let mut parts = Vec::new();
     if let Some(ref cargo) = ctx.cargo_toml {
         parts.push(format!("## Cargo.toml\n```toml\n{}\n```", cargo.trim()));
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn format_context_empty() {
         let ctx = super::ProjectContext::default();
-        assert!(super::format_context(&ctx).is_empty());
+        assert!(super::f112(&ctx).is_empty());
     }
 
     #[test]
@@ -157,7 +157,7 @@ mod tests {
             files: vec![],
             recent_changes: None,
         };
-        let s = super::format_context(&ctx);
+        let s = super::f112(&ctx);
         assert!(s.contains("Cargo.toml"));
         assert!(s.contains("name = \"foo\""));
     }
@@ -169,7 +169,7 @@ mod tests {
             files: vec![("lib.rs".into(), "fn main() {}".into())],
             recent_changes: None,
         };
-        let s = super::format_context(&ctx);
+        let s = super::f112(&ctx);
         assert!(s.contains("lib.rs"));
         assert!(s.contains("fn main()"));
     }
