@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Hive Storage Architecture
 
 **Purpose:** Document storage decisions for the hive mesh (`/mnt/hive`): NFS vs GlusterFS, tuning, and optional sync-to-local build pattern.

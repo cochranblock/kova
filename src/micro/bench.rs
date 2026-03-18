@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 //! bench — Held-out challenge benchmarks for micro-model templates.
 //! NOT a self-licking ice cream cone: inputs are novel, not baked into prompts.
 //! Verification uses structural checks, not string matching against training data.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::process::Command;
 use std::time::Instant;

@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! T208 — unified dispatch. All three surfaces (CLI, Serve, GUI) hold Arc<T208>.
 //! Every request goes through the kernel. No surface calls inference/cargo/tools directly.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 pub mod commands;
 pub mod stream;
@@ -81,8 +82,15 @@ impl T208 {
     }
 
     /// Get cluster status.
+    #[cfg(feature = "inference")]
     pub fn cluster_status(&self) -> String {
         crate::inference::cluster::T193::default_hive().status()
+    }
+
+    /// Get cluster status (stub when inference disabled).
+    #[cfg(not(feature = "inference"))]
+    pub fn cluster_status(&self) -> String {
+        "inference feature disabled".into()
     }
 }
 

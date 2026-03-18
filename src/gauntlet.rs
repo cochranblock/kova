@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! gauntlet — Hell Week for the IRONHIVE AI pipeline.
 //! Progressive difficulty challenges that test factory, MoE, and academy.
 //! If it can't survive this, it's not worth deploying.
@@ -10,6 +8,8 @@
 //!   Phase 3: Run (hard — parsers, state machines, real-world tools)
 //!   Phase 4: Fight (adversarial — ambiguous prompts, edge cases, traps)
 //!   Phase 5: Survive (endurance — chained tasks, large context, multi-file)
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use crate::factory::{T181, T180};
 use crate::moe::{self, T196};

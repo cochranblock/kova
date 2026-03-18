@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Unlicense — cochranblock.org
+# Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
 # Baseline latency benchmark for Kova. Run with serve already up.
 # Usage: kova serve & sleep 2; ./scripts/bench.sh
 

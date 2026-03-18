@@ -1,4 +1,3 @@
-// Unlicense — cochranblock.org
 //! train_harness — Wraps mlx_lm.lora for kova micro training.
 //!
 //! Does NOT touch train.rs or tournament.rs. Uses exported data from
@@ -6,6 +5,8 @@
 //!
 //! Prereqs: pip install "mlx-lm[train]"
 //! Data: kova micro export --format all (then tournament must have run)
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::process::Command;
 

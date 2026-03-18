@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 //! train — Training data export from tournament results.
 //!
 //! Generates DPO (Direct Preference Optimization) preference pairs from
@@ -13,6 +11,8 @@
 //!   chatml — ChatML format for MLX/unsloth fine-tuning
 //!
 //! The data is the moat. The algorithm is a config flag.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::collections::HashMap;
 use std::path::PathBuf;

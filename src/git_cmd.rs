@@ -1,3 +1,6 @@
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
 // Copyright (c) 2026 The Cochran Block. All rights reserved.
 //! Tokenized git commands. §13 compressed output for AI context.
 //! g0=status g1=diff g2=log g3=push g4=pull g5=commit g6=branch g7=stash g8=add g9=reset.

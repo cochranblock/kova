@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, Mattbusel (circuit breaker pattern)
 //! runner — Execute a micro-model template against a cluster node.
 //! Includes circuit breaker (Mattbusel/tokio-llm) and budget enforcement.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};

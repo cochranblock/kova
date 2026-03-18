@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! moe — Mixture of Experts code generation. Fan-out to multiple IRONHIVE nodes,
 //! compile all variants in parallel, triple-sim validate, score, pick the winner.
 //!
@@ -10,6 +8,8 @@
 //!   4. Score survivors (compile speed, code size, review score)
 //!   5. Pick the winner
 //!   6. Optionally save to ~/.kova/experts/
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use crate::cluster::{T193, T189, T191};
 use crate::providers::{self, T129};

@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 //! academy — Recursive training feedback loop.
 //!
 //! Tournament results → gap detection → challenge generation → curriculum update.
@@ -13,6 +11,8 @@
 //!   4. Generate new challenges targeting gaps
 //!   5. Retire easy challenges (100% pass rate = too simple)
 //!   6. Feed back into next tournament
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::collections::HashMap;
 use std::path::PathBuf;

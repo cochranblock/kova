@@ -1,6 +1,7 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Categorize cargo check stderr for agentic fix loop. f118=f118, t95=T95.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 /// t95=T95. Error category for Mechanic (Fixer) model context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

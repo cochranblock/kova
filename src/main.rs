@@ -1,6 +1,7 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Kova — augment engine. GUI + serve.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use clap::{Parser, Subcommand};
 
@@ -45,21 +46,27 @@ enum Cmd {
     /// Short serve alias. `kova s` = `kova serve --open`. `kova s -d` = demo mode.
     S(SShortArgs),
     /// IRONHIVE cluster inference. Distributed AI across worker nodes.
+    #[cfg(feature = "inference")]
     #[command(name = "cluster")]
     T193(ClusterArgs),
     /// Rust Binary T181. Full pipeline: classify → generate → compile → review → fix.
+    #[cfg(feature = "inference")]
     #[command(name = "factory")]
     T181(FactoryArgs),
     /// Mixture of Experts. Fan-out to N nodes, compile all, score, pick winner.
+    #[cfg(feature = "inference")]
     #[command(name = "moe")]
     Moe(MoeArgs),
     /// Academy. MoE-powered autonomous dev agent. Plan → generate → wire → test → fix → commit.
+    #[cfg(feature = "inference")]
     #[command(name = "academy")]
     Academy(AcademyArgs),
     /// Gauntlet. Hell Week stress test for the AI pipeline. 5 phases, no mercy.
+    #[cfg(feature = "inference")]
     #[command(name = "gauntlet")]
     Gauntlet(GauntletArgs),
     /// Micro-model registry. List, run, and validate tiny purpose-built AI units.
+    #[cfg(feature = "inference")]
     #[command(name = "micro")]
     Micro(MicroArgs),
     /// RAG: index code, search semantically, retrieve context for LLM.
@@ -78,9 +85,11 @@ enum Cmd {
     #[command(name = "export")]
     Export(ExportArgs),
     /// Code review. Review staged changes or branch diff via LLM.
+    #[cfg(feature = "inference")]
     #[command(name = "review")]
     Review(ReviewArgs),
     /// Feedback loop. View/export tournament failure data and generated challenges.
+    #[cfg(feature = "inference")]
     #[command(name = "feedback")]
     Feedback(FeedbackArgs),
     /// Tokenization validator. Check compression protocol coverage.
@@ -132,12 +141,14 @@ enum CiCmd {
     },
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct ReviewArgs {
     #[command(subcommand)]
     cmd: ReviewCmd,
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Subcommand)]
 enum ReviewCmd {
     /// Review staged changes.
@@ -157,12 +168,14 @@ enum ReviewCmd {
     },
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct FeedbackArgs {
     #[command(subcommand)]
     cmd: FeedbackCmd,
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Subcommand)]
 enum FeedbackCmd {
     /// Show failure statistics.
@@ -368,6 +381,7 @@ enum SshCaCmd {
     Setup,
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct FactoryArgs {
     /// What to build.
@@ -392,6 +406,7 @@ struct FactoryArgs {
     ctx: u32,
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct MoeArgs {
     /// What to build.
@@ -416,6 +431,7 @@ struct MoeArgs {
     save: bool,
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct AcademyArgs {
     /// High-level task description.
@@ -440,18 +456,21 @@ struct AcademyArgs {
     dry_run: bool,
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct GauntletArgs {
     /// Run only specific phases (e.g. 1 2 3). Default: all.
     phases: Vec<u8>,
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct MicroArgs {
     #[command(subcommand)]
     cmd: MicroCmd,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Subcommand)]
 enum MicroCmd {
     /// List all registered micro-model templates.
@@ -525,12 +544,14 @@ enum MicroCmd {
     },
 }
 
+#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct ClusterArgs {
     #[command(subcommand)]
     cmd: ClusterCmd,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Subcommand)]
 enum ClusterCmd {
     /// Show cluster status: nodes, models, health.
@@ -835,6 +856,7 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
     }
 }
 
+#[cfg(feature = "inference")]
 fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
     use kova::micro::{
         bench, pipe, registry::T149, router::T153, runner, stats, validate,
@@ -1112,6 +1134,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
     }
 }
 
+#[cfg(feature = "inference")]
 fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
     let cluster = kova::cluster::T193::default_hive();
     match args.cmd {
@@ -1255,6 +1278,7 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
     }
 }
 
+#[cfg(feature = "inference")]
 fn run_review(args: ReviewArgs) -> anyhow::Result<()> {
     let provider = kova::providers::f333();
 
@@ -1276,6 +1300,7 @@ fn run_review(args: ReviewArgs) -> anyhow::Result<()> {
     }
 }
 
+#[cfg(feature = "inference")]
 fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
     match args.cmd {
         FeedbackCmd::Stats => {
@@ -1354,20 +1379,13 @@ fn main() -> anyhow::Result<()> {
 
     // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
     match &args.cmd {
+        #[cfg(feature = "inference")]
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
-        | Some(Cmd::Micro(_))
-        | Some(Cmd::Rag(_))
-        | Some(Cmd::Traces(_))
-        | Some(Cmd::Mcp(_))
-        | Some(Cmd::Ci(_))
-        | Some(Cmd::Export(_))
-        | Some(Cmd::Review(_))
-        | Some(Cmd::Feedback(_))
-        | Some(Cmd::Tokens) => {
+        | Some(Cmd::Micro(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::T193(a) => run_cluster(a),
                 Cmd::T181(a) => {
@@ -1421,6 +1439,25 @@ fn main() -> anyhow::Result<()> {
                     Ok(())
                 }
                 Cmd::Micro(a) => run_micro(a),
+                _ => unreachable!(),
+            };
+        }
+        #[cfg(feature = "inference")]
+        Some(Cmd::Review(_))
+        | Some(Cmd::Feedback(_)) => {
+            return match args.cmd.unwrap() {
+                Cmd::Review(a) => run_review(a),
+                Cmd::Feedback(a) => run_feedback(a),
+                _ => unreachable!(),
+            };
+        }
+        Some(Cmd::Rag(_))
+        | Some(Cmd::Traces(_))
+        | Some(Cmd::Mcp(_))
+        | Some(Cmd::Ci(_))
+        | Some(Cmd::Export(_))
+        | Some(Cmd::Tokens) => {
+            return match args.cmd.unwrap() {
                 #[cfg(feature = "rag")]
                 Cmd::Rag(a) => run_rag(a),
                 Cmd::Traces(a) => run_traces(a),
@@ -1433,8 +1470,6 @@ fn main() -> anyhow::Result<()> {
                 }
                 Cmd::Ci(a) => run_ci(a),
                 Cmd::Export(a) => run_export(a),
-                Cmd::Review(a) => run_review(a),
-                Cmd::Feedback(a) => run_feedback(a),
                 Cmd::Tokens => {
                     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
                     let report = kova::tokenization::f294(&src);
@@ -1581,19 +1616,20 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        #[cfg(feature = "inference")]
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
         | Some(Cmd::Micro(_))
-        | Some(Cmd::Rag(_))
+        | Some(Cmd::Review(_))
+        | Some(Cmd::Feedback(_)) => unreachable!("handled before tokio"),
+        Some(Cmd::Rag(_))
         | Some(Cmd::Traces(_))
         | Some(Cmd::Mcp(_))
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
-        | Some(Cmd::Review(_))
-        | Some(Cmd::Feedback(_))
         | Some(Cmd::Tokens) => unreachable!("handled before tokio"),
         None => {
             // Default: TUI (like Claude Code). Fallback: REPL, then GUI.

@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Micro Train — MLX Fine-Tuning Research
 
 **Target model:** qwen2.5-coder:0.5b (Micro Olympics champion, 91% accuracy)  

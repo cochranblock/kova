@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Research: Memory-Mapped Model Regions & Multiple Entry Points in Rust
 
 **Question:** Can a self-contained Rust binary hook up to different memory-mapped regions of the same AI model, using near-memory regions to introduce different "entries" into iterating through the model?

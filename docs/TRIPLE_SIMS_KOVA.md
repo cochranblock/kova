@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Triple Sims: Kova vs Original Intent (AI-Assisted Evaluation)
 
 **Target:** Evaluate Kova against USER_STORY_PERFECT_RUST.md vision and epics  

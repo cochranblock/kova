@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Unlicense — cochranblock.org
+# Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
 # Capture GUI screenshots for Proof of Artifacts.
 # Requires: kova built with --features serve, screencapture (macOS)
 # Usage: ./scripts/capture-screenshots.sh

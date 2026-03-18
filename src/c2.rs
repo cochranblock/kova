@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! kova c2 — T212ized orchestration. f18–f23 local or broadcast.
 //! f356: one-command sync + broadcast with parallel execution.
 //! Sync: tar-stream for full sync (dir missing), rsync for incremental.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 #![allow(non_camel_case_types)]
 

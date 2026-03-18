@@ -1,3 +1,6 @@
+# Unlicense — cochranblock.org
+# Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
 # Cargo audit config — workspace-level
 # Tracks known transitive vulnerabilities we cannot fix (upstream must update).
 # Re-evaluate each entry when upgrading the noted dependency.

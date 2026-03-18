@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! tokenization — Validates compression protocol compliance across the codebase.
 //! Scans src/*.rs for pub fn/struct/enum, checks fN/TN naming, reports gaps.
 //! f294=validate_tokens, f295=scan_source, f296=token_report.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::{Path, PathBuf};
 

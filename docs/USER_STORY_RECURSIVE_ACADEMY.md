@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # User Story Analysis: Recursive Academy & Cursor Prompts
 
 **Tool:** Kova — local AI orchestration. This doc defines the "pros of the pros" for Recursive Academy, Cursor prompts, trace/explain, and DDI.

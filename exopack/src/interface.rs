@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Create test interfaces: spawn HTTP server, HTTP client with cookie store.
 
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 /// Bind to 127.0.0.1:0, return listener and base URL.
 pub async fn bind_random() -> Result<(tokio::net::TcpListener, String), String> {

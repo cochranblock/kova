@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Multi-provider image generation client.
 //! t122=T122, t123=T123, t124=T124, t125=T125.
 //! f189=f189, f190=f190, f191=f191, f192=f192, f193=f193.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::Path;
 use std::time::Instant;

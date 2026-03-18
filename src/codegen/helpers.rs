@@ -1,6 +1,7 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Shared code gen helpers. One copy — no more duplication across factory/moe/academy/pipeline.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 /// f327=extract_rust_block. Extract first ```rust ... ``` block (or bare ```) from LLM output.
 pub fn f327(s: &str) -> Option<String> {

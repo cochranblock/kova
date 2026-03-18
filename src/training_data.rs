@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! training_data — Export scored LLM interactions as training datasets (DPO/SFT).
 //! f181=f181, f182=f182, f183=f183, f184=f184
 //! t116=T116, t117=T117
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use crate::trace::{self, T109};
 use serde::{Deserialize, Serialize};

@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Interactive REPL. Kova's Claude Code replacement.
 //! f137=repl_run, f138=repl_stream_print, f139=repl_build_system_prompt.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};

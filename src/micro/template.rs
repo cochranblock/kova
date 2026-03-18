@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, Mattbusel (micro-library pattern)
 //! template — Micro-model template definition.
 //! Each template defines a single-purpose AI unit: one function, one model, one job.
 //! Inspired by Mattbusel's llm-* single-header pattern: each lib does ONE thing.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::Path;
 

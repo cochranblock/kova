@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! micro — Thousands of tiny AI-enabled units. Each kova function gets a purpose-built
 //! micro-model: a small binary with a baked system prompt, few-shot examples, and
 //! input/output schema. Shared model weights via mmap. Coordinated by a learned router.
@@ -15,6 +13,8 @@
 //!   - Mattbusel/LLM-Hallucination-Detection-Script: multi-method validation gates
 //!
 //! MIT-licensed concepts from github.com/Mattbusel adapted with attribution.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 pub mod academy;
 pub mod bench;

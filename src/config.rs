@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Config. ~/.kova/config.toml. Paths. Bootstrap. Build presets.
 //! f78=model_path_for_role, f94-f110, f207-f220
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::{Path, PathBuf};
 

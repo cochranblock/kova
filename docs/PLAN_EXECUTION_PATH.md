@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # PLAN Execution Path — Kova Architecture
 
 **Purpose:** Document the kova PLAN execution paths: how intent flows through f14 (plan) and f15 (execute), and where the pipeline (f81) diverges for code generation.

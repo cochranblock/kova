@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! TRIPLE SIMS — Three programmatic simulations for quality evaluation.
 //!
 //! Sim 1 (f170): User Story UX — walk user scenarios, verify elicitation/router/context flows.
@@ -8,6 +6,8 @@
 //!
 //! Each sim reads source files and checks for required patterns/structures.
 //! Output: SimReport with findings per simulation.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

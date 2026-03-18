@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 #![allow(non_camel_case_types)]
 //! f86=recent_changes_snapshot, f87=format_recent_changes.
 //! Tokenized output for LLM context. Stay on task with latest modified work.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

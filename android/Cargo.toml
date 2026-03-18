@@ -1,5 +1,6 @@
 # Unlicense — cochranblock.org
-# Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+# Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
 # Kova Android — egui GUI cross-compiled for Pixel 9 XL Pro (aarch64-linux-android).
 
 [workspace]
@@ -19,6 +20,7 @@ kova = { path = "..", features = ["gui"], default-features = false }
 log = "0.4"
 android_logger = "0.14"
 android-activity = { version = "0.6", features = ["native-activity"] }
+eframe = "0.33"
 
 [package.metadata.android]
 package = "org.cochranblock.kova"

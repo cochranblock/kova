@@ -1,5 +1,7 @@
 #!/bin/bash
 # Unlicense — cochranblock.org
+# Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
 # disk-clean.sh — free disk space by purging regenerable caches.
 # Run: ./scripts/disk-clean.sh [--aggressive]
 # Safe: only deletes build artifacts and temp files, never source code.

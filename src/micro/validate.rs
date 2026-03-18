@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, Mattbusel (hallucination detection)
 //! validate — Multi-method output validation for micro-model responses.
 //! Inspired by Mattbusel/LLM-Hallucination-Detection-Script's multi-method approach:
 //! confidence patterns, factual density, coherence scoring, contradiction detection.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use super::runner::T154;
 

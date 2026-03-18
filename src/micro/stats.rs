@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 //! stats — Persistent per-template run statistics.
 //! Tracks: run count, pass/fail, avg latency, total tokens.
 //! Stored as JSON in ~/.kova/micro/stats.json.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

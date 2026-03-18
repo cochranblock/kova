@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Contributing to Kova
 
 Thank you for your interest in contributing to Kova. This guide outlines the process and expectations for contributing code, documentation, and feedback.

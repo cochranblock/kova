@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, Mattbusel (learned routing)
 //! router — Route incoming requests to the correct micro-model.
 //! Uses epsilon-greedy bandit for learned routing (Mattbusel/tokio-prompt-orchestrator).
 //! Falls back to keyword matching when no history exists.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::collections::HashMap;
 use std::sync::Mutex;

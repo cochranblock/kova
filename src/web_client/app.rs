@@ -1,6 +1,8 @@
-// Unlicense — cochranblock.org
 //! Kova web app. Themed API client — projects, backlog, intent, WebSocket streaming.
 //! THEME.md palette: neon electric blue, teal, purple. Dark cosmic.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use crate::theme;
 use eframe::egui;

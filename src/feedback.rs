@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! feedback — Academy-to-challenge feedback loop.
 //! Mines tournament failures into new, harder challenges.
 //! When a model fails a challenge, the failure data (prompt, wrong response,
@@ -8,6 +6,8 @@
 //! f194=record_failure, f195=recent_failures, f196=generate_challenge_from_failure
 //! f197=export_generated_challenges, f198=feedback_stats
 //! t126=T126, t127=T127, t128=T128
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;

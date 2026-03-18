@@ -1,11 +1,11 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! providers — Multi-provider LLM client. Local (Kalosm/candle), OpenAI-compatible, Anthropic.
 //! Pure Rust local inference is the default. No ollama dependency.
 //! f199=f199, f200=f200, f210=f333.
 //! f211=f334, f212=f335, f213=f336.
 //! f214=f337.
 //! t129=T129, t130=T130, t131=T131, t134=T188.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Terminal UI. ratatui + crossterm. Replaces egui GUI and plain REPL.
 //! `kova` (no args) launches this. Chat + tool display + Visual QC.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},

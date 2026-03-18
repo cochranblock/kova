@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # PLAN: Debian Nodes — Rust-Only Inference (Replace Ollama)
 
 **Purpose:** Migrate IRONHIVE Debian nodes (lf, gd, bt, st) from ollama-hosted models to kova serve + Kalosm (pure Rust).

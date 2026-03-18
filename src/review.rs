@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Code review agent. Sends diffs to LLM for analysis.
 //! f185=review_diff, f186=review_staged, f187=review_branch, f188=format_review.
 //! T118=ReviewRequest, T119=ReviewResult, T120=ReviewIssue, T121=Severity.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::Path;
 use std::process::{Command, Stdio};

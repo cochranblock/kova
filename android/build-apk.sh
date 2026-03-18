@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Unlicense — cochranblock.org
+# Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
 # Build kova for Android (Pixel 9 XL Pro — aarch64-linux-android, API 34)
 # Prereqs:
 #   rustup target add aarch64-linux-android

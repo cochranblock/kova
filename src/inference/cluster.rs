@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! T193 inference — distributed model dispatch across IRONHIVE nodes.
 //! Routes tasks to the best available node based on role, model tier, and load.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use crate::providers::{self, T129};
 use std::sync::atomic::{AtomicBool, Ordering};

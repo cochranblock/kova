@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Plan: Gap Analysis Simulation — Kova Subcommands (Sequential)
 
 **Purpose:** Iterate through each kova subcommand in order, run a gap analysis simulation, and document Expected vs Observed vs Gaps. No parallel tasking — strictly sequential.

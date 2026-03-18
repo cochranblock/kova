@@ -1,10 +1,10 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! DevTools: headless browser console check via CDP. Catches JS errors, syntax errors, console.error.
 //! f63 = capture_screenshots. Real browser screenshots including WASM canvas.
 //!
 //! When Chrome is not installed, the fetcher downloads Chromium to ~/.cache/chromiumoxide.
 //! On Linux, install libnspr4 and libnss3 (e.g. `apt install libnspr4 libnss3`) for the fetched binary to run.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::Path;
 use std::sync::Arc;

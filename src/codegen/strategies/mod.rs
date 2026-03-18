@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! CodeGenStrategy trait — composable orchestration.
 //! T181, MoE, Academy, Gauntlet become impl CodeGenStrategy over shared CodeGenInfra.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 /// Shared config for all code gen strategies.
 #[derive(Debug, Clone)]

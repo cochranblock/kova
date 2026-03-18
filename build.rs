@@ -1,7 +1,7 @@
 //! Build script: Cap'n Proto (daemon), WASM thin client (serve).
 
-use std::path::Path;
-use std::process::Command;
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 fn main() {
     #[cfg(feature = "daemon")]
@@ -24,6 +24,8 @@ fn main() {
 
 #[cfg(feature = "serve")]
 fn build_wasm() {
+    use std::path::Path;
+    use std::process::Command;
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let wasm_dir = manifest_dir.join("wasm");
     let wasm_manifest = wasm_dir.join("Cargo.toml");

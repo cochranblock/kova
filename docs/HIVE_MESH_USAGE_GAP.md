@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Kova Hive Mesh — Usage Gap Analysis
 
 **Purpose:** Compare current usage vs. best-ability use of the kova hive mesh (c2-core + workers + hive), based on USER_STORY docs and plans.

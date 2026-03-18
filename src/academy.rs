@@ -1,10 +1,10 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! academy — MoE-powered autonomous development agent.
 //! Takes a high-level task, breaks it into steps, uses IRONHIVE cluster to
 //! generate code, wires it into the real codebase, tests, fixes, commits.
 //!
 //! This is the "do all the shit" module. Human direction → AI execution.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use crate::cluster::{T193, T191};
 use crate::providers::{self, T129};

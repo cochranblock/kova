@@ -1,6 +1,8 @@
-// Unlicense — cochranblock.org
 //! Kova web theme. THEME.md palette applied to egui WASM canvas.
 //! Neon electric blue, teal, purple/magenta. Dark cosmic background.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use eframe::egui::{self, Color32, CornerRadius, FontId, Stroke, TextStyle, Visuals};
 

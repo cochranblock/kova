@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Token-aware context window manager.
 //! f170=estimate_tokens, f171=trim_conversation, f172=trim_tool_output, f173=summarize_old_turns.
 //! t111=ContextBudget.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 /// t111=ContextBudget. Tracks token allocation for a model's context window.
 #[allow(non_camel_case_types)]

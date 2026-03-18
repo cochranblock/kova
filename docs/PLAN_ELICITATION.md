@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Implementation Plan: Human Elicitation
 
 **Goal:** Tease information out of vague users before acting. Ask when ambiguous, offer choices, confirm before generate.

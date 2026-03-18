@@ -1,6 +1,7 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Kova — augment engine. Core lib for GUI + serve.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 pub mod backlog;
 pub mod cargo;
@@ -43,6 +44,7 @@ pub use router::{f79, T94};
 pub use error::{T176, T176Result};
 pub use kernel::T208;
 
+#[cfg(feature = "inference")]
 pub mod academy;
 #[cfg(feature = "inference")]
 pub mod context_loader;
@@ -79,13 +81,18 @@ pub mod agent_loop;
 pub mod c2;
 pub mod cargo_cmd;
 pub mod context_mgr;
+#[cfg(feature = "inference")]
 pub mod cluster;
 pub mod elicitor;
+#[cfg(feature = "inference")]
 pub mod factory;
+#[cfg(feature = "inference")]
 pub mod gauntlet;
 pub mod git_cmd;
 pub mod inspect;
+#[cfg(feature = "inference")]
 pub mod micro;
+#[cfg(feature = "inference")]
 pub mod moe;
 pub mod node_cmd;
 #[cfg(feature = "rag")]
@@ -93,10 +100,13 @@ pub mod rag;
 #[cfg(feature = "inference")]
 pub mod repl;
 pub mod ci;
+#[cfg(feature = "inference")]
 pub mod feedback;
 pub mod imagegen;
 pub mod mcp;
+#[cfg(feature = "inference")]
 pub mod providers;
+#[cfg(feature = "inference")]
 pub mod review;
 pub mod ssh_ca;
 pub mod syntax;

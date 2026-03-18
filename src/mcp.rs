@@ -1,9 +1,9 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! MCP (Model Context Protocol) server. JSON-RPC 2.0 over stdio.
 //! Exposes kova tools to external AI clients (Claude Desktop, etc).
 //! f174=mcp_tools_list, f175=mcp_handle_request, f176=mcp_stdio_loop.
 //! t112=McpRequest, t113=McpResponse.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};

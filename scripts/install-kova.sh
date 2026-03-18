@@ -1,5 +1,7 @@
 #!/bin/bash
 # Unlicense — cochranblock.org
+# Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
 # Install Kova AI to ~/.local/bin. Run from intent-engine root.
 
 set -e

@@ -1,7 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 //! Sprite QC — tinder-style swipe UI for pixel art quality control.
 //! Approve/reject generated sprites. Keyboard: A/Left=reject, D/Right=approve, S/Down=skip.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use eframe::egui;
 use std::path::{Path, PathBuf};

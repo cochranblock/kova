@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 //! logmine — Extract training data from Claude Code conversation logs.
 //!
 //! Reads JSONL files from ~/.claude/projects/ and extracts:
@@ -8,6 +6,8 @@
 //!   - System prompt examples from conversation context
 //!
 //! Output: SFT-format JSONL for fine-tuning code models.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::collections::HashMap;
 use std::path::PathBuf;

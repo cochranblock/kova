@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # WSLg Setup for Kova GUI
 
 WSLg (Windows Subsystem for Linux GUI) lets Linux GUI apps like `kova gui` run on Windows with proper display.

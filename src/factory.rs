@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! factory — Rust Binary T181. Distributed code gen pipeline across IRONHIVE cluster.
 //!
 //! Pipeline stages:
@@ -9,6 +7,8 @@
 //!   4. Review (gd, 14B) — code quality check
 //!   5. Fix (lf/bt, 32B) — fix compile/review errors, retry
 //!   6. Output — final binary or code
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use crate::cluster::{T193, T191};
 use std::path::Path;

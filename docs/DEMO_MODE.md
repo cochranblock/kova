@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Demo — Baked-In Full Usage for Zero-Input Iteration
 
 **Purpose:** A **baked-in demo** built into the code replicates every intended use of Kova. No user input. Runs autonomously so you can iterate through dev cycles with zero human interaction.

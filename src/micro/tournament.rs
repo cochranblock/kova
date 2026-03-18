@@ -1,5 +1,3 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! tournament — Olympic-style model competition across cluster nodes.
 //!
 //! Weight classes (wrestling):
@@ -19,6 +17,8 @@
 //!   Endurance  — test_write, long-form generation
 //!   Doping     — anti-slop (P12), penalizes AI filler words
 //!   Exhibition — non-coder models doing Rust (cross-weight)
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::collections::HashMap;
 use std::path::PathBuf;

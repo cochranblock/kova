@@ -1,9 +1,9 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 #![allow(non_camel_case_types)]
 //! trace — Pipeline trace + LLM call observability.
 //! T93=LastTrace (in-memory pipeline trace).
 //! T109=LlmTrace: sled-backed per-call telemetry for every LLM invocation.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;

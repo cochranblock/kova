@@ -1,6 +1,7 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! f91–f93. Cargo check, clippy, test. Delegates to crate::cargo.
+
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::Path;
 
@@ -18,4 +19,3 @@ pub fn cargo_clippy(project_dir: &Path) -> (bool, String) {
 pub fn cargo_test(project_dir: &Path) -> (bool, String) {
     crate::cargo::cargo_test(project_dir)
 }
-

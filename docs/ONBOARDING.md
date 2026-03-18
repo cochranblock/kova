@@ -1,3 +1,6 @@
+<!-- Unlicense — cochranblock.org -->
+<!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
+
 # Onboarding Guide for Kova
 
 Welcome to Kova! This guide will help you set up your local environment, understand the project structure, and get productive quickly.

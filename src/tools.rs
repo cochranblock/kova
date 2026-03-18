@@ -1,8 +1,8 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Tool definitions and dispatch for agentic mode.
 //! t101=ToolDef, t102=ToolParam, t103=ToolCall, t104=ToolResult, t105=ToolRegistry.
 //! f140=parse_tool_calls, f141=dispatch_tool, f142-f146,f150,f155=individual tools.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 #![allow(non_camel_case_types)]
 
@@ -411,9 +411,23 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
         "glob" => f146(call, project_dir),
         "grep" => f150(call, project_dir),
         "memory_write" => f155(call),
+        #[cfg(feature = "inference")]
         "code_review" => f207(call, project_dir),
+        #[cfg(not(feature = "inference"))]
+        "code_review" => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: "code_review requires inference feature".into(),
+        },
         "code_outline" => f208(call, project_dir),
+        #[cfg(feature = "inference")]
         "record_failure" => f209(call),
+        #[cfg(not(feature = "inference"))]
+        "record_failure" => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: "record_failure requires inference feature".into(),
+        },
         #[cfg(feature = "rag")]
         "rag_search" => f166(call),
         _ => t104 {
@@ -873,6 +887,7 @@ fn f166(call: &t103) -> t104 {
 // ── f207: code_review ─────────────────────────────────────
 
 /// f207=code_review tool. Send diff to LLM for review.
+#[cfg(feature = "inference")]
 fn f207(call: &t103, _project_dir: &Path) -> t104 {
     let diff = match require_arg(call, "diff") {
         Ok(d) => d,
@@ -929,6 +944,7 @@ fn f208(call: &t103, project_dir: &Path) -> t104 {
 // ── f209: record_failure ──────────────────────────────────
 
 /// f209=record_failure tool. Store a challenge failure for curriculum feedback.
+#[cfg(feature = "inference")]
 fn f209(call: &t103) -> t104 {
     let challenge = match require_arg(call, "challenge") {
         Ok(c) => c.to_string(),

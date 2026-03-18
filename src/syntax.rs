@@ -1,10 +1,10 @@
-// Unlicense — cochranblock.org
-// Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! syntax — Syntax-aware code analysis. Extracts structure from Rust source files.
 //! Research: tree-sitter (AST patterns), syn (Rust-native parsing).
 //! Uses regex-based heuristics for fast extraction without heavy deps.
 //! f201=extract_symbols, f202=extract_functions, f203=extract_structs, f204=extract_impls.
 //! t132=T132, t133=T133.
+// Unlicense — cochranblock.org
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use serde::{Deserialize, Serialize};
 
