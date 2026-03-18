@@ -20,15 +20,19 @@ pub mod trace;
 pub use backlog::f25;
 pub use compute::{t6, t7};
 pub use config::{
+    f78, f94, f95, f97, f98, f99, f100, f101, f102, f103, f104, f105, f106, f107, f108, f109,
+    f110, f207, f208, f209, f210, f211, f212, f213, f214, f215, f216, f217, f218, f219, f220,
     all_build_presets, backlog_path, bind_addr, bootstrap, cursor_prompts_enabled, default_project,
-    discover_projects, f78, home, infer_preset_name, inference_model_path, kova_dir,
+    discover_projects, home, infer_preset_name, inference_model_path, kova_dir,
     load_build_preset, load_prompt, models_dir, orchestration_max_fix_retries,
     orchestration_router_resident, orchestration_run_clippy,
-    orchestration_specialist_idle_unload_secs, prompts_dir, sled_path, workspace_root, BuildPreset,
-    ModelRole,
+    orchestration_specialist_idle_unload_secs, prompts_dir, sled_path, workspace_root,
+    BuildPreset, ModelRole,
+    code_gen_structured, default_model, fast_localhost, hive_local_base, hive_shared_base,
+    model_cache_size, model_idle_unload_secs, ollama_url, router_structured,
 };
 pub use context::{f73, f74, Message};
-pub use backlog::{entry_to_intent, Backlog, BacklogEntry};
+pub use backlog::{f293, t8, t9};
 pub use intent::{f62, intent_name, t0, t1, t2};
 pub use plan::{t3, t4, t5};
 #[cfg(feature = "inference")]

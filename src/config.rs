@@ -1,7 +1,7 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Config. ~/.kova/config.toml. Paths. Bootstrap. Build presets.
-//! f78=model_path_for_role
+//! f78=model_path_for_role, f94-f110, f207-f220
 
 use std::path::{Path, PathBuf};
 
@@ -159,16 +159,16 @@ pub enum T89 {
 fn expand_path(s: &str) -> PathBuf {
     let s = s.trim();
     if s == "~" {
-        home()
+        f97()
     } else if let Some(rest) = s.strip_prefix("~/") {
-        home().join(rest)
+        f97().join(rest)
     } else {
         PathBuf::from(s)
     }
 }
 
 fn load_config() -> ConfigFile {
-    let path = kova_dir().join("config.toml");
+    let path = f98().join("config.toml");
     std::fs::read_to_string(&path)
         .ok()
         .and_then(|s| toml::from_str(&s).ok())
@@ -176,7 +176,6 @@ fn load_config() -> ConfigFile {
 }
 
 /// f78=model_path_for_role. Path for a model role. Env > config > default.
-/// f78=model_path_for_role
 pub fn f78(role: T89) -> Option<PathBuf> {
     let env_key = match role {
         T89::Router => "KOVA_MODEL_ROUTER",
@@ -200,7 +199,7 @@ pub fn f78(role: T89) -> Option<PathBuf> {
             return Some(path);
         }
     }
-    let default = models_dir().join(default_filename(role));
+    let default = f101().join(default_filename(role));
     if default.exists() {
         Some(default)
     } else {
@@ -215,17 +214,18 @@ fn default_filename(role: T89) -> &'static str {
     }
 }
 
-/// Orchestration settings from config.
-pub fn orchestration_router_resident() -> bool {
+/// f207=orchestration_router_resident
+pub fn f207() -> bool {
     load_config().orchestration.router_resident
 }
 
-pub fn orchestration_specialist_idle_unload_secs() -> u64 {
+/// f208=orchestration_specialist_idle_unload_secs
+pub fn f208() -> u64 {
     load_config().orchestration.specialist_idle_unload_secs
 }
 
-/// Model cache: max models in memory. KOVA_MODEL_CACHE_SIZE or config [inference] model_cache_size.
-pub fn model_cache_size() -> usize {
+/// f209=model_cache_size. Max models in memory. KOVA_MODEL_CACHE_SIZE or config [inference] model_cache_size.
+pub fn f209() -> usize {
     std::env::var("KOVA_MODEL_CACHE_SIZE")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -233,77 +233,79 @@ pub fn model_cache_size() -> usize {
         .unwrap_or_else(|| load_config().inference.model_cache_size.max(1))
 }
 
-/// Use grammar-constrained output for Coder. Experimental. Config [inference] code_gen_structured.
-pub fn code_gen_structured() -> bool {
+/// f210=code_gen_structured. Grammar-constrained output for Coder. Experimental. Config [inference] code_gen_structured.
+pub fn f210() -> bool {
     std::env::var("KOVA_CODE_GEN_STRUCTURED")
         .ok()
         .map(|s| s != "0" && s != "false" && s != "no")
         .unwrap_or_else(|| load_config().inference.code_gen_structured)
 }
 
-/// Use grammar-constrained output for Router. Config [inference] router_structured.
-pub fn router_structured() -> bool {
+/// f211=router_structured. Grammar-constrained output for Router. Config [inference] router_structured.
+pub fn f211() -> bool {
     std::env::var("KOVA_ROUTER_STRUCTURED")
         .ok()
         .map(|s| s != "0" && s != "false" && s != "no")
         .unwrap_or_else(|| load_config().inference.router_structured)
 }
 
-/// Model idle unload: secs before evicting. Config [inference] model_idle_unload_secs or orchestration.
-pub fn model_idle_unload_secs() -> u64 {
+/// f212=model_idle_unload_secs. Secs before evicting. Config [inference] model_idle_unload_secs or orchestration.
+pub fn f212() -> u64 {
     load_config()
         .inference
         .model_idle_unload_secs
-        .unwrap_or_else(orchestration_specialist_idle_unload_secs)
+        .unwrap_or_else(f208)
 }
 
-pub fn orchestration_max_fix_retries() -> u32 {
+/// f213=orchestration_max_fix_retries
+pub fn f213() -> u32 {
     load_config().orchestration.max_fix_retries
 }
 
-pub fn orchestration_run_clippy() -> bool {
+/// f214=orchestration_run_clippy
+pub fn f214() -> bool {
     load_config().orchestration.run_clippy
 }
 
-/// Cursor prompts enabled. When false, no Cursor rules/skills injected.
-pub fn cursor_prompts_enabled() -> bool {
+/// f215=cursor_prompts_enabled. When false, no Cursor rules/skills injected.
+pub fn f215() -> bool {
     load_config().cursor.prompts_enabled
 }
 
-/// Ollama base URL. OLLAMA_HOST or http://localhost:11434.
-pub fn ollama_url() -> String {
+/// f216=ollama_url. OLLAMA_HOST or http://localhost:11434.
+pub fn f216() -> String {
     std::env::var("OLLAMA_HOST")
         .unwrap_or_else(|_| "http://localhost:11434".to_string())
 }
 
-/// Default model for review/feedback. OLLAMA_MODEL or qwen2.5-coder:1.5b.
-pub fn default_model() -> String {
+/// f217=default_model. Default model for review/feedback. OLLAMA_MODEL or qwen2.5-coder:1.5b.
+pub fn f217() -> String {
     std::env::var("OLLAMA_MODEL")
         .unwrap_or_else(|_| "qwen2.5-coder:1.5b".to_string())
 }
 
 /// f97=home. HOME env or /.
-pub fn home() -> PathBuf {
+pub fn f97() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/"))
 }
 
 /// f98=kova_dir. ~/.kova.
-pub fn kova_dir() -> PathBuf {
-    home().join(".kova")
+pub fn f98() -> PathBuf {
+    f97().join(".kova")
 }
 
-/// Hive paths from config. Fallback to defaults if not set.
-pub fn hive_local_base() -> String {
+/// f218=hive_local_base. Hive paths from config. Fallback to defaults if not set.
+pub fn f218() -> String {
     load_config()
         .hive
         .local_base
         .unwrap_or_else(|| "/tmp/hive-build".to_string())
 }
 
-/// Hive shared (NFS) base path.
-pub fn hive_shared_base() -> String {
+/// f219=hive_shared_base. Hive shared (NFS) base path.
+pub fn f219() -> String {
     load_config()
         .hive
         .shared_base
@@ -311,22 +313,22 @@ pub fn hive_shared_base() -> String {
 }
 
 /// f99=prompts_dir. ~/.kova/prompts.
-pub fn prompts_dir() -> PathBuf {
-    kova_dir().join("prompts")
+pub fn f99() -> PathBuf {
+    f98().join("prompts")
 }
 
 /// f100=sled_path. ~/.kova/sled.db.
-pub fn sled_path() -> PathBuf {
-    kova_dir().join("sled.db")
+pub fn f100() -> PathBuf {
+    f98().join("sled.db")
 }
 
 /// f101=models_dir. ~/.kova/models.
-pub fn models_dir() -> PathBuf {
-    kova_dir().join("models")
+pub fn f101() -> PathBuf {
+    f98().join("models")
 }
 
 /// f102=inference_model_path. Model path for inference. KOVA_INFERENCE_MODEL or f78(Coder) or default.
-pub fn inference_model_path() -> Option<PathBuf> {
+pub fn f102() -> Option<PathBuf> {
     std::env::var("KOVA_INFERENCE_MODEL")
         .ok()
         .map(|s| expand_path(&s))
@@ -335,7 +337,7 @@ pub fn inference_model_path() -> Option<PathBuf> {
 }
 
 /// f94=default_project. Default project for execution. KOVA_PROJECT > config [paths] project > cwd.
-pub fn default_project() -> PathBuf {
+pub fn f94() -> PathBuf {
     if let Ok(p) = std::env::var("KOVA_PROJECT") {
         let path = expand_path(&p);
         if path.exists() {
@@ -348,11 +350,11 @@ pub fn default_project() -> PathBuf {
             return path;
         }
     }
-    std::env::current_dir().unwrap_or_else(|_| home())
+    std::env::current_dir().unwrap_or_else(|_| f97())
 }
 
-/// Root for project discovery. KOVA_PROJECTS_ROOT > config [paths] projects_root > home.
-fn projects_root() -> PathBuf {
+/// f96=projects_root. Root for project discovery. KOVA_PROJECTS_ROOT > config [paths] projects_root > home.
+fn f96() -> PathBuf {
     if let Ok(p) = std::env::var("KOVA_PROJECTS_ROOT") {
         let path = expand_path(&p);
         if path.exists() {
@@ -365,12 +367,12 @@ fn projects_root() -> PathBuf {
             return path;
         }
     }
-    home()
+    f97()
 }
 
 /// f95=discover_projects. Discover all projects under projects_root. Workspace members + sibling dirs with Cargo.toml. Sorted by name.
-pub fn discover_projects() -> Vec<PathBuf> {
-    let root = projects_root();
+pub fn f95() -> Vec<PathBuf> {
+    let root = f96();
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
 
@@ -432,14 +434,14 @@ pub fn discover_projects() -> Vec<PathBuf> {
 }
 
 /// f103=backlog_path. KOVA_BACKLOG_PATH or ~/.kova/backlog.json.
-pub fn backlog_path() -> PathBuf {
+pub fn f103() -> PathBuf {
     std::env::var("KOVA_BACKLOG_PATH")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| kova_dir().join("backlog.json"))
+        .unwrap_or_else(|_| f98().join("backlog.json"))
 }
 
 /// f104=workspace_root. Workspace root for builds. KOVA_WORKSPACE_ROOT > config [build] workspace_root > detect from project.
-pub fn workspace_root(project: &Path) -> PathBuf {
+pub fn f104(project: &Path) -> PathBuf {
     if let Ok(p) = std::env::var("KOVA_WORKSPACE_ROOT") {
         let path = expand_path(&p);
         if path.exists() {
@@ -477,21 +479,18 @@ fn workspace_root_from_project(project: &Path) -> PathBuf {
     project.to_path_buf()
 }
 
-/// Load build preset by project name (e.g. "oakilydokily", "mural-wasm").
-/// f105=load_build_preset
-pub fn load_build_preset(project_name: &str) -> Option<T88> {
+/// f105=load_build_preset. Load build preset by project name (e.g. "oakilydokily", "mural-wasm").
+pub fn f105(project_name: &str) -> Option<T88> {
     load_config().build.presets.get(project_name).cloned()
 }
 
-/// All build presets for API.
-/// f106=all_build_presets
-pub fn all_build_presets() -> std::collections::HashMap<String, T88> {
+/// f106=all_build_presets. All build presets for API.
+pub fn f106() -> std::collections::HashMap<String, T88> {
     load_config().build.presets
 }
 
-/// Infer preset name from project path. e.g. .../oakilydokily -> "oakilydokily", .../mural-wasm -> "mural-wasm".
-/// f107=infer_preset_name
-pub fn infer_preset_name(project: &Path) -> Option<String> {
+/// f107=infer_preset_name. Infer preset name from project path. e.g. .../oakilydokily -> "oakilydokily".
+pub fn f107(project: &Path) -> Option<String> {
     let name = project.file_name()?.to_str()?;
     if name.is_empty() || name == "." || name == ".." {
         return None;
@@ -503,8 +502,40 @@ pub fn infer_preset_name(project: &Path) -> Option<String> {
 pub use T88 as BuildPreset;
 pub use T89 as ModelRole;
 
+/// Human-readable aliases for tokenized functions.
+pub use f94 as default_project;
+pub use f95 as discover_projects;
+pub use f97 as home;
+pub use f98 as kova_dir;
+pub use f99 as prompts_dir;
+pub use f100 as sled_path;
+pub use f101 as models_dir;
+pub use f102 as inference_model_path;
+pub use f103 as backlog_path;
+pub use f104 as workspace_root;
+pub use f105 as load_build_preset;
+pub use f106 as all_build_presets;
+pub use f107 as infer_preset_name;
+pub use f108 as bind_addr;
+pub use f109 as bootstrap;
+pub use f110 as load_prompt;
+pub use f207 as orchestration_router_resident;
+pub use f208 as orchestration_specialist_idle_unload_secs;
+pub use f209 as model_cache_size;
+pub use f210 as code_gen_structured;
+pub use f211 as router_structured;
+pub use f212 as model_idle_unload_secs;
+pub use f213 as orchestration_max_fix_retries;
+pub use f214 as orchestration_run_clippy;
+pub use f215 as cursor_prompts_enabled;
+pub use f216 as ollama_url;
+pub use f217 as default_model;
+pub use f218 as hive_local_base;
+pub use f219 as hive_shared_base;
+pub use f220 as fast_localhost;
+
 /// f108=bind_addr. KOVA_BIND or config [serve] bind or 127.0.0.1:3002.
-pub fn bind_addr() -> std::net::SocketAddr {
+pub fn f108() -> std::net::SocketAddr {
     std::env::var("KOVA_BIND")
         .ok()
         .or_else(|| load_config().serve.bind.clone())
@@ -512,9 +543,9 @@ pub fn bind_addr() -> std::net::SocketAddr {
         .unwrap_or_else(|| std::net::SocketAddr::from(([127, 0, 0, 1], 3002u16)))
 }
 
-/// Skip TLS when binding to loopback. Localhost = no TLS = fastest path.
+/// f220=fast_localhost. Skip TLS when binding to loopback. Localhost = no TLS = fastest path.
 /// Set KOVA_FAST_LOCALHOST=false to disable (e.g. when adding TLS for remote).
-pub fn fast_localhost() -> bool {
+pub fn f220() -> bool {
     std::env::var("KOVA_FAST_LOCALHOST")
         .ok()
         .map(|s| s != "0" && s != "false" && s != "no")
@@ -522,11 +553,11 @@ pub fn fast_localhost() -> bool {
 }
 
 /// f109=bootstrap. Bootstrap ~/.kova, prompts/, config.toml, default prompts.
-pub fn bootstrap() -> anyhow::Result<()> {
-    let dir = kova_dir();
+pub fn f109() -> anyhow::Result<()> {
+    let dir = f98();
     std::fs::create_dir_all(&dir)?;
-    std::fs::create_dir_all(prompts_dir())?;
-    std::fs::create_dir_all(models_dir())?;
+    std::fs::create_dir_all(f99())?;
+    std::fs::create_dir_all(f101())?;
 
     let config_path = dir.join("config.toml");
     if !config_path.exists() {
@@ -592,7 +623,7 @@ package = "rogue-repo"
         std::fs::write(&config_path, default)?;
     }
 
-    let prompts = prompts_dir();
+    let prompts = f99();
     let system_path = prompts.join("system.md");
     if !system_path.exists() {
         let default = r#"# System prompt
@@ -630,8 +661,8 @@ You are a Senior Systems Architect. Execute my intent. Direct, precise, efficien
 }
 
 /// f110=load_prompt
-pub fn load_prompt(name: &str) -> String {
-    let path = prompts_dir().join(format!("{}.md", name));
+pub fn f110(name: &str) -> String {
+    let path = f99().join(format!("{}.md", name));
     std::fs::read_to_string(&path).unwrap_or_default()
 }
 
@@ -659,7 +690,7 @@ mod tests {
     /// expand_path (f97 home)
     #[test]
     fn expand_path_tilde() {
-        let h = home();
+        let h = f97();
         let p = super::expand_path("~/foo/bar");
         assert_eq!(p, h.join("foo/bar"));
     }

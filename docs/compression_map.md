@@ -147,6 +147,20 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f204 | extract_impls | syntax | Extract impl blocks |
 | f205 | format_outline | syntax | Format symbols as code outline |
 | f206 | outline_file | syntax | Parse file and return outline |
+| f207 | orchestration_router_resident | config | Router stays loaded |
+| f208 | orchestration_specialist_idle_unload_secs | config | Specialist idle timeout |
+| f209 | model_cache_size | config | Max models in memory |
+| f210 | code_gen_structured | config | Grammar-constrained Coder output |
+| f211 | router_structured | config | Grammar-constrained Router output |
+| f212 | model_idle_unload_secs | config | Model idle eviction secs |
+| f213 | orchestration_max_fix_retries | config | DDI fix loop cap |
+| f214 | orchestration_run_clippy | config | Run clippy in fix loop |
+| f215 | cursor_prompts_enabled | config | Inject Cursor rules/skills |
+| f216 | ollama_url | config | Ollama base URL |
+| f217 | default_model | config | Default model for review/feedback |
+| f218 | hive_local_base | config | Hive sync-to-local path |
+| f219 | hive_shared_base | config | Hive NFS shared path |
+| f220 | fast_localhost | config | Skip TLS on loopback |
 
 ## Types (tN)
 
