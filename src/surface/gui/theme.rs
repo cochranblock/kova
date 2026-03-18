@@ -35,7 +35,8 @@ pub mod layout {
 }
 
 /// Apply full theme to context.
-pub fn apply(ctx: &egui::Context) {
+/// f320=apply
+pub fn f320(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
     style.visuals = visuals();
     style.spacing = spacing();
@@ -91,7 +92,8 @@ fn text_styles() -> std::collections::BTreeMap<TextStyle, FontId> {
 }
 
 /// Styled frame for message cards.
-pub fn message_frame() -> egui::Frame {
+/// f321=message_frame
+pub fn f321() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::SURFACE)
         .corner_radius(CornerRadius::same(layout::RADIUS_U8))
@@ -100,7 +102,8 @@ pub fn message_frame() -> egui::Frame {
 }
 
 /// Styled frame for input area.
-pub fn input_frame() -> egui::Frame {
+/// f322=input_frame
+pub fn f322() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::SURFACE)
         .corner_radius(CornerRadius::same(layout::RADIUS_U8))
@@ -109,7 +112,8 @@ pub fn input_frame() -> egui::Frame {
 }
 
 /// Styled frame for panels (backlog, prompts).
-pub fn panel_frame() -> egui::Frame {
+/// f323=panel_frame
+pub fn f323() -> egui::Frame {
     egui::Frame::default()
         .fill(colors::SURFACE)
         .corner_radius(CornerRadius::same(layout::RADIUS_U8))

@@ -2,10 +2,10 @@
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! providers — Multi-provider LLM client. Local (Kalosm/candle), OpenAI-compatible, Anthropic.
 //! Pure Rust local inference is the default. No ollama dependency.
-//! f199=provider_generate, f200=provider_list, f210=default_provider.
-//! f211=provider_health, f212=provider_version, f213=provider_list_models.
-//! f214=provider_generate_stream.
-//! t129=Provider, t130=ProviderConfig, t131=ProviderResponse, t134=ModelInfo.
+//! f199=f199, f200=f200, f210=f333.
+//! f211=f334, f212=f335, f213=f336.
+//! f214=f337.
+//! t129=T129, t130=T130, t131=T131, t134=T188.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -13,9 +13,9 @@ use std::sync::{mpsc, Arc};
 
 // ── Types ────────────────────────────────────────────────────────
 
-/// t129=Provider. Supported LLM providers.
+/// t129=T129. Supported LLM providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Provider {
+pub enum T129 {
     /// Pure Rust local inference via Kalosm/candle. Default provider.
     Local { model_path: PathBuf },
     /// Remote ollama instance (kept for cluster nodes).
@@ -30,17 +30,17 @@ pub enum Provider {
     Anthropic { api_key: String, model: String },
 }
 
-/// t130=ProviderConfig. Config for a named provider.
+/// t130=T130. Config for a named provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProviderConfig {
+pub struct T130 {
     pub name: String,
-    pub provider: Provider,
+    pub provider: T129,
     pub default_model: Option<String>,
 }
 
-/// t131=ProviderResponse. Unified response from any provider.
+/// t131=T131. Unified response from any provider.
 #[derive(Debug, Clone)]
-pub struct ProviderResponse {
+pub struct T131 {
     pub text: String,
     pub model: String,
     pub provider_name: String,
@@ -48,9 +48,9 @@ pub struct ProviderResponse {
     pub tokens_out: Option<u64>,
 }
 
-/// t134=ModelInfo. Model available on a provider.
+/// t134=T188. Model available on a provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelInfo {
+pub struct T188 {
     pub name: String,
     pub size: u64,
     pub modified_at: String,
@@ -58,23 +58,23 @@ pub struct ModelInfo {
 
 // ── Generation ───────────────────────────────────────────────────
 
-/// f199=provider_generate. Generate text from any provider.
-pub fn provider_generate(
-    provider: &Provider,
+/// f199=f199. Generate text from any provider.
+pub fn f199(
+    provider: &T129,
     model: &str,
     system: &str,
     prompt: &str,
-) -> Result<ProviderResponse, String> {
+) -> Result<T131, String> {
     let t0 = std::time::Instant::now();
 
     match provider {
-        Provider::Local { model_path } => {
+        T129::Local { model_path } => {
             let resp_text = local_generate(model_path, system, prompt)?;
             let model_name = model_path
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "local".into());
-            Ok(ProviderResponse {
+            Ok(T131 {
                 text: resp_text,
                 model: model_name,
                 provider_name: "local".into(),
@@ -82,9 +82,9 @@ pub fn provider_generate(
                 tokens_out: None,
             })
         }
-        Provider::Ollama { url } => {
+        T129::Ollama { url } => {
             let resp = ollama_generate_raw(url, model, system, prompt, None, Some(0.2))?;
-            Ok(ProviderResponse {
+            Ok(T131 {
                 text: resp.text,
                 model: model.into(),
                 provider_name: "local-http".into(),
@@ -92,7 +92,7 @@ pub fn provider_generate(
                 tokens_out: resp.tokens_out,
             })
         }
-        Provider::OpenAiCompat {
+        T129::OpenAiCompat {
             url,
             api_key,
             model: default_model,
@@ -103,7 +103,7 @@ pub fn provider_generate(
                 model
             };
             let resp = openai_compat_generate(url, api_key, use_model, system, prompt)?;
-            Ok(ProviderResponse {
+            Ok(T131 {
                 text: resp.text,
                 model: use_model.into(),
                 provider_name: "openai-compat".into(),
@@ -111,14 +111,14 @@ pub fn provider_generate(
                 tokens_out: resp.tokens_out,
             })
         }
-        Provider::Anthropic { api_key, model: default_model } => {
+        T129::Anthropic { api_key, model: default_model } => {
             let use_model = if model.is_empty() {
                 default_model.as_str()
             } else {
                 model
             };
             let resp = anthropic_generate(api_key, use_model, system, prompt)?;
-            Ok(ProviderResponse {
+            Ok(T131 {
                 text: resp.text,
                 model: use_model.into(),
                 provider_name: "anthropic".into(),
@@ -150,40 +150,40 @@ fn local_generate(model_path: &std::path::Path, system: &str, prompt: &str) -> R
     handle.join().map_err(|_| "inference thread panic".to_string())?
 }
 
-/// f210=default_provider. Returns Local provider using config model path.
+/// f210=f333. Returns Local provider using config model path.
 /// Falls back to Ollama if KOVA_PROVIDER=ollama or model file missing.
-pub fn default_provider() -> Provider {
+pub fn f333() -> T129 {
     // Explicit override: KOVA_PROVIDER=ollama forces remote.
     if std::env::var("KOVA_PROVIDER").as_deref() == Ok("ollama") {
-        return Provider::Ollama {
+        return T129::Ollama {
             url: crate::config::ollama_url(),
         };
     }
 
     match crate::config::inference_model_path() {
-        Some(path) if path.exists() => Provider::Local { model_path: path },
+        Some(path) if path.exists() => T129::Local { model_path: path },
         _ => {
             // No local model found — fall back to ollama.
-            Provider::Ollama {
+            T129::Ollama {
                 url: crate::config::ollama_url(),
             }
         }
     }
 }
 
-// ── Provider Health / Version / Models ───────────────────────────
+// ── T129 Health / Version / Models ───────────────────────────
 
-/// f211=provider_health. Check if a provider is reachable.
-pub fn provider_health(provider: &Provider) -> bool {
+/// f211=f334. Check if a provider is reachable.
+pub fn f334(provider: &T129) -> bool {
     match provider {
-        Provider::Local { model_path } => model_path.exists(),
-        Provider::Ollama { url } => {
+        T129::Local { model_path } => model_path.exists(),
+        T129::Ollama { url } => {
             let endpoint = format!("{}/api/version", url);
             reqwest::blocking::get(&endpoint)
                 .map(|r| r.status().is_success())
                 .unwrap_or(false)
         }
-        Provider::OpenAiCompat { url, api_key, .. } => {
+        T129::OpenAiCompat { url, api_key, .. } => {
             let endpoint = format!("{}/v1/models", url.trim_end_matches('/'));
             reqwest::blocking::Client::new()
                 .get(&endpoint)
@@ -192,18 +192,18 @@ pub fn provider_health(provider: &Provider) -> bool {
                 .map(|r| r.status().is_success())
                 .unwrap_or(false)
         }
-        Provider::Anthropic { .. } => {
+        T129::Anthropic { .. } => {
             // Anthropic is always "online" if we have a key. Real check would burn tokens.
             true
         }
     }
 }
 
-/// f212=provider_version. Get version string from provider.
-pub fn provider_version(provider: &Provider) -> Option<String> {
+/// f212=f335. Get version string from provider.
+pub fn f335(provider: &T129) -> Option<String> {
     match provider {
-        Provider::Local { .. } => Some(env!("CARGO_PKG_VERSION").to_string()),
-        Provider::Ollama { url } => {
+        T129::Local { .. } => Some(env!("CARGO_PKG_VERSION").to_string()),
+        T129::Ollama { url } => {
             #[derive(Deserialize)]
             struct VersionResp {
                 version: String,
@@ -214,15 +214,15 @@ pub fn provider_version(provider: &Provider) -> Option<String> {
                 .and_then(|r| r.json::<VersionResp>().ok())
                 .map(|v| v.version)
         }
-        Provider::OpenAiCompat { .. } => None,
-        Provider::Anthropic { .. } => None,
+        T129::OpenAiCompat { .. } => None,
+        T129::Anthropic { .. } => None,
     }
 }
 
-/// f213=provider_list_models. List available models on a provider.
-pub fn provider_list_models(provider: &Provider) -> Result<Vec<ModelInfo>, String> {
+/// f213=f336. List available models on a provider.
+pub fn f336(provider: &T129) -> Result<Vec<T188>, String> {
     match provider {
-        Provider::Local { model_path } => {
+        T129::Local { model_path } => {
             // List GGUF files in the model's parent directory.
             let dir = model_path.parent().unwrap_or(model_path.as_path());
             let mut models = Vec::new();
@@ -241,7 +241,7 @@ pub fn provider_list_models(provider: &Provider) -> Result<Vec<ModelInfo>, Strin
                             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                             .map(|d| d.as_secs().to_string())
                             .unwrap_or_default();
-                        models.push(ModelInfo {
+                        models.push(T188 {
                             name,
                             size,
                             modified_at,
@@ -251,10 +251,10 @@ pub fn provider_list_models(provider: &Provider) -> Result<Vec<ModelInfo>, Strin
             }
             Ok(models)
         }
-        Provider::Ollama { url } => {
+        T129::Ollama { url } => {
             #[derive(Deserialize)]
             struct TagsResp {
-                models: Vec<ModelInfo>,
+                models: Vec<T188>,
             }
             let endpoint = format!("{}/api/tags", url);
             let resp =
@@ -262,7 +262,7 @@ pub fn provider_list_models(provider: &Provider) -> Result<Vec<ModelInfo>, Strin
             let tags: TagsResp = resp.json().map_err(|e| format!("parse models: {}", e))?;
             Ok(tags.models)
         }
-        Provider::OpenAiCompat { url, api_key, .. } => {
+        T129::OpenAiCompat { url, api_key, .. } => {
             #[derive(Deserialize)]
             struct OaiModelsResp {
                 data: Vec<OaiModel>,
@@ -282,34 +282,34 @@ pub fn provider_list_models(provider: &Provider) -> Result<Vec<ModelInfo>, Strin
             Ok(models
                 .data
                 .into_iter()
-                .map(|m| ModelInfo {
+                .map(|m| T188 {
                     name: m.id,
                     size: 0,
                     modified_at: String::new(),
                 })
                 .collect())
         }
-        Provider::Anthropic { .. } => Ok(vec![
-            ModelInfo { name: "claude-opus-4-6".into(), size: 0, modified_at: String::new() },
-            ModelInfo { name: "claude-sonnet-4-6".into(), size: 0, modified_at: String::new() },
-            ModelInfo { name: "claude-haiku-4-5-20251001".into(), size: 0, modified_at: String::new() },
+        T129::Anthropic { .. } => Ok(vec![
+            T188 { name: "claude-opus-4-6".into(), size: 0, modified_at: String::new() },
+            T188 { name: "claude-sonnet-4-6".into(), size: 0, modified_at: String::new() },
+            T188 { name: "claude-haiku-4-5-20251001".into(), size: 0, modified_at: String::new() },
         ]),
     }
 }
 
-/// f214=provider_generate_stream. Streaming generation. Returns receiver for token chunks.
-pub fn provider_generate_stream(
-    provider: &Provider,
+/// f214=f337. Streaming generation. Returns receiver for token chunks.
+pub fn f337(
+    provider: &T129,
     model: &str,
     system: &str,
     prompt: &str,
 ) -> mpsc::Receiver<Arc<str>> {
     match provider {
-        Provider::Local { model_path } => {
+        T129::Local { model_path } => {
             // Reuse inference::f76 which already returns mpsc::Receiver<Arc<str>>
             crate::inference::f76(model_path, system, &[], prompt)
         }
-        Provider::Ollama { url } => {
+        T129::Ollama { url } => {
             let (tx, rx) = mpsc::channel();
             let url = format!("{}/api/generate", url);
             let body = serde_json::json!({
@@ -367,7 +367,7 @@ pub fn provider_generate_stream(
             });
             rx
         }
-        Provider::OpenAiCompat { .. } | Provider::Anthropic { .. } => {
+        T129::OpenAiCompat { .. } | T129::Anthropic { .. } => {
             // Non-streaming fallback: generate full response and send as one chunk.
             let (tx, rx) = mpsc::channel();
             let provider = provider.clone();
@@ -375,7 +375,7 @@ pub fn provider_generate_stream(
             let system = system.to_string();
             let prompt = prompt.to_string();
             std::thread::spawn(move || {
-                match provider_generate(&provider, &model, &system, &prompt) {
+                match f199(&provider, &model, &system, &prompt) {
                     Ok(resp) => {
                         let _ = tx.send(Arc::from(resp.text.as_str()));
                     }
@@ -424,8 +424,8 @@ fn ollama_generate_raw(
         .send()
         .map_err(|e| {
             let elapsed = t0.elapsed().as_millis() as u64;
-            crate::trace::log_llm(crate::trace::LlmTrace {
-                ts: crate::trace::now_ms(),
+            crate::trace::f161(crate::trace::T109 {
+                ts: crate::trace::f326(),
                 backend: "local-http".into(),
                 model: model.into(),
                 node: base_url.into(),
@@ -443,8 +443,8 @@ fn ollama_generate_raw(
     if !resp.status().is_success() {
         let status_code = resp.status();
         let body_text = resp.text().unwrap_or_default();
-        crate::trace::log_llm(crate::trace::LlmTrace {
-            ts: crate::trace::now_ms(),
+        crate::trace::f161(crate::trace::T109 {
+            ts: crate::trace::f326(),
             backend: "local-http".into(),
             model: model.into(),
             node: base_url.into(),
@@ -483,8 +483,8 @@ fn ollama_generate_raw(
         eprintln!("[provider] {} tokens, {:.1} tok/s", count, tps);
     }
 
-    crate::trace::log_llm(crate::trace::LlmTrace {
-        ts: crate::trace::now_ms(),
+    crate::trace::f161(crate::trace::T109 {
+        ts: crate::trace::f326(),
         backend: "local-http".into(),
         model: model.into(),
         node: base_url.into(),
@@ -647,10 +647,10 @@ fn anthropic_generate(
     Ok(RawResponse { text, tokens_out })
 }
 
-// ── Provider List ────────────────────────────────────────────────
+// ── T129 List ────────────────────────────────────────────────
 
-/// f200=provider_list. Load configured providers from config.
-pub fn provider_list() -> Vec<ProviderConfig> {
+/// f200=f200. Load configured providers from config.
+pub fn f200() -> Vec<T130> {
     let config_path = crate::config::kova_dir().join("providers.toml");
     if !config_path.exists() {
         return default_providers();
@@ -660,7 +660,7 @@ pub fn provider_list() -> Vec<ProviderConfig> {
             #[derive(Deserialize)]
             struct ProvidersFile {
                 #[serde(default)]
-                providers: Vec<ProviderConfig>,
+                providers: Vec<T130>,
             }
             match toml::from_str::<ProvidersFile>(&content) {
                 Ok(f) => f.providers,
@@ -671,15 +671,15 @@ pub fn provider_list() -> Vec<ProviderConfig> {
     }
 }
 
-fn default_providers() -> Vec<ProviderConfig> {
-    let provider = default_provider();
+fn default_providers() -> Vec<T130> {
+    let provider = f333();
     let model_name = match &provider {
-        Provider::Local { model_path } => model_path
+        T129::Local { model_path } => model_path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned()),
         _ => Some("qwen2.5-coder:1.5b".into()),
     };
-    vec![ProviderConfig {
+    vec![T130 {
         name: "local".into(),
         provider,
         default_model: model_name,
@@ -699,16 +699,16 @@ mod tests {
         assert_eq!(providers[0].name, "local");
         // Default is Local (pure Rust) when model exists, Ollama fallback otherwise.
         assert!(
-            matches!(providers[0].provider, Provider::Local { .. })
-                || matches!(providers[0].provider, Provider::Ollama { .. })
+            matches!(providers[0].provider, T129::Local { .. })
+                || matches!(providers[0].provider, T129::Ollama { .. })
         );
     }
 
     #[test]
     fn provider_config_serde_roundtrip() {
-        let config = ProviderConfig {
+        let config = T130 {
             name: "test".into(),
-            provider: Provider::OpenAiCompat {
+            provider: T129::OpenAiCompat {
                 url: "http://localhost:8080".into(),
                 api_key: "sk-test".into(),
                 model: "gpt-4".into(),
@@ -716,13 +716,13 @@ mod tests {
             default_model: Some("gpt-4".into()),
         };
         let json = serde_json::to_string(&config).unwrap();
-        let back: ProviderConfig = serde_json::from_str(&json).unwrap();
+        let back: T130 = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, "test");
     }
 
     #[test]
     fn provider_response_fields() {
-        let resp = ProviderResponse {
+        let resp = T131 {
             text: "hello".into(),
             model: "test-model".into(),
             provider_name: "test".into(),
@@ -736,14 +736,14 @@ mod tests {
     #[test]
     fn all_provider_variants_serialize() {
         let providers = vec![
-            Provider::Local { model_path: PathBuf::from("/models/test.gguf") },
-            Provider::Ollama { url: "http://localhost:11434".into() },
-            Provider::OpenAiCompat {
+            T129::Local { model_path: PathBuf::from("/models/test.gguf") },
+            T129::Ollama { url: "http://localhost:11434".into() },
+            T129::OpenAiCompat {
                 url: "http://localhost:8080".into(),
                 api_key: "sk-test".into(),
                 model: "gpt-4".into(),
             },
-            Provider::Anthropic {
+            T129::Anthropic {
                 api_key: "sk-ant-test".into(),
                 model: "claude-sonnet-4-6".into(),
             },
@@ -751,13 +751,13 @@ mod tests {
         for p in &providers {
             let json = serde_json::to_string(p).unwrap();
             assert!(!json.is_empty());
-            let _back: Provider = serde_json::from_str(&json).unwrap();
+            let _back: T129 = serde_json::from_str(&json).unwrap();
         }
     }
 
     #[test]
     fn provider_response_no_tokens() {
-        let resp = ProviderResponse {
+        let resp = T131 {
             text: "output".into(),
             model: "m".into(),
             provider_name: "test".into(),
@@ -767,13 +767,13 @@ mod tests {
         assert_eq!(resp.tokens_out, None);
     }
 
-    /// provider_generate with unreachable URL returns Err (not panic).
+    /// f199 with unreachable URL returns Err (not panic).
     #[test]
     fn provider_generate_unreachable_url_returns_error() {
-        let provider = Provider::Ollama {
+        let provider = T129::Ollama {
             url: "http://127.0.0.1:1".into(),
         };
-        let result = provider_generate(&provider, "test", "system", "prompt");
+        let result = f199(&provider, "test", "system", "prompt");
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(!err.is_empty());
@@ -781,28 +781,28 @@ mod tests {
 
     #[test]
     fn default_provider_returns_valid_variant() {
-        let provider = default_provider();
+        let provider = f333();
         // Should be Local or Ollama depending on whether model file exists.
         match &provider {
-            Provider::Local { model_path } => {
+            T129::Local { model_path } => {
                 assert!(model_path.to_string_lossy().len() > 0);
             }
-            Provider::Ollama { url } => {
+            T129::Ollama { url } => {
                 assert!(url.starts_with("http"));
             }
-            _ => panic!("default_provider should return Local or Ollama"),
+            _ => panic!("f333 should return Local or Ollama"),
         }
     }
 
     #[test]
     fn local_provider_serializes() {
-        let p = Provider::Local {
+        let p = T129::Local {
             model_path: PathBuf::from("/tmp/test-model.gguf"),
         };
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("Local"));
         assert!(json.contains("test-model.gguf"));
-        let back: Provider = serde_json::from_str(&json).unwrap();
-        assert!(matches!(back, Provider::Local { .. }));
+        let back: T129 = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, T129::Local { .. }));
     }
 }

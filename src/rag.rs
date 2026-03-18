@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 /// A chunk of code or text with its embedding.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Chunk {
+pub struct T197 {
     /// Source file path.
     pub file: String,
     /// Line range (start, end) in the source file.
@@ -26,14 +26,14 @@ pub struct Chunk {
 
 /// Search result: a chunk with its similarity score.
 #[derive(Debug, Clone)]
-pub struct SearchResult {
-    pub chunk: Chunk,
+pub struct T198 {
+    pub chunk: T197,
     pub score: f32,
 }
 
 /// Stats about the vector store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RagStats {
+pub struct T199 {
     pub total_chunks: usize,
     pub total_files: usize,
     pub embedding_dim: usize,
@@ -43,7 +43,7 @@ pub struct RagStats {
 
 /// Generate embeddings for a batch of texts. Uses BGE-small-en (384-dim).
 /// First call downloads the model (~30MB), then cached locally.
-pub fn embed_texts(texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+pub fn f342(texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
     use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
     let mut model = TextEmbedding::try_new(
@@ -57,7 +57,7 @@ pub fn embed_texts(texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
 }
 
 /// Generate a query embedding. Uses "query: " prefix per BGE spec.
-pub fn embed_query(query: &str) -> anyhow::Result<Vec<f32>> {
+pub fn f343(query: &str) -> anyhow::Result<Vec<f32>> {
     use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
     let mut model = TextEmbedding::try_new(
@@ -75,12 +75,12 @@ pub fn embed_query(query: &str) -> anyhow::Result<Vec<f32>> {
 
 /// Sled-backed vector store. Each chunk is serialized with its embedding.
 /// Retrieval is brute-force cosine similarity (fast enough for <100K chunks).
-pub struct VectorStore {
+pub struct T200 {
     db: sled::Db,
     tree: sled::Tree,
 }
 
-impl VectorStore {
+impl T200 {
     /// Open or create a vector store at the given path.
     pub fn open(path: &Path) -> anyhow::Result<Self> {
         let db = sled::open(path)?;
@@ -95,7 +95,7 @@ impl VectorStore {
     }
 
     /// Insert a chunk. Key = file\0start_line (null byte separator avoids collision with : in paths).
-    pub fn insert(&self, chunk: &Chunk) -> anyhow::Result<()> {
+    pub fn insert(&self, chunk: &T197) -> anyhow::Result<()> {
         let key = format!("{}\0{}", chunk.file, chunk.lines.0);
         let value = serde_json::to_vec(chunk)?;
         self.tree.insert(key.as_bytes(), value)?;
@@ -103,7 +103,7 @@ impl VectorStore {
     }
 
     /// Insert many chunks (batch).
-    pub fn insert_many(&self, chunks: &[Chunk]) -> anyhow::Result<usize> {
+    pub fn insert_many(&self, chunks: &[T197]) -> anyhow::Result<usize> {
         let mut count = 0;
         for chunk in chunks {
             self.insert(chunk)?;
@@ -114,12 +114,12 @@ impl VectorStore {
     }
 
     /// Search for the top-k most similar chunks to the query embedding.
-    pub fn search(&self, query_embedding: &[f32], k: usize) -> anyhow::Result<Vec<SearchResult>> {
-        let mut results: Vec<(OrderedFloat<f32>, Chunk)> = Vec::new();
+    pub fn search(&self, query_embedding: &[f32], k: usize) -> anyhow::Result<Vec<T198>> {
+        let mut results: Vec<(OrderedFloat<f32>, T197)> = Vec::new();
 
         for entry in self.tree.iter() {
             let (_, value) = entry?;
-            let chunk: Chunk = serde_json::from_slice(&value)?;
+            let chunk: T197 = serde_json::from_slice(&value)?;
             let score = cosine_similarity(query_embedding, &chunk.embedding);
             results.push((OrderedFloat(score), chunk));
         }
@@ -130,7 +130,7 @@ impl VectorStore {
 
         Ok(results
             .into_iter()
-            .map(|(score, chunk)| SearchResult {
+            .map(|(score, chunk)| T198 {
                 chunk,
                 score: score.into_inner(),
             })
@@ -157,14 +157,14 @@ impl VectorStore {
     }
 
     /// Get stats.
-    pub fn stats(&self) -> anyhow::Result<RagStats> {
+    pub fn stats(&self) -> anyhow::Result<T199> {
         let mut total_chunks = 0;
         let mut files = std::collections::HashSet::new();
         let mut dim = 0;
 
         for entry in self.tree.iter() {
             let (_, value) = entry?;
-            let chunk: Chunk = serde_json::from_slice(&value)?;
+            let chunk: T197 = serde_json::from_slice(&value)?;
             total_chunks += 1;
             files.insert(chunk.file.clone());
             if dim == 0 {
@@ -172,7 +172,7 @@ impl VectorStore {
             }
         }
 
-        Ok(RagStats {
+        Ok(T199 {
             total_chunks,
             total_files: files.len(),
             embedding_dim: dim,
@@ -204,10 +204,10 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 // ── Code Chunking ────────────────────────────────────────────────
 
-/// Chunk a Rust source file into logical blocks using syntax-aware symbol extraction.
+/// T197 a Rust source file into logical blocks using syntax-aware symbol extraction.
 /// Uses crate::syntax::f201() for AST-aware boundaries.
 /// Fallback: sliding window of ~50 lines with 25% overlap (non-Rust or empty).
-pub fn chunk_rust_file(_file_path: &str, content: &str) -> Vec<(usize, usize, String)> {
+pub fn f344(_file_path: &str, content: &str) -> Vec<(usize, usize, String)> {
     let lines: Vec<&str> = content.lines().collect();
     if lines.is_empty() {
         return Vec::new();
@@ -296,7 +296,7 @@ fn chunk_sliding_window(lines: &[&str], window: usize, overlap: usize) -> Vec<(u
 // ── Index a project ──────────────────────────────────────────────
 
 /// Index all Rust files in a directory. Returns number of chunks indexed.
-pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize> {
+pub fn f345(store: &T200, dir: &Path) -> anyhow::Result<usize> {
     let mut all_chunks = Vec::new();
 
     // Walk directory for .rs files
@@ -314,7 +314,7 @@ pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize>
         let content = std::fs::read_to_string(&path)?;
         let file_str = path.to_string_lossy().to_string();
 
-        let file_chunks = chunk_rust_file(&file_str, &content);
+        let file_chunks = f344(&file_str, &content);
         for (start, end, text) in file_chunks {
             all_chunks.push((file_str.clone(), start, end, text));
         }
@@ -333,12 +333,12 @@ pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize>
     for batch_start in (0..texts.len()).step_by(256) {
         let batch_end = (batch_start + 256).min(texts.len());
         let batch = &texts[batch_start..batch_end];
-        let embeddings = embed_texts(batch)?;
+        let embeddings = f342(batch)?;
 
         for (i, emb) in embeddings.into_iter().enumerate() {
             let idx = batch_start + i;
             let (ref file, start, end, ref text) = all_chunks[idx];
-            embedded_chunks.push(Chunk {
+            embedded_chunks.push(T197 {
                 file: file.clone(),
                 lines: (start, end),
                 text: text.clone(),
@@ -357,14 +357,14 @@ pub fn index_directory(store: &VectorStore, dir: &Path) -> anyhow::Result<usize>
     }
 
     let count = store.insert_many(&embedded_chunks)?;
-    mark_indexed(store, dir)?;
+    f168(store, dir)?;
     eprintln!("[rag] indexed {} chunks", count);
     Ok(count)
 }
 
 /// Search the store with a natural language query.
-pub fn search(store: &VectorStore, query: &str, k: usize) -> anyhow::Result<Vec<SearchResult>> {
-    let query_emb = embed_query(query)?;
+pub fn search(store: &T200, query: &str, k: usize) -> anyhow::Result<Vec<T198>> {
+    let query_emb = f343(query)?;
     store.search(&query_emb, k)
 }
 
@@ -372,7 +372,7 @@ pub fn search(store: &VectorStore, query: &str, k: usize) -> anyhow::Result<Vec<
 
 /// f167=needs_reindex. Check if any .rs files in `dir` have been modified since
 /// the last index time recorded in the store. Returns true if re-indexing is needed.
-pub fn needs_reindex(store: &VectorStore, dir: &Path) -> bool {
+pub fn f167(store: &T200, dir: &Path) -> bool {
     let indexed_tree = match store.db.open_tree("last_indexed") {
         Ok(t) => t,
         Err(_) => return true,
@@ -422,7 +422,7 @@ pub fn needs_reindex(store: &VectorStore, dir: &Path) -> bool {
 }
 
 /// f168=mark_indexed. Record that `dir` was indexed at the current timestamp.
-pub fn mark_indexed(store: &VectorStore, dir: &Path) -> anyhow::Result<()> {
+pub fn f168(store: &T200, dir: &Path) -> anyhow::Result<()> {
     let indexed_tree = store.db.open_tree("last_indexed")?;
     let key = dir.to_string_lossy();
     let now = std::time::SystemTime::now()
@@ -436,16 +436,16 @@ pub fn mark_indexed(store: &VectorStore, dir: &Path) -> anyhow::Result<()> {
 
 /// f169=auto_reindex. Check if `dir` needs re-indexing and do it if so.
 /// Returns the number of chunks indexed (0 if skipped because index is fresh).
-pub fn auto_reindex(store: &VectorStore, dir: &Path) -> anyhow::Result<usize> {
-    if !needs_reindex(store, dir) {
+pub fn f169(store: &T200, dir: &Path) -> anyhow::Result<usize> {
+    if !f167(store, dir) {
         return Ok(0);
     }
-    let count = index_directory(store, dir)?;
+    let count = f345(store, dir)?;
     Ok(count)
 }
 
-/// Format search results as context for LLM injection.
-pub fn format_context(results: &[SearchResult], max_tokens: usize) -> String {
+/// f346=format_context. Format search results as context for LLM injection.
+pub fn f346(results: &[T198], max_tokens: usize) -> String {
     let mut out = String::new();
     let mut token_est = 0;
 
@@ -501,7 +501,7 @@ pub struct Foo {
     bar: i32,
 }
 "#;
-        let chunks = chunk_rust_file("test.rs", code);
+        let chunks = f344("test.rs", code);
         assert!(chunks.len() >= 2, "should find fn + struct: got {}", chunks.len());
     }
 
@@ -515,17 +515,17 @@ pub struct Foo {
     #[test]
     fn f168_mark_and_check_indexed() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let store = VectorStore::open(tmp.path()).unwrap();
+        let store = T200::open(tmp.path()).unwrap();
         let dir = tmp.path();
 
-        // Before marking: needs_reindex should return true (no record)
-        assert!(needs_reindex(&store, dir));
+        // Before marking: f167 should return true (no record)
+        assert!(f167(&store, dir));
 
         // Mark indexed
-        mark_indexed(&store, dir).unwrap();
+        f168(&store, dir).unwrap();
 
         // After marking with no .rs files modified after: should be false
-        assert!(!needs_reindex(&store, dir));
+        assert!(!f167(&store, dir));
     }
 
     #[test]
@@ -535,7 +535,7 @@ pub struct Foo {
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
 
-        let store = VectorStore::open(&base.join("db")).unwrap();
+        let store = T200::open(&base.join("db")).unwrap();
         let src_dir = base.join("src");
         std::fs::create_dir_all(&src_dir).unwrap();
 
@@ -555,7 +555,7 @@ pub struct Foo {
         std::fs::write(src_dir.join("new.rs"), "fn main() {}").unwrap();
 
         // Should detect the new file
-        assert!(needs_reindex(&store, &src_dir));
+        assert!(f167(&store, &src_dir));
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&base);
@@ -564,24 +564,24 @@ pub struct Foo {
     #[test]
     fn f169_auto_reindex_skips_fresh() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let store = VectorStore::open(&tmp.path().join("db")).unwrap();
+        let store = T200::open(&tmp.path().join("db")).unwrap();
         let src_dir = tmp.path().join("src");
         std::fs::create_dir_all(&src_dir).unwrap();
 
         // Mark as indexed, no .rs files exist
-        mark_indexed(&store, &src_dir).unwrap();
+        f168(&store, &src_dir).unwrap();
 
-        // auto_reindex should return 0 (skipped)
-        let count = auto_reindex(&store, &src_dir).unwrap();
+        // f169 should return 0 (skipped)
+        let count = f169(&store, &src_dir).unwrap();
         assert_eq!(count, 0);
     }
 
     #[test]
     fn sled_store_roundtrip() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let store = VectorStore::open(tmp.path()).unwrap();
+        let store = T200::open(tmp.path()).unwrap();
 
-        let chunk = Chunk {
+        let chunk = T197 {
             file: "test.rs".into(),
             lines: (1, 10),
             text: "fn main() {}".into(),
@@ -605,7 +605,7 @@ fn parse() {
     let r = r#"raw string { }"#;
 }
 "##;
-        let chunks = chunk_rust_file("parse.rs", code);
+        let chunks = f344("parse.rs", code);
         assert!(!chunks.is_empty(), "should chunk despite braces in strings/comments");
         let full: String = chunks.iter().map(|(_, _, t)| t.as_str()).collect::<Vec<_>>().join("\n");
         assert!(full.contains("parse"), "should include fn parse");
@@ -614,9 +614,9 @@ fn parse() {
     #[test]
     fn vector_store_remove_then_insert_same_file() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let store = VectorStore::open(tmp.path()).unwrap();
+        let store = T200::open(tmp.path()).unwrap();
 
-        let chunk1 = Chunk {
+        let chunk1 = T197 {
             file: "a.rs".to_string(),
             lines: (1, 5),
             text: "old".into(),
@@ -626,7 +626,7 @@ fn parse() {
         let removed = store.remove_file("a.rs").unwrap();
         assert_eq!(removed, 1);
 
-        let chunk2 = Chunk {
+        let chunk2 = T197 {
             file: "a.rs".to_string(),
             lines: (1, 8),
             text: "new".into(),
@@ -643,9 +643,9 @@ fn parse() {
 
     #[test]
     fn chunk_rust_file_uses_syntax_symbols() {
-        // Verify that chunk_rust_file produces symbol-aligned chunks via syntax::extract_symbols
+        // Verify that f344 produces symbol-aligned chunks via syntax::extract_symbols
         let code = "pub fn alpha() {\n    1 + 1\n}\n\npub fn beta() {\n    2 + 2\n}\n";
-        let chunks = chunk_rust_file("sym.rs", code);
+        let chunks = f344("sym.rs", code);
         // Should produce at least two chunks (one per function), possibly with preamble
         let fn_chunks: Vec<_> = chunks.iter().filter(|(_, _, t)| t.contains("fn ")).collect();
         assert!(fn_chunks.len() >= 2, "expected at least 2 function chunks, got {}", fn_chunks.len());
@@ -653,7 +653,7 @@ fn parse() {
 
     #[test]
     fn chunk_rust_file_empty() {
-        let chunks = chunk_rust_file("empty.rs", "");
+        let chunks = f344("empty.rs", "");
         assert!(chunks.is_empty());
     }
 
@@ -661,7 +661,7 @@ fn parse() {
     fn chunk_rust_file_no_symbols() {
         // File with only comments and blank lines — no symbols
         let code = "// just a comment\n// another comment\n";
-        let chunks = chunk_rust_file("comments.rs", code);
+        let chunks = f344("comments.rs", code);
         // Should produce a preamble chunk or nothing, but not panic
         assert!(chunks.len() <= 1);
     }
@@ -674,7 +674,7 @@ fn parse() {
             code.push_str(&format!("    let x{} = {};\n", i, i));
         }
         code.push_str("}\n");
-        let chunks = chunk_rust_file("big.rs", &code);
+        let chunks = f344("big.rs", &code);
         // Should be split into multiple chunks
         assert!(chunks.len() >= 2, "big function should split, got {} chunks", chunks.len());
     }
@@ -683,7 +683,7 @@ fn parse() {
     fn chunk_rust_file_preamble_captured() {
         // Use/mod lines before first symbol should be captured as preamble
         let code = "use std::io;\nuse std::path::Path;\n\npub fn work() {\n    42\n}\n";
-        let chunks = chunk_rust_file("preamble.rs", code);
+        let chunks = f344("preamble.rs", code);
         let all_text: String = chunks.iter().map(|(_, _, t)| t.as_str()).collect::<Vec<_>>().join("\n");
         assert!(all_text.contains("use std::io"), "preamble should be captured");
         assert!(all_text.contains("fn work"), "symbol should be captured");
@@ -692,7 +692,7 @@ fn parse() {
     #[test]
     fn vector_store_search_empty() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let store = VectorStore::open(tmp.path()).unwrap();
+        let store = T200::open(tmp.path()).unwrap();
         let results = store.search(&[1.0, 0.0], 5).unwrap();
         assert!(results.is_empty());
     }
@@ -700,10 +700,10 @@ fn parse() {
     #[test]
     fn vector_store_multiple_files() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let store = VectorStore::open(tmp.path()).unwrap();
+        let store = T200::open(tmp.path()).unwrap();
 
         for i in 0..3 {
-            let chunk = Chunk {
+            let chunk = T197 {
                 file: format!("file{}.rs", i),
                 lines: (1, 5),
                 text: format!("content {}", i),
@@ -725,16 +725,16 @@ fn parse() {
     #[test]
     fn vector_store_cosine_similarity_ordering() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let store = VectorStore::open(tmp.path()).unwrap();
+        let store = T200::open(tmp.path()).unwrap();
 
         // Insert chunks with known embeddings
-        let close = Chunk {
+        let close = T197 {
             file: "close.rs".into(),
             lines: (1, 1),
             text: "close match".into(),
             embedding: vec![0.9, 0.1, 0.0],
         };
-        let far = Chunk {
+        let far = T197 {
             file: "far.rs".into(),
             lines: (1, 1),
             text: "far match".into(),

@@ -1,10 +1,10 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! Fix loop: categorize errors, call Mechanic (Fixer) model.
+//! Fix loop: f118 errors, call Mechanic (Fixer) model.
 
 use std::path::Path;
 
-use super::error_kind::error_block_with_context;
+use super::error_kind::f296;
 
 /// f116=fix_and_retry. Categorize stderr, feed context to Mechanic, return fixed code.
 pub async fn fix_and_retry(
@@ -14,7 +14,7 @@ pub async fn fix_and_retry(
     stderr: &str,
     code: &str,
 ) -> Result<String, String> {
-    let error_block = error_block_with_context(stage, stderr);
+    let error_block = f296(stage, stderr);
     let fix_prompt = format!(
         "Fix this Rust code. {}\n\nCode:\n```rust\n{}\n```\n\nReply with only the fixed code in ```rust ... ```.",
         error_block, code

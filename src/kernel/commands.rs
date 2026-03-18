@@ -1,20 +1,20 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! KovaCommand — every kernel capability as a variant.
+//! T207 — every kernel capability as a variant.
 //! Surfaces build commands, kernel dispatches them.
 
 use std::path::PathBuf;
 
 /// Every capability the kernel can execute.
 #[derive(Debug, Clone)]
-pub enum KovaCommand {
+pub enum T207 {
     /// Run code gen pipeline (local inference).
     CodeGen {
         prompt: String,
         project_dir: PathBuf,
     },
     /// Run factory pipeline (cluster).
-    Factory {
+    T181 {
         prompt: String,
         project_dir: PathBuf,
     },
@@ -50,7 +50,7 @@ pub enum KovaCommand {
     Node {
         cmd: String,
     },
-    /// Cluster status.
+    /// T193 status.
     ClusterStatus,
     /// Tool execution (from agent loop).
     ToolExec {

@@ -4,15 +4,15 @@
 //! Research: tree-sitter (AST patterns), syn (Rust-native parsing).
 //! Uses regex-based heuristics for fast extraction without heavy deps.
 //! f201=extract_symbols, f202=extract_functions, f203=extract_structs, f204=extract_impls.
-//! t132=Symbol, t133=SymbolKind.
+//! t132=T132, t133=T133.
 
 use serde::{Deserialize, Serialize};
 
 // ── Types ────────────────────────────────────────────────────────
 
-/// t133=SymbolKind.
+/// t133=T133.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SymbolKind {
+pub enum T133 {
     Function,
     Struct,
     Enum,
@@ -24,7 +24,7 @@ pub enum SymbolKind {
     TypeAlias,
 }
 
-impl SymbolKind {
+impl T133 {
     pub fn short(&self) -> &'static str {
         match self {
             Self::Function => "fn",
@@ -40,11 +40,11 @@ impl SymbolKind {
     }
 }
 
-/// t132=Symbol. A named code element with location.
+/// t132=T132. A named code element with location.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Symbol {
+pub struct T132 {
     pub name: String,
-    pub kind: SymbolKind,
+    pub kind: T133,
     pub line_start: usize,
     pub line_end: usize,
     pub is_public: bool,
@@ -54,7 +54,7 @@ pub struct Symbol {
 // ── Extraction ───────────────────────────────────────────────────
 
 /// f201=extract_symbols. Extract all symbols from Rust source.
-pub fn f201(source: &str) -> Vec<Symbol> {
+pub fn f201(source: &str) -> Vec<T132> {
     let lines: Vec<&str> = source.lines().collect();
     let mut symbols = Vec::new();
     let mut i = 0;
@@ -72,31 +72,31 @@ pub fn f201(source: &str) -> Vec<Symbol> {
 }
 
 /// f202=extract_functions. Extract only function symbols.
-pub fn f202(source: &str) -> Vec<Symbol> {
+pub fn f202(source: &str) -> Vec<T132> {
     f201(source)
         .into_iter()
-        .filter(|s| s.kind == SymbolKind::Function)
+        .filter(|s| s.kind == T133::Function)
         .collect()
 }
 
 /// f203=extract_structs. Extract struct and enum symbols.
-pub fn f203(source: &str) -> Vec<Symbol> {
+pub fn f203(source: &str) -> Vec<T132> {
     f201(source)
         .into_iter()
-        .filter(|s| matches!(s.kind, SymbolKind::Struct | SymbolKind::Enum))
+        .filter(|s| matches!(s.kind, T133::Struct | T133::Enum))
         .collect()
 }
 
 /// f204=extract_impls. Extract impl blocks.
-pub fn f204(source: &str) -> Vec<Symbol> {
+pub fn f204(source: &str) -> Vec<T132> {
     f201(source)
         .into_iter()
-        .filter(|s| s.kind == SymbolKind::Impl)
+        .filter(|s| s.kind == T133::Impl)
         .collect()
 }
 
 /// f205=format_outline. Format symbols as a code outline.
-pub fn f205(symbols: &[Symbol]) -> String {
+pub fn f205(symbols: &[T132]) -> String {
     let mut out = String::new();
     for s in symbols {
         let vis = if s.is_public { "pub " } else { "" };
@@ -112,14 +112,14 @@ pub fn f205(symbols: &[Symbol]) -> String {
 }
 
 /// f206=outline_file. Parse a file and return its outline.
-pub fn f206(path: &std::path::Path) -> anyhow::Result<Vec<Symbol>> {
+pub fn f206(path: &std::path::Path) -> anyhow::Result<Vec<T132>> {
     let content = std::fs::read_to_string(path)?;
     Ok(f201(&content))
 }
 
 // ── Internal Parsing ─────────────────────────────────────────────
 
-fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<Symbol> {
+fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<T132> {
     let is_pub = line.starts_with("pub ");
     let rest = if is_pub {
         line.strip_prefix("pub ").unwrap_or(line)
@@ -147,7 +147,7 @@ fn try_parse_symbol(line: &str, line_idx: usize, all_lines: &[&str]) -> Option<S
     try_parse_symbol_inner(rest, line_idx, all_lines, is_pub)
 }
 
-fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pub: bool) -> Option<Symbol> {
+fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pub: bool) -> Option<T132> {
     let line_str = all_lines[line_idx];
 
     // fn name(...)
@@ -159,9 +159,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
         let name = extract_fn_name(rest)?;
         let end = find_block_end(line_idx, all_lines);
         let sig = line_str.trim_end().to_string();
-        return Some(Symbol {
+        return Some(T132 {
             name,
-            kind: SymbolKind::Function,
+            kind: T133::Function,
             line_start: line_idx,
             line_end: end,
             is_public: is_pub,
@@ -173,9 +173,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
     if rest.starts_with("struct ") {
         let name = extract_item_name(rest, "struct ")?;
         let end = find_block_end(line_idx, all_lines);
-        return Some(Symbol {
+        return Some(T132 {
             name: name.clone(),
-            kind: SymbolKind::Struct,
+            kind: T133::Struct,
             line_start: line_idx,
             line_end: end,
             is_public: is_pub,
@@ -187,9 +187,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
     if rest.starts_with("enum ") {
         let name = extract_item_name(rest, "enum ")?;
         let end = find_block_end(line_idx, all_lines);
-        return Some(Symbol {
+        return Some(T132 {
             name: name.clone(),
-            kind: SymbolKind::Enum,
+            kind: T133::Enum,
             line_start: line_idx,
             line_end: end,
             is_public: is_pub,
@@ -201,9 +201,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
     if rest.starts_with("trait ") {
         let name = extract_item_name(rest, "trait ")?;
         let end = find_block_end(line_idx, all_lines);
-        return Some(Symbol {
+        return Some(T132 {
             name: name.clone(),
-            kind: SymbolKind::Trait,
+            kind: T133::Trait,
             line_start: line_idx,
             line_end: end,
             is_public: is_pub,
@@ -215,9 +215,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
     if rest.starts_with("impl ") || rest.starts_with("impl<") {
         let name = extract_impl_name(rest);
         let end = find_block_end(line_idx, all_lines);
-        return Some(Symbol {
+        return Some(T132 {
             name,
-            kind: SymbolKind::Impl,
+            kind: T133::Impl,
             line_start: line_idx,
             line_end: end,
             is_public: false,
@@ -234,9 +234,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
         } else {
             line_idx
         };
-        return Some(Symbol {
+        return Some(T132 {
             name: name.clone(),
-            kind: SymbolKind::Mod,
+            kind: T133::Mod,
             line_start: line_idx,
             line_end: end,
             is_public: is_pub,
@@ -247,9 +247,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
     // const NAME / static NAME
     if rest.starts_with("const ") {
         let name = extract_item_name(rest, "const ")?;
-        return Some(Symbol {
+        return Some(T132 {
             name,
-            kind: SymbolKind::Const,
+            kind: T133::Const,
             line_start: line_idx,
             line_end: line_idx,
             is_public: is_pub,
@@ -259,9 +259,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
 
     if rest.starts_with("static ") {
         let name = extract_item_name(rest, "static ")?;
-        return Some(Symbol {
+        return Some(T132 {
             name,
-            kind: SymbolKind::Static,
+            kind: T133::Static,
             line_start: line_idx,
             line_end: line_idx,
             is_public: is_pub,
@@ -272,9 +272,9 @@ fn try_parse_symbol_inner(rest: &str, line_idx: usize, all_lines: &[&str], is_pu
     // type Alias = ...
     if rest.starts_with("type ") {
         let name = extract_item_name(rest, "type ")?;
-        return Some(Symbol {
+        return Some(T132 {
             name,
-            kind: SymbolKind::TypeAlias,
+            kind: T133::TypeAlias,
             line_start: line_idx,
             line_end: line_idx,
             is_public: is_pub,
@@ -450,7 +450,7 @@ mod tests {
         let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "hello");
-        assert_eq!(syms[0].kind, SymbolKind::Function);
+        assert_eq!(syms[0].kind, T133::Function);
         assert!(syms[0].is_public);
     }
 
@@ -460,7 +460,7 @@ mod tests {
         let syms = f201(src);
         assert!(syms.len() >= 2);
         assert_eq!(syms[0].name, "Foo");
-        assert_eq!(syms[0].kind, SymbolKind::Struct);
+        assert_eq!(syms[0].kind, T133::Struct);
     }
 
     #[test]
@@ -469,7 +469,7 @@ mod tests {
         let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "Color");
-        assert_eq!(syms[0].kind, SymbolKind::Enum);
+        assert_eq!(syms[0].kind, T133::Enum);
     }
 
     #[test]
@@ -478,7 +478,7 @@ mod tests {
         let syms = f201(src);
         assert!(syms.len() >= 1);
         assert_eq!(syms[0].name, "Display");
-        assert_eq!(syms[0].kind, SymbolKind::Trait);
+        assert_eq!(syms[0].kind, T133::Trait);
     }
 
     #[test]
@@ -487,7 +487,7 @@ mod tests {
         let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "fetch");
-        assert_eq!(syms[0].kind, SymbolKind::Function);
+        assert_eq!(syms[0].kind, T133::Function);
     }
 
     #[test]
@@ -507,9 +507,9 @@ mod tests {
 
     #[test]
     fn symbol_kind_short() {
-        assert_eq!(SymbolKind::Function.short(), "fn");
-        assert_eq!(SymbolKind::Struct.short(), "struct");
-        assert_eq!(SymbolKind::Impl.short(), "impl");
+        assert_eq!(T133::Function.short(), "fn");
+        assert_eq!(T133::Struct.short(), "struct");
+        assert_eq!(T133::Impl.short(), "impl");
     }
 
     #[test]
@@ -545,9 +545,9 @@ mod tests {
         let syms = f201(src);
         assert_eq!(syms.len(), 2);
         assert_eq!(syms[0].name, "MAX");
-        assert_eq!(syms[0].kind, SymbolKind::Const);
+        assert_eq!(syms[0].kind, T133::Const);
         assert_eq!(syms[1].name, "COUNT");
-        assert_eq!(syms[1].kind, SymbolKind::Static);
+        assert_eq!(syms[1].kind, T133::Static);
     }
 
     #[test]
@@ -556,14 +556,14 @@ mod tests {
         let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "Result");
-        assert_eq!(syms[0].kind, SymbolKind::TypeAlias);
+        assert_eq!(syms[0].kind, T133::TypeAlias);
     }
 
     #[test]
     fn extract_mod_with_body() {
         let src = "mod inner {\n    fn private() {}\n}";
         let syms = f201(src);
-        assert!(syms.iter().any(|s| s.name == "inner" && s.kind == SymbolKind::Mod));
+        assert!(syms.iter().any(|s| s.name == "inner" && s.kind == T133::Mod));
     }
 
     #[test]
@@ -605,7 +605,7 @@ mod tests {
     fn extract_impl_trait_for() {
         let src = "impl std::fmt::Display for Foo {\n    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n        Ok(())\n    }\n}";
         let syms = f201(src);
-        let impl_sym = syms.iter().find(|s| s.kind == SymbolKind::Impl).unwrap();
+        let impl_sym = syms.iter().find(|s| s.kind == T133::Impl).unwrap();
         assert!(impl_sym.name.contains("Display"));
         assert!(impl_sym.name.contains("Foo"));
     }
@@ -616,7 +616,7 @@ mod tests {
         let syms = f201(src);
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "foo");
-        assert_eq!(syms[0].kind, SymbolKind::Function);
+        assert_eq!(syms[0].kind, T133::Function);
     }
 
     #[test]

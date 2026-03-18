@@ -5,7 +5,7 @@
 use std::path::Path;
 
 /// Write a temp Cargo project (Cargo.toml + src/main.rs or src/lib.rs).
-pub fn write_temp_project(dir: &Path, code: &str, is_binary: bool) {
+pub fn f312(dir: &Path, code: &str, is_binary: bool) {
     std::fs::write(
         dir.join("Cargo.toml"),
         "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
@@ -25,7 +25,7 @@ pub fn write_temp_project(dir: &Path, code: &str, is_binary: bool) {
 }
 
 /// Write a validation project. Infers binary vs lib from rel_path.
-pub fn write_validation_project(dir: &Path, code: &str, rel_path: &str) {
+pub fn f313(dir: &Path, code: &str, rel_path: &str) {
     std::fs::write(
         dir.join("Cargo.toml"),
         "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
@@ -47,8 +47,8 @@ pub fn write_validation_project(dir: &Path, code: &str, rel_path: &str) {
 }
 
 /// Write a simple temp lib crate (always lib.rs with dead_code allowed).
-pub fn write_temp_crate(dir: &Path, code: &str) {
-    write_temp_project(dir, code, false);
+pub fn f314(dir: &Path, code: &str) {
+    f312(dir, code, false);
 }
 
 #[cfg(test)]
@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn write_temp_project_lib() {
         let tmp = tempfile::TempDir::new().unwrap();
-        write_temp_project(tmp.path(), "pub fn foo() {}", false);
+        f312(tmp.path(), "pub fn foo() {}", false);
         assert!(tmp.path().join("Cargo.toml").exists());
         assert!(tmp.path().join("src/lib.rs").exists());
         let content = std::fs::read_to_string(tmp.path().join("src/lib.rs")).unwrap();
@@ -69,7 +69,7 @@ mod tests {
     #[test]
     fn write_temp_project_binary() {
         let tmp = tempfile::TempDir::new().unwrap();
-        write_temp_project(tmp.path(), "fn main() {}", true);
+        f312(tmp.path(), "fn main() {}", true);
         assert!(tmp.path().join("src/main.rs").exists());
         let content = std::fs::read_to_string(tmp.path().join("src/main.rs")).unwrap();
         assert!(!content.contains("dead_code"));
@@ -78,7 +78,7 @@ mod tests {
     #[test]
     fn write_temp_crate_is_lib() {
         let tmp = tempfile::TempDir::new().unwrap();
-        write_temp_crate(tmp.path(), "pub fn bar() {}");
+        f314(tmp.path(), "pub fn bar() {}");
         assert!(tmp.path().join("src/lib.rs").exists());
     }
 }

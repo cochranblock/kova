@@ -33,7 +33,7 @@ fn resolve_nodes(input: Option<&str>) -> Vec<String> {
             .map(|x| resolve_node(x.trim()).to_string())
             .filter(|x| !x.is_empty())
             .collect(),
-        None => crate::c2::default_nodes()
+        None => crate::c2::f350()
             .into_iter()
             .map(String::from)
             .collect(),
@@ -303,7 +303,7 @@ fn f125(nodes: &[String], install: bool) -> Vec<t97> {
     results
 }
 
-/// f126=nsync. Rsync project to nodes. Delegates to c2::sync_parallel.
+/// f126=nsync. Rsync project to nodes. Delegates to c2::f357.
 fn f126(nodes: &[String], project: &std::path::Path) -> Vec<t97> {
     let node_strs: Vec<String> = nodes.to_vec();
     let name = project
@@ -757,11 +757,11 @@ pub fn f132(
         }
         t96::C5 => {
             let path = extra.as_deref().unwrap_or(".");
-            let project = crate::c2::resolve_project(Some(std::path::PathBuf::from(path)));
+            let project = crate::c2::f353(Some(std::path::PathBuf::from(path)));
             f126(&node_list, &project)
         }
         t96::C6 => {
-            let project = crate::c2::resolve_project(extra.map(std::path::PathBuf::from));
+            let project = crate::c2::f353(extra.map(std::path::PathBuf::from));
             let name = project
                 .file_name()
                 .unwrap_or_default()
@@ -777,7 +777,7 @@ pub fn f132(
             f129(&node_list, proc_name)
         }
         t96::C9 => {
-            let project = crate::c2::resolve_project(extra.as_ref().map(std::path::PathBuf::from));
+            let project = crate::c2::f353(extra.as_ref().map(std::path::PathBuf::from));
             f130(&node_list, &project, release, None)
         }
         t96::Ci => f131(&node_list),

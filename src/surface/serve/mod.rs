@@ -21,16 +21,16 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use tower_http::cors::CorsLayer;
 
-/// t92=AppState. Shared state: pipeline broadcast receiver for WebSocket clients.
+/// t92=T92. Shared state: pipeline broadcast receiver for WebSocket clients.
 #[derive(Clone)]
-pub struct AppState {
+pub struct T92 {
     #[cfg(feature = "inference")]
     pipeline_rx: Arc<Mutex<Option<broadcast::Receiver<Arc<str>>>>>,
     #[cfg(feature = "inference")]
-    last_trace: Arc<Mutex<Option<crate::trace::LastTrace>>>,
+    last_trace: Arc<Mutex<Option<crate::trace::T93>>>,
 }
 
-impl Default for AppState {
+impl Default for T92 {
     fn default() -> Self {
         Self {
             #[cfg(feature = "inference")]
@@ -134,7 +134,7 @@ async fn api_webhook_github() -> impl IntoResponse {
 
 // ── OpenAI-compatible inference endpoints ────────────────────────
 // Lets kova act as an inference server on bare metal nodes.
-// Cluster routes Provider::OpenAiCompat requests here.
+// T193 routes T129::OpenAiCompat requests here.
 
 #[derive(Deserialize)]
 #[allow(dead_code)]
@@ -337,7 +337,7 @@ async fn api_test_run(Query(q): Query<TestRunQuery>) -> impl IntoResponse {
     let nodes: Vec<String> = if let Some(ref n) = q.node {
         vec![n.clone()]
     } else {
-        let all: Vec<String> = crate::c2::default_nodes()
+        let all: Vec<String> = crate::c2::f350()
             .into_iter()
             .map(String::from)
             .collect();
@@ -473,15 +473,15 @@ async fn api_route(Json(req): Json<RouteRequest>) -> impl IntoResponse {
             .into_response();
     };
     let (classification, needs_clarification, suggested_question, choices, _) = match &result {
-        crate::RouterResult::CodeGen => ("code_gen".into(), None, None, None, None::<String>),
-        crate::RouterResult::Refactor => ("refactor".into(), None, None, None, None::<String>),
-        crate::RouterResult::Explain => ("explain".into(), None, None, None, None::<String>),
-        crate::RouterResult::Fix => ("fix".into(), None, None, None, None::<String>),
-        crate::RouterResult::Run => ("run".into(), None, None, None, None::<String>),
-        crate::RouterResult::Custom => ("custom".into(), None, None, None, None::<String>),
-        crate::RouterResult::NeedsClarification { .. } => {
-            let q = result.clarification_question(&req.message);
-            let ch = result.clarification_choices().map(|s| s.to_vec());
+        crate::T94::CodeGen => ("code_gen".into(), None, None, None, None::<String>),
+        crate::T94::Refactor => ("refactor".into(), None, None, None, None::<String>),
+        crate::T94::Explain => ("explain".into(), None, None, None, None::<String>),
+        crate::T94::Fix => ("fix".into(), None, None, None, None::<String>),
+        crate::T94::Run => ("run".into(), None, None, None, None::<String>),
+        crate::T94::Custom => ("custom".into(), None, None, None, None::<String>),
+        crate::T94::NeedsClarification { .. } => {
+            let q = result.f363(&req.message);
+            let ch = result.f364().map(|s| s.to_vec());
             (
                 "needs_clarification".into(),
                 Some(true),
@@ -490,7 +490,7 @@ async fn api_route(Json(req): Json<RouteRequest>) -> impl IntoResponse {
                 None::<String>,
             )
         }
-        crate::RouterResult::Error(e) => {
+        crate::T94::Error(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RouteResponse {
@@ -506,7 +506,7 @@ async fn api_route(Json(req): Json<RouteRequest>) -> impl IntoResponse {
         }
     };
     let enriched =
-        if prior.is_some() && !matches!(&result, crate::RouterResult::NeedsClarification { .. }) {
+        if prior.is_some() && !matches!(&result, crate::T94::NeedsClarification { .. }) {
             Some(to_route)
         } else {
             None
@@ -528,7 +528,7 @@ async fn api_route(Json(req): Json<RouteRequest>) -> impl IntoResponse {
 #[derive(Serialize)]
 struct IntentResponse {
     accepted: bool,
-    intent_name: String,
+    f325: String,
     /// When FullPipeline runs plan path (no inference), summary of results.
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<Vec<String>>,
@@ -568,11 +568,11 @@ struct IntentRequest {
 }
 
 async fn api_intent(
-    State(state): State<AppState>,
+    State(state): State<T92>,
     Json(req): Json<IntentRequest>,
 ) -> Json<IntentResponse> {
     let intent = req.intent;
-    let name = crate::intent_name(&intent.s0);
+    let name = crate::f325(&intent.s0);
     let mut summary = None;
     if matches!(intent.s0, crate::t1::FullPipeline) {
         #[cfg(feature = "inference")]
@@ -612,7 +612,7 @@ async fn api_intent(
                 *guard = Some(rx);
                 return Json(IntentResponse {
                     accepted: true,
-                    intent_name: name.to_string(),
+                    f325: name.to_string(),
                     summary: None,
                 });
             }
@@ -639,19 +639,19 @@ async fn api_intent(
     }
     Json(IntentResponse {
         accepted: true,
-        intent_name: name.to_string(),
+        f325: name.to_string(),
         summary,
     })
 }
 
 async fn ws_stream(
-    State(state): State<AppState>,
+    State(state): State<T92>,
     ws: WebSocketUpgrade,
 ) -> axum::response::Response {
     ws.on_upgrade(move |socket| ws_handler(state, socket))
 }
 
-async fn ws_handler(state: AppState, mut socket: WebSocket) {
+async fn ws_handler(state: T92, mut socket: WebSocket) {
     #[cfg(feature = "inference")]
     {
         let mut rx_opt = state.pipeline_rx.lock().await;
@@ -684,7 +684,7 @@ async fn ws_handler(state: AppState, mut socket: WebSocket) {
 }
 
 #[cfg(feature = "inference")]
-async fn api_explain(State(state): State<AppState>) -> impl IntoResponse {
+async fn api_explain(State(state): State<T92>) -> impl IntoResponse {
     let guard = state.last_trace.lock().await;
     match guard.as_ref() {
         Some(t) => Json(serde_json::to_value(t).unwrap_or_default()).into_response(),
@@ -759,7 +759,7 @@ async fn api_backlog_get() -> impl IntoResponse {
 }
 
 async fn api_backlog_run(
-    State(state): State<AppState>,
+    State(state): State<T92>,
     Json(body): Json<BacklogRunBody>,
 ) -> impl IntoResponse {
     let path = crate::backlog_path();
@@ -919,7 +919,7 @@ async fn api_backlog_post(Json(entry): Json<crate::t8>) -> impl IntoResponse {
 }
 
 #[cfg(feature = "inference")]
-async fn api_explain_run(State(state): State<AppState>) -> impl IntoResponse {
+async fn api_explain_run(State(state): State<T92>) -> impl IntoResponse {
     let trace = state.last_trace.lock().await.clone();
     let trace = match trace {
         Some(t) => t,
@@ -998,7 +998,7 @@ async fn api_demo_record(Json(payload): Json<serde_json::Value>) -> impl IntoRes
     }
 }
 
-fn app_router() -> Router<AppState> {
+fn app_router() -> Router<T92> {
     let r = Router::new()
         .route("/", get(serve_index))
         .route("/kova_web.js", get(serve_js))
@@ -1068,7 +1068,7 @@ async fn build_command(Query(q): Query<BuildCommandQuery>) -> Json<BuildCommandR
 }
 
 pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
-    let state = AppState::default();
+    let state = T92::default();
     let app = app_router()
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -1091,7 +1091,7 @@ mod tests {
         crate::bootstrap().unwrap();
         app_router()
             .layer(CorsLayer::permissive())
-            .with_state(AppState::default())
+            .with_state(T92::default())
     }
 
     #[tokio::test]
@@ -1214,7 +1214,7 @@ mod tests {
 }
 
 pub async fn run_with_open(addr: SocketAddr, url: &str) -> anyhow::Result<()> {
-    let state = AppState::default();
+    let state = T92::default();
     let app = app_router()
         .layer(CorsLayer::permissive())
         .with_state(state);

@@ -12,12 +12,12 @@ use std::thread;
 use tokio::sync::{broadcast, Mutex};
 
 pub use compilation::{cargo_check, cargo_clippy, cargo_test};
-pub use error_kind::{categorize, error_block_with_context, ErrorKind};
+pub use error_kind::{f118, f296, T95};
 pub use fix_loop::fix_and_retry;
 
 /// Extract first ```rust ... ``` block from text. Delegates to crate::cargo.
 pub(crate) fn extract_rust_block(s: &str) -> Option<String> {
-    crate::cargo::extract_rust_block(s)
+    crate::cargo::f309(s)
 }
 
 fn format_with_chain(response: &str, chain: &[String], stage: &str, stderr: &str) -> String {
@@ -42,7 +42,7 @@ pub fn f81(
     project_dir: &Path,
     max_retries: u32,
     run_clippy: bool,
-    last_trace: Option<Arc<Mutex<Option<crate::trace::LastTrace>>>>,
+    last_trace: Option<Arc<Mutex<Option<crate::trace::T93>>>>,
 ) -> broadcast::Receiver<Arc<str>> {
     let (tx, rx) = broadcast::channel(16);
     let coder = coder_path.to_path_buf();
@@ -86,11 +86,11 @@ async fn run_pipeline(
     max_retries: u32,
     run_clippy: bool,
     tx: broadcast::Sender<Arc<str>>,
-    last_trace: Option<Arc<Mutex<Option<crate::trace::LastTrace>>>>,
+    last_trace: Option<Arc<Mutex<Option<crate::trace::T93>>>>,
 ) -> String {
     let _ = tx.send(Arc::from("Generating…"));
 
-    let mut trace = crate::trace::LastTrace {
+    let mut trace = crate::trace::T93 {
         intent: "FullPipeline".to_string(),
         user_msg: user_input.to_string(),
         ..Default::default()
@@ -273,8 +273,8 @@ edition = "2021"
 }
 
 async fn write_last_trace(
-    last_trace: &Option<Arc<Mutex<Option<crate::trace::LastTrace>>>>,
-    trace: &crate::trace::LastTrace,
+    last_trace: &Option<Arc<Mutex<Option<crate::trace::T93>>>>,
+    trace: &crate::trace::T93,
 ) {
     if let Some(arc) = last_trace {
         let mut guard = arc.lock().await;
@@ -285,24 +285,24 @@ async fn write_last_trace(
 #[cfg(test)]
 mod tests {
     use super::{cargo_check, cargo_clippy, cargo_test, extract_rust_block};
-    use crate::pipeline::error_kind::{categorize, ErrorKind};
+    use crate::pipeline::error_kind::{f118, T95};
 
     #[test]
     fn categorize_syntax_missing_semicolon() {
         let stderr = "error: expected `;` after expression\n  --> src/lib.rs:2:20";
-        assert_eq!(categorize(stderr), ErrorKind::Syntax);
+        assert_eq!(f118(stderr), T95::Syntax);
     }
 
     #[test]
     fn categorize_borrow_checker() {
         let stderr = "error[E0382]: use of moved value: `x`";
-        assert_eq!(categorize(stderr), ErrorKind::BorrowChecker);
+        assert_eq!(f118(stderr), T95::BorrowChecker);
     }
 
     #[test]
     fn categorize_lifetime() {
         let stderr = "error[E0597]: `s` does not live long enough";
-        assert_eq!(categorize(stderr), ErrorKind::Lifetime);
+        assert_eq!(f118(stderr), T95::Lifetime);
     }
 
     #[test]
@@ -323,7 +323,7 @@ edition = "2021"
         let (ok, stderr) = cargo_check(tmp.path());
         assert!(!ok, "cargo check must fail with syntax error");
         assert!(stderr.contains("expected") || stderr.contains(";"));
-        assert_eq!(categorize(&stderr), ErrorKind::Syntax);
+        assert_eq!(f118(&stderr), T95::Syntax);
 
         // Fix: add semicolon
         std::fs::write(tmp.path().join("src/lib.rs"), "pub fn foo() { let x = 1; }").unwrap();

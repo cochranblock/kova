@@ -38,7 +38,7 @@ fn principals_for_node(node: &str) -> String {
 }
 
 /// Create CA key and add @cert-authority to known_hosts.
-pub fn run_init() -> anyhow::Result<()> {
+pub fn f298() -> anyhow::Result<()> {
     let ca = ca_key_path();
     let kh = known_hosts_path();
 
@@ -90,7 +90,7 @@ pub fn run_init() -> anyhow::Result<()> {
 }
 
 /// Sign host cert for one node and deploy.
-pub fn run_sign(node: &str) -> anyhow::Result<()> {
+pub fn f299(node: &str) -> anyhow::Result<()> {
     let ca = ca_key_path();
     if !ca.with_extension("pub").exists() {
         anyhow::bail!("Run init first: kova c2 ssh-ca init");
@@ -166,10 +166,10 @@ pub fn run_sign(node: &str) -> anyhow::Result<()> {
 }
 
 /// Init + sign all workers.
-pub fn run_setup() -> anyhow::Result<()> {
-    run_init()?;
+pub fn f300() -> anyhow::Result<()> {
+    f298()?;
     for (node, _, _) in NODE_PRINCIPALS {
-        if let Err(e) = run_sign(node) {
+        if let Err(e) = f299(node) {
             eprintln!("[ssh-ca] {} failed: {}", node, e);
         }
     }

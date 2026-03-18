@@ -5,9 +5,9 @@
 
 use std::path::Path;
 
-use crate::pipeline::error_block_with_context;
+use crate::pipeline::f296;
 
-/// Fix and retry: categorize stderr, feed context to fixer, return fixed code.
+/// Fix and retry: f118 stderr, feed context to fixer, return fixed code.
 /// Delegates to local Kalosm inference.
 pub async fn fix_and_retry_local(
     fix_path: &Path,
@@ -16,7 +16,7 @@ pub async fn fix_and_retry_local(
     stderr: &str,
     code: &str,
 ) -> Result<String, String> {
-    let error_block = error_block_with_context(stage, stderr);
+    let error_block = f296(stage, stderr);
     let fix_prompt = format!(
         "Fix this Rust code. {}\n\nCode:\n```rust\n{}\n```\n\nReply with only the fixed code in ```rust ... ```.",
         error_block, code
@@ -36,8 +36,8 @@ pub async fn fix_and_retry_local(
 }
 
 /// Fix and retry via cluster dispatch. For factory/moe/academy.
-pub fn fix_and_retry_cluster(
-    cluster: &crate::inference::cluster::Cluster,
+pub fn f331(
+    cluster: &crate::inference::cluster::T193,
     system: &str,
     code: &str,
     error: &str,
@@ -45,7 +45,7 @@ pub fn fix_and_retry_cluster(
     prev_errors: &[String],
     num_ctx: u32,
 ) -> Result<String, String> {
-    use crate::inference::cluster::TaskKind;
+    use crate::inference::cluster::T191;
 
     let fix_prompt = if stuck {
         format!(
@@ -59,7 +59,7 @@ pub fn fix_and_retry_cluster(
             error,
             prev_errors.len(),
             prev_errors.iter().enumerate()
-                .map(|(i, e)| format!("  attempt {}: {}", i + 1, crate::cargo::truncate(e, 100)))
+                .map(|(i, e)| format!("  attempt {}: {}", i + 1, crate::cargo::f308(e, 100)))
                 .collect::<Vec<_>>().join("\n"),
             code
         )
@@ -74,14 +74,14 @@ pub fn fix_and_retry_cluster(
 
     let dispatch_result = if stuck {
         cluster.speculative_dispatch(
-            TaskKind::FixCompile,
+            T191::FixCompile,
             system,
             &fix_prompt,
             Some(num_ctx),
         )
     } else {
         cluster.dispatch(
-            TaskKind::FixCompile,
+            T191::FixCompile,
             system,
             &fix_prompt,
             Some(num_ctx),
@@ -89,6 +89,6 @@ pub fn fix_and_retry_cluster(
     };
 
     dispatch_result.map(|(_, response)| {
-        crate::cargo::extract_rust_block(&response).unwrap_or(response)
+        crate::cargo::f309(&response).unwrap_or(response)
     })
 }

@@ -10,7 +10,7 @@ use crate::theme::{colors, layout};
 
 /// QC verdict per sprite.
 #[derive(Clone, Copy, PartialEq)]
-pub enum Verdict {
+pub enum T202 {
     Approve,
     Reject,
     Skip,
@@ -21,11 +21,11 @@ struct SpriteEntry {
     path: PathBuf,
     /// Display label: "zone 03 / bg" or "player / run"
     label: String,
-    verdict: Option<Verdict>,
+    verdict: Option<T202>,
 }
 
 /// State for the sprite QC panel.
-pub struct SpriteQc {
+pub struct T213 {
     sprites: Vec<SpriteEntry>,
     current: usize,
     /// Loaded texture for current sprite.
@@ -35,10 +35,10 @@ pub struct SpriteQc {
     /// Root dir we scanned.
     root: PathBuf,
     /// Animation: swipe direction for visual feedback.
-    swipe_anim: Option<(f32, Verdict)>,
+    swipe_anim: Option<(f32, T202)>,
 }
 
-impl SpriteQc {
+impl T213 {
     /// Scan a directory tree for PNGs and build the queue.
     pub fn scan(root: &Path) -> Self {
         let mut sprites = Vec::new();
@@ -61,14 +61,14 @@ impl SpriteQc {
     pub fn approved(&self) -> usize {
         self.sprites
             .iter()
-            .filter(|s| s.verdict == Some(Verdict::Approve))
+            .filter(|s| s.verdict == Some(T202::Approve))
             .count()
     }
 
     pub fn rejected(&self) -> usize {
         self.sprites
             .iter()
-            .filter(|s| s.verdict == Some(Verdict::Reject))
+            .filter(|s| s.verdict == Some(T202::Reject))
             .count()
     }
 
@@ -81,7 +81,7 @@ impl SpriteQc {
     }
 
     /// Apply verdict and advance.
-    fn decide(&mut self, verdict: Verdict) {
+    fn decide(&mut self, verdict: T202) {
         if self.current < self.sprites.len() {
             self.sprites[self.current].verdict = Some(verdict);
             self.swipe_anim = Some((1.0, verdict));
@@ -107,7 +107,7 @@ impl SpriteQc {
                 .strip_prefix(&self.root)
                 .unwrap_or(&sprite.path);
             match sprite.verdict {
-                Some(Verdict::Approve) => {
+                Some(T202::Approve) => {
                     let dest = approved_dir.join(rel);
                     if let Some(p) = dest.parent() {
                         let _ = std::fs::create_dir_all(p);
@@ -115,7 +115,7 @@ impl SpriteQc {
                     let _ = std::fs::copy(&sprite.path, &dest);
                     approved += 1;
                 }
-                Some(Verdict::Reject) => {
+                Some(T202::Reject) => {
                     let dest = rejected_dir.join(rel);
                     if let Some(p) = dest.parent() {
                         let _ = std::fs::create_dir_all(p);
@@ -172,7 +172,7 @@ impl SpriteQc {
 
         if self.is_done() {
             // Summary
-            crate::theme::panel_frame().show(ui, |ui| {
+            crate::theme::f323().show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("QC Complete")
                         .color(colors::TERTIARY)
@@ -187,7 +187,7 @@ impl SpriteQc {
                         self.rejected(),
                         self.sprites
                             .iter()
-                            .filter(|s| s.verdict == Some(Verdict::Skip))
+                            .filter(|s| s.verdict == Some(T202::Skip))
                             .count()
                     ))
                     .color(colors::TEXT)
@@ -285,7 +285,7 @@ impl SpriteQc {
             .fill(egui::Color32::from_rgb(0xdc, 0x26, 0x26))
             .min_size(btn_size);
             if ui.add(reject_btn).clicked() {
-                self.decide(Verdict::Reject);
+                self.decide(T202::Reject);
             }
 
             ui.add_space(layout::MARGIN);
@@ -299,7 +299,7 @@ impl SpriteQc {
             .fill(colors::SURFACE_ELEVATED)
             .min_size(btn_size);
             if ui.add(skip_btn).clicked() {
-                self.decide(Verdict::Skip);
+                self.decide(T202::Skip);
             }
 
             ui.add_space(layout::MARGIN);
@@ -313,7 +313,7 @@ impl SpriteQc {
             .fill(egui::Color32::from_rgb(0x16, 0xa3, 0x4a))
             .min_size(btn_size);
             if ui.add(approve_btn).clicked() {
-                self.decide(Verdict::Approve);
+                self.decide(T202::Approve);
             }
         });
 
@@ -331,13 +331,13 @@ impl SpriteQc {
             )
         });
         if keys.0 {
-            self.decide(Verdict::Reject);
+            self.decide(T202::Reject);
         }
         if keys.1 {
-            self.decide(Verdict::Approve);
+            self.decide(T202::Approve);
         }
         if keys.2 {
-            self.decide(Verdict::Skip);
+            self.decide(T202::Skip);
         }
 
         // Hint

@@ -1,6 +1,6 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! factory — Rust Binary Factory. Distributed code gen pipeline across IRONHIVE cluster.
+//! factory — Rust Binary T181. Distributed code gen pipeline across IRONHIVE cluster.
 //!
 //! Pipeline stages:
 //!   1. Classify (c2, 3B) — what kind of task?
@@ -10,20 +10,20 @@
 //!   5. Fix (lf/bt, 32B) — fix compile/review errors, retry
 //!   6. Output — final binary or code
 
-use crate::cluster::{Cluster, TaskKind};
+use crate::cluster::{T193, T191};
 use std::path::Path;
 
-/// Factory pipeline result.
+/// T181 pipeline result.
 #[derive(Debug, Clone)]
-pub struct FactoryResult {
+pub struct T178 {
     pub code: String,
-    pub stages: Vec<StageResult>,
+    pub stages: Vec<T179>,
     pub success: bool,
     pub binary_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct StageResult {
+pub struct T179 {
     pub stage: String,
     pub node: String,
     pub duration_ms: u64,
@@ -31,8 +31,8 @@ pub struct StageResult {
     pub output: String,
 }
 
-/// Factory configuration.
-pub struct FactoryConfig {
+/// T181 configuration.
+pub struct T180 {
     pub max_fix_retries: u32,
     pub run_clippy: bool,
     pub run_tests: bool,
@@ -43,7 +43,7 @@ pub struct FactoryConfig {
     pub allow_deps: bool,
 }
 
-impl Default for FactoryConfig {
+impl Default for T180 {
     fn default() -> Self {
         Self {
             max_fix_retries: 4,
@@ -57,31 +57,31 @@ impl Default for FactoryConfig {
     }
 }
 
-/// The Rust Binary Factory. Orchestrates code gen across the IRONHIVE cluster.
-pub struct Factory {
-    cluster: Cluster,
-    config: FactoryConfig,
+/// The Rust Binary T181. Orchestrates code gen across the IRONHIVE cluster.
+pub struct T181 {
+    cluster: T193,
+    config: T180,
 }
 
-impl Factory {
-    pub fn new(config: FactoryConfig) -> Self {
+impl T181 {
+    pub fn new(config: T180) -> Self {
         Self {
-            cluster: Cluster::default_hive(),
+            cluster: T193::default_hive(),
             config,
         }
     }
 }
 
-impl Default for Factory {
+impl Default for T181 {
     fn default() -> Self {
-        Self::new(FactoryConfig::default())
+        Self::new(T180::default())
     }
 }
 
-impl Factory {
+impl T181 {
     /// Run the full factory pipeline: classify → generate → compile → review → fix → output.
-    pub fn run(&self, prompt: &str, _project_dir: &Path) -> FactoryResult {
-        let mut result = FactoryResult {
+    pub fn run(&self, prompt: &str, _project_dir: &Path) -> T178 {
+        let mut result = T178 {
             code: String::new(),
             stages: Vec::new(),
             success: false,
@@ -92,10 +92,10 @@ impl Factory {
         let task_kind = self.classify(prompt, &mut result);
 
         // Detect if the prompt wants a binary (CLI tool, main(), executable)
-        let wants_binary = prompt_wants_binary(prompt);
+        let wants_binary = f310(prompt);
 
         // ── Stage 2: Generate ──
-        let system = self.build_system_prompt(wants_binary);
+        let system = self.f311(wants_binary);
         let gen_prompt = format!(
             "{}\n\nGenerate Rust code. Put all code in a single ```rust ... ``` block.\n\
             {}Be concise. No explanation outside the code block.",
@@ -138,7 +138,7 @@ impl Factory {
                             return result;
                         }
                     };
-                    write_temp_project(tmp.path(), &fixed, wants_binary);
+                    f312(tmp.path(), &fixed, wants_binary);
                     let (ok, _) = cargo_check_local(tmp.path());
                     if ok {
                         result.code = fixed;
@@ -152,7 +152,7 @@ impl Factory {
     }
 
     /// Stage 1: Classify the task using the coordinator's fast model.
-    fn classify(&self, prompt: &str, result: &mut FactoryResult) -> TaskKind {
+    fn classify(&self, prompt: &str, result: &mut T178) -> T191 {
         let start = std::time::Instant::now();
 
         let classify_prompt = format!(
@@ -163,34 +163,34 @@ impl Factory {
         );
 
         let (node, response) = match self.cluster.dispatch(
-            TaskKind::Classify,
+            T191::Classify,
             "You are a task classifier. Reply with exactly one word: the category.",
             &classify_prompt,
             Some(256),
         ) {
             Ok(r) => r,
             Err(_) => {
-                result.stages.push(StageResult {
+                result.stages.push(T179 {
                     stage: "classify".into(),
                     node: "?".into(),
                     duration_ms: start.elapsed().as_millis() as u64,
                     success: false,
                     output: "classification failed, defaulting to code_gen".into(),
                 });
-                return TaskKind::CodeGen;
+                return T191::CodeGen;
             }
         };
 
         let kind = match response.trim().to_lowercase().as_str() {
-            s if s.contains("code_gen") => TaskKind::CodeGen,
-            s if s.contains("code_review") || s.contains("review") => TaskKind::CodeReview,
-            s if s.contains("test") => TaskKind::TestWrite,
-            s if s.contains("fix_compile") || s.contains("fix") => TaskKind::FixCompile,
-            s if s.contains("clippy") => TaskKind::ClippyFix,
-            _ => TaskKind::CodeGen,
+            s if s.contains("code_gen") => T191::CodeGen,
+            s if s.contains("code_review") || s.contains("review") => T191::CodeReview,
+            s if s.contains("test") => T191::TestWrite,
+            s if s.contains("fix_compile") || s.contains("fix") => T191::FixCompile,
+            s if s.contains("clippy") => T191::ClippyFix,
+            _ => T191::CodeGen,
         };
 
-        result.stages.push(StageResult {
+        result.stages.push(T179 {
             stage: "classify".into(),
             node,
             duration_ms: start.elapsed().as_millis() as u64,
@@ -207,8 +207,8 @@ impl Factory {
         &self,
         system: &str,
         prompt: &str,
-        task_kind: TaskKind,
-        result: &mut FactoryResult,
+        task_kind: T191,
+        result: &mut T178,
     ) -> Option<String> {
         let start = std::time::Instant::now();
         eprintln!("[factory] generating...");
@@ -220,7 +220,7 @@ impl Factory {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    result.stages.push(StageResult {
+                    result.stages.push(T179 {
                         stage: "generate".into(),
                         node: "?".into(),
                         duration_ms: start.elapsed().as_millis() as u64,
@@ -233,7 +233,7 @@ impl Factory {
 
         let code = extract_rust_block(&response).unwrap_or_else(|| response.clone());
 
-        result.stages.push(StageResult {
+        result.stages.push(T179 {
             stage: "generate".into(),
             node: node.clone(),
             duration_ms: start.elapsed().as_millis() as u64,
@@ -251,7 +251,7 @@ impl Factory {
         initial_code: &str,
         system: &str,
         wants_binary: bool,
-        result: &mut FactoryResult,
+        result: &mut T178,
     ) -> (String, bool) {
         let mut code = initial_code.to_string();
         let mut attempt = 0u32;
@@ -263,7 +263,7 @@ impl Factory {
             let tmp = match tempfile::TempDir::new() {
                 Ok(d) => d,
                 Err(e) => {
-                    result.stages.push(StageResult {
+                    result.stages.push(T179 {
                         stage: "compile".into(),
                         node: "local".into(),
                         duration_ms: 0,
@@ -274,15 +274,15 @@ impl Factory {
                 }
             };
 
-            write_temp_project(tmp.path(), &code, wants_binary);
+            f312(tmp.path(), &code, wants_binary);
 
             // cargo check
             eprintln!("[factory] checking (attempt {})...", attempt + 1);
             let (ok, stderr) = cargo_check_local(tmp.path());
             if !ok {
                 attempt += 1;
-                let error_key = extract_error_key(&stderr);
-                result.stages.push(StageResult {
+                let error_key = f307(&stderr);
+                result.stages.push(T179 {
                     stage: format!("compile-{}", attempt),
                     node: "local".into(),
                     duration_ms: start.elapsed().as_millis() as u64,
@@ -315,8 +315,8 @@ impl Factory {
                 let (ok, stderr) = cargo_clippy_local(tmp.path());
                 if !ok {
                     attempt += 1;
-                    let error_key = extract_error_key(&stderr);
-                    result.stages.push(StageResult {
+                    let error_key = f307(&stderr);
+                    result.stages.push(T179 {
                         stage: format!("clippy-{}", attempt),
                         node: "local".into(),
                         duration_ms: start.elapsed().as_millis() as u64,
@@ -348,8 +348,8 @@ impl Factory {
                 let (ok, stderr) = cargo_test_local(tmp.path());
                 if !ok {
                     attempt += 1;
-                    let error_key = extract_error_key(&stderr);
-                    result.stages.push(StageResult {
+                    let error_key = f307(&stderr);
+                    result.stages.push(T179 {
                         stage: format!("test-{}", attempt),
                         node: "local".into(),
                         duration_ms: start.elapsed().as_millis() as u64,
@@ -374,7 +374,7 @@ impl Factory {
                 }
             }
 
-            result.stages.push(StageResult {
+            result.stages.push(T179 {
                 stage: "compile".into(),
                 node: "local".into(),
                 duration_ms: start.elapsed().as_millis() as u64,
@@ -395,7 +395,7 @@ impl Factory {
         system: &str,
         stuck: bool,
         prev_errors: &[String],
-        result: &mut FactoryResult,
+        result: &mut T178,
     ) -> Option<String> {
         let start = std::time::Instant::now();
 
@@ -429,14 +429,14 @@ impl Factory {
         // If stuck, try speculative dispatch (race multiple nodes) for a different answer
         let dispatch_result = if stuck {
             self.cluster.speculative_dispatch(
-                TaskKind::FixCompile,
+                T191::FixCompile,
                 system,
                 &fix_prompt,
                 Some(self.config.num_ctx),
             )
         } else {
             self.cluster.dispatch(
-                TaskKind::FixCompile,
+                T191::FixCompile,
                 system,
                 &fix_prompt,
                 Some(self.config.num_ctx),
@@ -446,7 +446,7 @@ impl Factory {
         let (node, response) = match dispatch_result {
             Ok(r) => r,
             Err(e) => {
-                result.stages.push(StageResult {
+                result.stages.push(T179 {
                     stage: "fix".into(),
                     node: "?".into(),
                     duration_ms: start.elapsed().as_millis() as u64,
@@ -459,7 +459,7 @@ impl Factory {
 
         let fixed = extract_rust_block(&response).unwrap_or(response);
 
-        result.stages.push(StageResult {
+        result.stages.push(T179 {
             stage: "fix".into(),
             node: node.clone(),
             duration_ms: start.elapsed().as_millis() as u64,
@@ -480,7 +480,7 @@ impl Factory {
     }
 
     /// Stage 4: Review code using a mid-tier node.
-    fn review(&self, code: &str, result: &mut FactoryResult) -> Option<String> {
+    fn review(&self, code: &str, result: &mut T178) -> Option<String> {
         let start = std::time::Instant::now();
         eprintln!("[factory] reviewing...");
 
@@ -498,14 +498,14 @@ impl Factory {
         let system = "You are a senior Rust code reviewer. Be direct. Only flag real problems. If the code is fine, say LGTM.";
 
         let (node, response) = match self.cluster.dispatch(
-            TaskKind::CodeReview,
+            T191::CodeReview,
             system,
             &review_prompt,
             Some(self.config.num_ctx),
         ) {
             Ok(r) => r,
             Err(e) => {
-                result.stages.push(StageResult {
+                result.stages.push(T179 {
                     stage: "review".into(),
                     node: "?".into(),
                     duration_ms: start.elapsed().as_millis() as u64,
@@ -518,7 +518,7 @@ impl Factory {
 
         let clean = response.trim().to_uppercase().contains("LGTM");
 
-        result.stages.push(StageResult {
+        result.stages.push(T179 {
             stage: "review".into(),
             node: node.clone(),
             duration_ms: start.elapsed().as_millis() as u64,
@@ -545,7 +545,7 @@ impl Factory {
         code: &str,
         review: &str,
         system: &str,
-        result: &mut FactoryResult,
+        result: &mut T178,
     ) -> Option<String> {
         let start = std::time::Instant::now();
         eprintln!("[factory] fixing from review...");
@@ -558,14 +558,14 @@ impl Factory {
         );
 
         let (node, response) = match self.cluster.dispatch(
-            TaskKind::FixCompile,
+            T191::FixCompile,
             system,
             &fix_prompt,
             Some(self.config.num_ctx),
         ) {
             Ok(r) => r,
             Err(e) => {
-                result.stages.push(StageResult {
+                result.stages.push(T179 {
                     stage: "fix-review".into(),
                     node: "?".into(),
                     duration_ms: start.elapsed().as_millis() as u64,
@@ -578,7 +578,7 @@ impl Factory {
 
         let fixed = extract_rust_block(&response).unwrap_or(response);
 
-        result.stages.push(StageResult {
+        result.stages.push(T179 {
             stage: "fix-review".into(),
             node,
             duration_ms: start.elapsed().as_millis() as u64,
@@ -590,16 +590,16 @@ impl Factory {
     }
 
     /// Build system prompt.
-    fn build_system_prompt(&self, wants_binary: bool) -> String {
-        crate::cargo::build_system_prompt(wants_binary)
+    fn f311(&self, wants_binary: bool) -> String {
+        crate::cargo::f311(wants_binary)
     }
 }
 
 /// Run the factory from CLI.
-pub fn run_factory(prompt: &str, project_dir: &Path, config: FactoryConfig) {
-    let factory = Factory::new(config);
+pub fn f297(prompt: &str, project_dir: &Path, config: T180) {
+    let factory = T181::new(config);
 
-    println!("[factory] IRONHIVE Rust Binary Factory");
+    println!("[factory] IRONHIVE Rust Binary T181");
     println!("[factory] prompt: {}", truncate(prompt, 80));
     println!();
 
@@ -635,15 +635,15 @@ pub fn run_factory(prompt: &str, project_dir: &Path, config: FactoryConfig) {
 // ── Helpers (delegated to crate::cargo) ──
 
 fn extract_rust_block(s: &str) -> Option<String> {
-    crate::cargo::extract_rust_block(s)
+    crate::cargo::f309(s)
 }
 
-fn prompt_wants_binary(prompt: &str) -> bool {
-    crate::cargo::prompt_wants_binary(prompt)
+fn f310(prompt: &str) -> bool {
+    crate::cargo::f310(prompt)
 }
 
-fn write_temp_project(dir: &Path, code: &str, is_binary: bool) {
-    crate::cargo::sandbox::write_temp_project(dir, code, is_binary);
+fn f312(dir: &Path, code: &str, is_binary: bool) {
+    crate::cargo::sandbox::f312(dir, code, is_binary);
 }
 
 fn cargo_check_local(dir: &Path) -> (bool, String) {
@@ -658,10 +658,10 @@ fn cargo_test_local(dir: &Path) -> (bool, String) {
     crate::cargo::cargo_test(dir)
 }
 
-fn extract_error_key(stderr: &str) -> String {
-    crate::cargo::extract_error_key(stderr)
+fn f307(stderr: &str) -> String {
+    crate::cargo::f307(stderr)
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    crate::cargo::truncate(s, max)
+    crate::cargo::f308(s, max)
 }

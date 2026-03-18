@@ -7,7 +7,7 @@
 //!
 //! f194=record_failure, f195=recent_failures, f196=generate_challenge_from_failure
 //! f197=export_generated_challenges, f198=feedback_stats
-//! t126=FailureRecord, t127=GeneratedChallenge, t128=FeedbackStats
+//! t126=T126, t127=T127, t128=T128
 
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
@@ -36,9 +36,9 @@ fn feedback_db() -> Option<&'static sled::Db> {
 
 // ── Types ────────────────────────────────────────────────────────
 
-/// t126=FailureRecord. A single challenge failure from a tournament run.
+/// t126=T126. A single challenge failure from a tournament run.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FailureRecord {
+pub struct T126 {
     /// Description of the challenge that was failed.
     pub challenge_desc: String,
     /// The input prompt given to the model.
@@ -56,9 +56,9 @@ pub struct FailureRecord {
     pub ts: u64,
 }
 
-/// t127=GeneratedChallenge. A new challenge produced from a failure pattern.
+/// t127=T127. A new challenge produced from a failure pattern.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GeneratedChallenge {
+pub struct T127 {
     /// Template ID for the micro-model (e.g. "f79", "f81", "f80").
     pub template_id: String,
     /// The challenge input prompt.
@@ -73,9 +73,9 @@ pub struct GeneratedChallenge {
     pub source_failure: String,
 }
 
-/// t128=FeedbackStats. Aggregate stats across recorded failures.
+/// t128=T128. Aggregate stats across recorded failures.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FeedbackStats {
+pub struct T128 {
     /// Total failure records stored.
     pub total_failures: usize,
     /// Failures grouped by model name.
@@ -89,7 +89,7 @@ pub struct FeedbackStats {
 // ── Core Functions ───────────────────────────────────────────────
 
 /// f194=record_failure. Store a failure record in sled.
-pub fn f194(mut record: FailureRecord) {
+pub fn f194(mut record: T126) {
     if record.ts == 0 {
         record.ts = now_ms();
     }
@@ -103,7 +103,7 @@ pub fn f194(mut record: FailureRecord) {
 }
 
 /// f195=recent_failures. Query recent failure records (newest first).
-pub fn f195(limit: usize) -> Vec<FailureRecord> {
+pub fn f195(limit: usize) -> Vec<T126> {
     let mut out = Vec::new();
     let db = match feedback_db() {
         Some(db) => db,
@@ -119,7 +119,7 @@ pub fn f195(limit: usize) -> Vec<FailureRecord> {
             break;
         }
         if let Ok((_k, v)) = item
-            && let Ok(record) = serde_json::from_slice::<FailureRecord>(&v)
+            && let Ok(record) = serde_json::from_slice::<T126>(&v)
         {
             out.push(record);
         }
@@ -131,9 +131,9 @@ pub fn f195(limit: usize) -> Vec<FailureRecord> {
 /// f196=generate_challenge_from_failure. Use an LLM to create a harder
 /// variant of the failed challenge. Returns one generated challenge.
 pub fn f196(
-    failure: &FailureRecord,
-    provider: &crate::providers::Provider,
-) -> Result<GeneratedChallenge, String> {
+    failure: &T126,
+    provider: &crate::providers::T129,
+) -> Result<T127, String> {
     let system = "You are a Rust challenge designer for the Kova micro-model tournament. \
         Given a failure record (a challenge a model got wrong), create a NEW, HARDER variant. \
         The new challenge must test the same skill but with a twist the model hasn't seen. \
@@ -162,7 +162,7 @@ pub fn f196(
         failure.model,
     );
 
-    let resp = crate::providers::provider_generate(provider, "", system, &prompt)?;
+    let resp = crate::providers::f199(provider, "", system, &prompt)?;
     let challenge = parse_generated_challenge(&resp.text, &failure.challenge_desc)?;
 
     // Store the generated challenge
@@ -179,7 +179,7 @@ pub fn f196(
 
 /// f197=export_generated_challenges. Format generated challenges as Rust
 /// code (tce() calls) that can be pasted into tournament.rs.
-pub fn f197(challenges: &[GeneratedChallenge]) -> String {
+pub fn f197(challenges: &[T127]) -> String {
     let mut out = String::new();
     out.push_str("// ── Generated from feedback loop ──────────────────────────────\n");
     out.push_str("// Paste into tournament_challenges() in tournament.rs\n\n");
@@ -204,8 +204,8 @@ pub fn f197(challenges: &[GeneratedChallenge]) -> String {
 }
 
 /// f198=feedback_stats. Count failures by model, event type, and generated challenges.
-pub fn f198() -> FeedbackStats {
-    let mut stats = FeedbackStats {
+pub fn f198() -> T128 {
+    let mut stats = T128 {
         total_failures: 0,
         by_model: Vec::new(),
         by_event: Vec::new(),
@@ -226,7 +226,7 @@ pub fn f198() -> FeedbackStats {
     if let Ok(tree) = db.open_tree(FAILURE_TREE) {
         for item in tree.iter().flatten() {
             let (_k, v) = item;
-            if let Ok(record) = serde_json::from_slice::<FailureRecord>(&v) {
+            if let Ok(record) = serde_json::from_slice::<T126>(&v) {
                 stats.total_failures += 1;
                 *model_counts.entry(record.model).or_insert(0) += 1;
                 *event_counts.entry(record.event_type).or_insert(0) += 1;
@@ -308,11 +308,11 @@ fn category_for_template(tid: &str) -> (&str, &str) {
     }
 }
 
-/// Parse the structured LLM response into a GeneratedChallenge.
+/// Parse the structured LLM response into a T127.
 fn parse_generated_challenge(
     response: &str,
     source_failure: &str,
-) -> Result<GeneratedChallenge, String> {
+) -> Result<T127, String> {
     let mut template_id = String::new();
     let mut input = String::new();
     let mut verify = String::new();
@@ -341,7 +341,7 @@ fn parse_generated_challenge(
         ));
     }
 
-    Ok(GeneratedChallenge {
+    Ok(T127 {
         template_id,
         input,
         verify,
@@ -370,7 +370,7 @@ mod tests {
         with_temp_db(|db| {
             let tree = db.open_tree(FAILURE_TREE).expect("open tree");
 
-            let record = FailureRecord {
+            let record = T126 {
                 challenge_desc: "fix: borrow checker".into(),
                 input: "Error: cannot borrow `v` as mutable".into(),
                 expected_verify: "compiles".into(),
@@ -386,7 +386,7 @@ mod tests {
             tree.insert(key, val).expect("insert");
 
             // Store a second record
-            let record2 = FailureRecord {
+            let record2 = T126 {
                 challenge_desc: "classify: ambiguous".into(),
                 input: "split the monolithic handle_request".into(),
                 expected_verify: "single_word".into(),
@@ -403,7 +403,7 @@ mod tests {
             let mut results = Vec::new();
             for item in tree.iter().rev() {
                 let (_k, v) = item.expect("iter");
-                let rec: FailureRecord = serde_json::from_slice(&v).expect("deserialize");
+                let rec: T126 = serde_json::from_slice(&v).expect("deserialize");
                 results.push(rec);
             }
 
@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn export_produces_valid_tce_calls() {
         let challenges = vec![
-            GeneratedChallenge {
+            T127 {
                 template_id: "f81".into(),
                 input: "Error: lifetime may not live long enough\nCode: struct Foo<'a> { data: &'a str }".into(),
                 verify: "compiles".into(),
@@ -427,7 +427,7 @@ mod tests {
                 difficulty: "hard".into(),
                 source_failure: "fix: lifetime elision".into(),
             },
-            GeneratedChallenge {
+            T127 {
                 template_id: "f79".into(),
                 input: "rewrite the module and also benchmark it".into(),
                 verify: "single_word".into(),
@@ -473,7 +473,7 @@ mod tests {
 
             // Insert 3 failures: 2 from model A, 1 from model B
             let records = vec![
-                FailureRecord {
+                T126 {
                     challenge_desc: "fix: borrow".into(),
                     input: "err".into(),
                     expected_verify: "compiles".into(),
@@ -482,7 +482,7 @@ mod tests {
                     event_type: "technical".into(),
                     ts: 1000,
                 },
-                FailureRecord {
+                T126 {
                     challenge_desc: "gen: prime".into(),
                     input: "write prime".into(),
                     expected_verify: "compiles_and:contains:fn".into(),
@@ -491,7 +491,7 @@ mod tests {
                     event_type: "freestyle".into(),
                     ts: 2000,
                 },
-                FailureRecord {
+                T126 {
                     challenge_desc: "classify: bug".into(),
                     input: "it crashes".into(),
                     expected_verify: "single_word".into(),
@@ -509,7 +509,7 @@ mod tests {
             }
 
             // Insert 2 generated challenges
-            let challenge = GeneratedChallenge {
+            let challenge = T127 {
                 template_id: "f81".into(),
                 input: "harder".into(),
                 verify: "compiles".into(),
@@ -532,7 +532,7 @@ mod tests {
 
             for item in failure_tree.iter() {
                 let (_k, v) = item.expect("iter");
-                let rec: FailureRecord = serde_json::from_slice(&v).expect("deser");
+                let rec: T126 = serde_json::from_slice(&v).expect("deser");
                 total += 1;
                 *model_counts.entry(rec.model).or_insert(0) += 1;
                 *event_counts.entry(rec.event_type).or_insert(0) += 1;
@@ -630,7 +630,7 @@ DIFFICULTY: hard";
 
     #[test]
     fn failure_record_serde_roundtrip() {
-        let record = FailureRecord {
+        let record = T126 {
             challenge_desc: "fix: borrow".into(),
             input: "code with\nnewlines\tand tabs".into(),
             expected_verify: "compiles".into(),
@@ -640,7 +640,7 @@ DIFFICULTY: hard";
             ts: 42,
         };
         let bytes = serde_json::to_vec(&record).unwrap();
-        let back: FailureRecord = serde_json::from_slice(&bytes).unwrap();
+        let back: T126 = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(back.challenge_desc, record.challenge_desc);
         assert_eq!(back.input, record.input);
         assert_eq!(back.ts, 42);
@@ -648,7 +648,7 @@ DIFFICULTY: hard";
 
     #[test]
     fn generated_challenge_serde_roundtrip() {
-        let ch = GeneratedChallenge {
+        let ch = T127 {
             template_id: "f81".into(),
             input: "error".into(),
             verify: "compiles".into(),
@@ -657,7 +657,7 @@ DIFFICULTY: hard";
             source_failure: "src".into(),
         };
         let json = serde_json::to_string(&ch).unwrap();
-        let back: GeneratedChallenge = serde_json::from_str(&json).unwrap();
+        let back: T127 = serde_json::from_str(&json).unwrap();
         assert_eq!(back.template_id, "f81");
         assert_eq!(back.difficulty, "hard");
     }

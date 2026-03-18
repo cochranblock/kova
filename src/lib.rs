@@ -35,13 +35,13 @@ pub use context::{f73, f74, t91};
 /// Backward compat alias.
 pub type Message = t91;
 pub use backlog::{f293, t8, t9};
-pub use intent::{f62, intent_name, t0, t1, t2};
+pub use intent::{f62, f325, t0, t1, t2};
 pub use plan::{t3, t4, t5};
 #[cfg(feature = "inference")]
-pub use router::{f79, RouterResult};
+pub use router::{f79, T94};
 
-pub use error::{KovaError, KovaResult};
-pub use kernel::KovaKernel;
+pub use error::{T176, T176Result};
+pub use kernel::T208;
 
 pub mod academy;
 #[cfg(feature = "inference")]
@@ -112,9 +112,9 @@ pub fn load_backlog(p: &std::path::Path) -> anyhow::Result<t9> {
     f25(p)
 }
 
-/// f90=run_test_suite. Deploy quality gate: clippy, TRIPLE SIMS, release build, smoke, baked demo.
+/// f90=f315. Deploy quality gate: clippy, TRIPLE SIMS, release build, smoke, baked demo.
 #[cfg(feature = "tests")]
-pub fn run_test_suite() -> anyhow::Result<()> {
+pub fn f315() -> anyhow::Result<()> {
     use std::path::Path;
     use std::process::{Command, Stdio};
     use std::sync::mpsc;
@@ -146,7 +146,7 @@ pub fn run_test_suite() -> anyhow::Result<()> {
     }
 
     fn run_cargo(project: &Path, args: &[&str]) -> (bool, String) {
-        crate::cargo::run_cargo(project, args)
+        crate::cargo::f306(project, args)
     }
 
     println!("kova test: cargo clippy...");

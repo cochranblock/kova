@@ -2,41 +2,45 @@
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Code review agent. Sends diffs to LLM for analysis.
 //! f185=review_diff, f186=review_staged, f187=review_branch, f188=format_review.
-//! t118=ReviewRequest, t119=ReviewResult, t120=ReviewIssue, t121=Severity.
+//! T118=ReviewRequest, T119=ReviewResult, T120=ReviewIssue, T121=Severity.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::providers::Provider;
+use crate::providers::T129;
 
 // ── Types ───────────────────────────────────────────────
 
-/// t118=ReviewRequest. Input for code review.
-pub struct ReviewRequest {
+/// T118=T118. Input for code review.
+#[allow(non_camel_case_types)]
+pub struct T118 {
     pub diff: String,
     pub context: Option<String>,
     pub focus: Option<String>,
 }
 
-/// t119=ReviewResult. Structured review output.
-pub struct ReviewResult {
+/// T119=T119. Structured review output.
+#[allow(non_camel_case_types)]
+pub struct T119 {
     pub summary: String,
-    pub issues: Vec<ReviewIssue>,
+    pub issues: Vec<T120>,
     /// Quality score 1-10. 10 = no issues, 1 = critical problems.
     pub score: u8,
 }
 
-/// t120=ReviewIssue. Single finding from review.
-pub struct ReviewIssue {
-    pub severity: Severity,
+/// T120=T120. Single finding from review.
+#[allow(non_camel_case_types)]
+pub struct T120 {
+    pub severity: T121,
     pub file: String,
     pub line: Option<usize>,
     pub description: String,
 }
 
-/// t121=Severity. Issue severity level.
+/// T121=T121. Issue severity level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Severity {
+#[allow(non_camel_case_types)]
+pub enum T121 {
     /// Something done well.
     Praise,
     /// Minor improvement.
@@ -47,13 +51,13 @@ pub enum Severity {
     Critical,
 }
 
-impl std::fmt::Display for Severity {
+impl std::fmt::Display for T121 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Severity::Critical => write!(f, "CRITICAL"),
-            Severity::Warning => write!(f, "WARNING"),
-            Severity::Suggestion => write!(f, "SUGGESTION"),
-            Severity::Praise => write!(f, "PRAISE"),
+            T121::Critical => write!(f, "CRITICAL"),
+            T121::Warning => write!(f, "WARNING"),
+            T121::Suggestion => write!(f, "SUGGESTION"),
+            T121::Praise => write!(f, "PRAISE"),
         }
     }
 }
@@ -90,9 +94,9 @@ Rules:
 // ── Core Functions ──────────────────────────────────────
 
 /// f185=review_diff. Send a diff to LLM for code review.
-pub fn review_diff(diff: &str, provider: &Provider) -> Result<ReviewResult, String> {
+pub fn f185(diff: &str, provider: &T129) -> Result<T119, String> {
     review_diff_with_opts(
-        &ReviewRequest {
+        &T118 {
             diff: diff.to_string(),
             context: None,
             focus: None,
@@ -106,9 +110,9 @@ const MAX_DIFF_CHARS: usize = 50_000;
 
 /// Review with full request options.
 fn review_diff_with_opts(
-    req: &ReviewRequest,
-    provider: &Provider,
-) -> Result<ReviewResult, String> {
+    req: &T118,
+    provider: &T129,
+) -> Result<T119, String> {
     let mut prompt = String::with_capacity(req.diff.len().min(MAX_DIFF_CHARS) + 256);
 
     if let Some(ctx) = &req.context {
@@ -135,39 +139,39 @@ fn review_diff_with_opts(
         prompt.push_str(&req.diff);
     }
 
-    let resp = crate::providers::provider_generate(provider, "", REVIEW_SYSTEM_PROMPT, &prompt)?;
+    let resp = crate::providers::f199(provider, "", REVIEW_SYSTEM_PROMPT, &prompt)?;
 
     parse_review_response(&resp.text)
 }
 
 /// f186=review_staged. Review currently staged changes.
-pub fn review_staged(
+pub fn f186(
     project_dir: &Path,
-    provider: &Provider,
-) -> Result<ReviewResult, String> {
+    provider: &T129,
+) -> Result<T119, String> {
     let diff = git_diff(project_dir, &["diff", "--staged"])?;
     if diff.trim().is_empty() {
         return Err("no staged changes to review".into());
     }
-    review_diff(&diff, provider)
+    f185(&diff, provider)
 }
 
 /// f187=review_branch. Review diff between current branch and base.
-pub fn review_branch(
+pub fn f187(
     project_dir: &Path,
     base: &str,
-    provider: &Provider,
-) -> Result<ReviewResult, String> {
+    provider: &T129,
+) -> Result<T119, String> {
     let range = format!("{}...HEAD", base);
     let diff = git_diff(project_dir, &["diff", &range])?;
     if diff.trim().is_empty() {
         return Err(format!("no diff between {} and HEAD", base));
     }
-    review_diff(&diff, provider)
+    f185(&diff, provider)
 }
 
 /// f188=format_review. Human-readable review output.
-pub fn format_review(result: &ReviewResult) -> String {
+pub fn f188(result: &T119) -> String {
     let mut out = String::with_capacity(512);
 
     // Header
@@ -182,15 +186,15 @@ pub fn format_review(result: &ReviewResult) -> String {
     out.push('\n');
 
     // Group by severity — Critical first, Praise last
-    let mut sorted: Vec<&ReviewIssue> = result.issues.iter().collect();
+    let mut sorted: Vec<&T120> = result.issues.iter().collect();
     sorted.sort_by(|a, b| b.severity.cmp(&a.severity));
 
     for issue in &sorted {
         let marker = match issue.severity {
-            Severity::Critical => "[!!]",
-            Severity::Warning => "[! ]",
-            Severity::Suggestion => "[~ ]",
-            Severity::Praise => "[+ ]",
+            T121::Critical => "[!!]",
+            T121::Warning => "[! ]",
+            T121::Suggestion => "[~ ]",
+            T121::Praise => "[+ ]",
         };
 
         let location = match issue.line {
@@ -229,8 +233,8 @@ fn git_diff(project_dir: &Path, args: &[&str]) -> Result<String, String> {
 
 // ── Response Parser ─────────────────────────────────────
 
-/// Parse LLM review response into structured ReviewResult.
-fn parse_review_response(raw: &str) -> Result<ReviewResult, String> {
+/// Parse LLM review response into structured T119.
+fn parse_review_response(raw: &str) -> Result<T119, String> {
     let mut summary = String::new();
     let mut score: u8 = 5;
     let mut issues = Vec::new();
@@ -275,7 +279,7 @@ fn parse_review_response(raw: &str) -> Result<ReviewResult, String> {
             .to_string();
     }
 
-    Ok(ReviewResult {
+    Ok(T119 {
         summary,
         issues,
         score,
@@ -283,23 +287,23 @@ fn parse_review_response(raw: &str) -> Result<ReviewResult, String> {
 }
 
 /// Parse a single issue line: SEV:<sev> FILE:<file> LINE:<line> DESC:<desc>
-fn parse_issue_line(line: &str) -> Option<ReviewIssue> {
+fn parse_issue_line(line: &str) -> Option<T120> {
     let sev_str = extract_field(line, "SEV:", "FILE:")?;
     let file = extract_field(line, "FILE:", "LINE:")?;
     let line_str = extract_field(line, "LINE:", "DESC:")?;
     let desc = line.split("DESC:").nth(1)?.trim().to_string();
 
     let severity = match sev_str.trim().to_ascii_lowercase().as_str() {
-        "critical" => Severity::Critical,
-        "warning" => Severity::Warning,
-        "suggestion" => Severity::Suggestion,
-        "praise" => Severity::Praise,
-        _ => Severity::Suggestion,
+        "critical" => T121::Critical,
+        "warning" => T121::Warning,
+        "suggestion" => T121::Suggestion,
+        "praise" => T121::Praise,
+        _ => T121::Suggestion,
     };
 
     let line_num = line_str.trim().parse::<usize>().ok();
 
-    Some(ReviewIssue {
+    Some(T120 {
         severity,
         file: file.trim().to_string(),
         line: line_num,
@@ -326,24 +330,24 @@ mod tests {
     #[test]
     /// f188=format_review. Produces readable output with markers.
     fn format_review_readable() {
-        let result = ReviewResult {
+        let result = T119 {
             summary: "Added error handling to parser".to_string(),
             score: 8,
             issues: vec![
-                ReviewIssue {
-                    severity: Severity::Warning,
+                T120 {
+                    severity: T121::Warning,
                     file: "src/parser.rs".to_string(),
                     line: Some(42),
                     description: "unwrap on user input".to_string(),
                 },
-                ReviewIssue {
-                    severity: Severity::Praise,
+                T120 {
+                    severity: T121::Praise,
                     file: "src/parser.rs".to_string(),
                     line: None,
                     description: "good use of Result propagation".to_string(),
                 },
-                ReviewIssue {
-                    severity: Severity::Critical,
+                T120 {
+                    severity: T121::Critical,
                     file: "src/auth.rs".to_string(),
                     line: Some(10),
                     description: "password logged in plaintext".to_string(),
@@ -351,7 +355,7 @@ mod tests {
             ],
         };
 
-        let out = format_review(&result);
+        let out = f188(&result);
         assert!(out.contains("Score: 8/10"));
         assert!(out.contains("Added error handling"));
         // Critical first
@@ -369,23 +373,23 @@ mod tests {
     }
 
     #[test]
-    /// t121=Severity. Ordering: Praise < Suggestion < Warning < Critical.
+    /// T121=Severity. Ordering: Praise < Suggestion < Warning < Critical.
     fn severity_ordering() {
-        assert!(Severity::Praise < Severity::Suggestion);
-        assert!(Severity::Suggestion < Severity::Warning);
-        assert!(Severity::Warning < Severity::Critical);
+        assert!(T121::Praise < T121::Suggestion);
+        assert!(T121::Suggestion < T121::Warning);
+        assert!(T121::Warning < T121::Critical);
     }
 
     #[test]
-    /// t119=ReviewResult. Empty issues produces clean output.
+    /// T119=ReviewResult. Empty issues produces clean output.
     fn empty_issues() {
-        let result = ReviewResult {
+        let result = T119 {
             summary: "Clean diff, no problems".to_string(),
             score: 10,
             issues: vec![],
         };
 
-        let out = format_review(&result);
+        let out = f188(&result);
         assert!(out.contains("Score: 10/10"));
         assert!(out.contains("No issues found."));
     }
@@ -404,10 +408,10 @@ END";
         assert_eq!(result.summary, "Fixed null pointer in handler");
         assert_eq!(result.score, 7);
         assert_eq!(result.issues.len(), 2);
-        assert_eq!(result.issues[0].severity, Severity::Warning);
+        assert_eq!(result.issues[0].severity, T121::Warning);
         assert_eq!(result.issues[0].file, "src/handler.rs");
         assert_eq!(result.issues[0].line, Some(33));
-        assert_eq!(result.issues[1].severity, Severity::Praise);
+        assert_eq!(result.issues[1].severity, T121::Praise);
         assert_eq!(result.issues[1].line, None);
     }
 
@@ -446,9 +450,9 @@ SEV:PRAISE FILE:src/c.rs LINE:none DESC:nice
 END";
         let result = parse_review_response(raw).unwrap();
         assert_eq!(result.issues.len(), 3);
-        assert_eq!(result.issues[0].severity, Severity::Critical);
-        assert_eq!(result.issues[1].severity, Severity::Warning);
-        assert_eq!(result.issues[2].severity, Severity::Praise);
+        assert_eq!(result.issues[0].severity, T121::Critical);
+        assert_eq!(result.issues[1].severity, T121::Warning);
+        assert_eq!(result.issues[2].severity, T121::Praise);
     }
 
     #[test]
@@ -462,12 +466,12 @@ END";
     #[test]
     /// format_review. Empty diff produces valid output.
     fn format_review_empty_diff() {
-        let result = ReviewResult {
+        let result = T119 {
             summary: "No changes".to_string(),
             score: 10,
             issues: vec![],
         };
-        let out = format_review(&result);
+        let out = f188(&result);
         assert!(out.contains("10/10"));
         assert!(out.contains("No changes"));
     }

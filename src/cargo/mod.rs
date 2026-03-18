@@ -7,8 +7,8 @@ pub mod sandbox;
 use std::path::Path;
 use std::process::Command;
 
-/// Run cargo with args in a directory. Returns (success, stderr).
-pub fn run_cargo(project_dir: &Path, args: &[&str]) -> (bool, String) {
+/// f306=run_cargo. Run cargo with args in a directory. Returns (success, stderr).
+pub fn f306(project_dir: &Path, args: &[&str]) -> (bool, String) {
     match Command::new("cargo")
         .args(args)
         .current_dir(project_dir)
@@ -24,12 +24,12 @@ pub fn run_cargo(project_dir: &Path, args: &[&str]) -> (bool, String) {
 
 /// cargo check. Returns (success, stderr).
 pub fn cargo_check(project_dir: &Path) -> (bool, String) {
-    run_cargo(project_dir, &["check"])
+    f306(project_dir, &["check"])
 }
 
 /// cargo clippy -D warnings. Returns (success, stderr).
 pub fn cargo_clippy(project_dir: &Path) -> (bool, String) {
-    run_cargo(project_dir, &["clippy", "--", "-D", "warnings"])
+    f306(project_dir, &["clippy", "--", "-D", "warnings"])
 }
 
 /// cargo test. Returns (success, combined stderr+stdout).
@@ -53,7 +53,7 @@ pub fn cargo_test(project_dir: &Path) -> (bool, String) {
 }
 
 /// Extract core error identifier for loop detection (error code + line).
-pub fn extract_error_key(stderr: &str) -> String {
+pub fn f307(stderr: &str) -> String {
     for line in stderr.lines() {
         if line.contains("error[E") {
             return line.trim().to_string();
@@ -68,8 +68,8 @@ pub fn extract_error_key(stderr: &str) -> String {
     "unknown".into()
 }
 
-/// Truncate string to max chars.
-pub fn truncate(s: &str, max: usize) -> String {
+/// f308=truncate. Truncate string to max chars.
+pub fn f308(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
@@ -77,8 +77,8 @@ pub fn truncate(s: &str, max: usize) -> String {
     }
 }
 
-/// Extract first ```rust ... ``` block (or bare ``` block) from text.
-pub fn extract_rust_block(s: &str) -> Option<String> {
+/// f309=extract_rust_block. Extract first ```rust ... ``` block (or bare ``` block) from text.
+pub fn f309(s: &str) -> Option<String> {
     let (start_tag, tag_len) = if let Some(pos) = s.find("```rust") {
         (pos, 7)
     } else if let Some(pos) = s.find("```\n") {
@@ -92,7 +92,7 @@ pub fn extract_rust_block(s: &str) -> Option<String> {
 }
 
 /// Detect if a prompt is asking for a binary vs library code.
-pub fn prompt_wants_binary(prompt: &str) -> bool {
+pub fn f310(prompt: &str) -> bool {
     let lower = prompt.to_lowercase();
     lower.contains("cli ")
         || lower.contains("command line")
@@ -111,7 +111,7 @@ pub fn prompt_wants_binary(prompt: &str) -> bool {
 }
 
 /// Build system prompt for code generation.
-pub fn build_system_prompt(wants_binary: bool) -> String {
+pub fn f311(wants_binary: bool) -> String {
     let code_type = if wants_binary {
         "Write a complete program with `fn main()`. The code will be compiled as src/main.rs."
     } else {
@@ -173,20 +173,20 @@ mod tests {
 
     #[test]
     fn prompt_wants_binary_detects_cli() {
-        assert!(prompt_wants_binary("Write a CLI tool"));
-        assert!(prompt_wants_binary("Write fn main()"));
-        assert!(!prompt_wants_binary("Write a function"));
+        assert!(f310("Write a CLI tool"));
+        assert!(f310("Write fn main()"));
+        assert!(!f310("Write a function"));
     }
 
     #[test]
     fn build_system_prompt_binary() {
-        let p = build_system_prompt(true);
+        let p = f311(true);
         assert!(p.contains("fn main()"));
     }
 
     #[test]
     fn build_system_prompt_lib() {
-        let p = build_system_prompt(false);
+        let p = f311(false);
         assert!(p.contains("library code"));
     }
 
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn error_key_extraction() {
         let stderr = "error[E0382]: use of moved value: `x`\n  --> src/lib.rs:5:5";
-        let key = extract_error_key(stderr);
+        let key = f307(stderr);
         assert!(key.contains("E0382"));
     }
 }

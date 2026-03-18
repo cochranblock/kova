@@ -20,7 +20,7 @@ pub fn run(demo: bool) -> anyhow::Result<()> {
         "Kova",
         options,
         Box::new(move |cc| {
-            theme::apply(&cc.egui_ctx);
+            theme::f320(&cc.egui_ctx);
             Ok(Box::new(KovaApp::new(cc, demo)))
         }),
     )
@@ -41,7 +41,7 @@ struct KovaApp {
     #[cfg(feature = "inference")]
     llm_receiver: Option<mpsc::Receiver<std::sync::Arc<str>>>,
     #[cfg(feature = "inference")]
-    router_receiver: Option<mpsc::Receiver<crate::RouterResult>>,
+    router_receiver: Option<mpsc::Receiver<crate::T94>>,
     #[cfg(feature = "inference")]
     router_pending_user_msg: Option<String>,
     #[cfg(feature = "inference")]
@@ -50,7 +50,7 @@ struct KovaApp {
     #[cfg(feature = "inference")]
     clarification_pending: bool,
     #[cfg(feature = "inference")]
-    clarification_choices: Option<Vec<String>>,
+    f364: Option<Vec<String>>,
     #[cfg(feature = "inference")]
     restatement_pending: bool,
     #[cfg(feature = "inference")]
@@ -58,7 +58,7 @@ struct KovaApp {
     /// Demo mode: record actions to ~/.kova/demos/
     demo_recording: Option<DemoRecording>,
     /// Sprite QC panel state.
-    sprite_qc: Option<crate::sprite_qc::SpriteQc>,
+    sprite_qc: Option<crate::sprite_qc::T213>,
     /// Path input for sprite QC directory.
     sprite_qc_path: String,
 }
@@ -114,7 +114,7 @@ struct DemoRecording {
 fn response_for_input(input: &str) -> (String, Option<crate::t0>) {
     match crate::f62(input) {
         Some(intent) => {
-            let name = crate::intent_name(&intent.s0);
+            let name = crate::f325(&intent.s0);
             (format!("Run {}? (y/n)", name), Some(intent))
         }
         None => ("".into(), None),
@@ -191,7 +191,7 @@ impl KovaApp {
             #[cfg(feature = "inference")]
             clarification_pending: false,
             #[cfg(feature = "inference")]
-            clarification_choices: None,
+            f364: None,
             #[cfg(feature = "inference")]
             restatement_pending: false,
             #[cfg(feature = "inference")]
@@ -202,7 +202,7 @@ impl KovaApp {
         }
     }
 
-    fn build_system_prompt(&self) -> String {
+    fn f311(&self) -> String {
         build_system_prompt_impl(&self.system_prompt, &self.persona, &self.current_project)
     }
 
@@ -217,7 +217,7 @@ impl KovaApp {
                 "api_call",
                 serde_json::json!({
                     "method": "run_intent",
-                    "path": crate::intent_name(&intent.s0),
+                    "path": crate::f325(&intent.s0),
                     "project": project.display().to_string()
                 }),
             );
@@ -275,21 +275,21 @@ impl eframe::App for KovaApp {
                         self.router_receiver = None;
                         let to_persist = if let Some(m) = self.messages.last_mut() {
                             match &result {
-                                crate::RouterResult::NeedsClarification { .. } => {
+                                crate::T94::NeedsClarification { .. } => {
                                     let orig =
                                         self.router_pending_user_msg.as_deref().unwrap_or("");
-                                    let q = result.clarification_question(orig);
+                                    let q = result.f363(orig);
                                     m.content = q.clone();
                                     self.clarification_pending = true;
-                                    self.clarification_choices =
-                                        result.clarification_choices().map(|s| s.to_vec());
+                                    self.f364 =
+                                        result.f364().map(|s| s.to_vec());
                                     Some(m.content.clone())
                                 }
-                                crate::RouterResult::Error(e) => {
+                                crate::T94::Error(e) => {
                                     m.content = format!("Router error: {}", e);
                                     Some(m.content.clone())
                                 }
-                                crate::RouterResult::CodeGen => {
+                                crate::T94::CodeGen => {
                                     let user_msg =
                                         self.router_pending_user_msg.take().unwrap_or_default();
                                     let (action, target) =
@@ -303,20 +303,20 @@ impl eframe::App for KovaApp {
                                             (user_msg.as_str(), "")
                                         };
                                     let restatement =
-                                        crate::elicitor::build_restatement(action, target);
+                                        crate::elicitor::f304(action, target);
                                     m.content = restatement.clone();
                                     self.restatement_pending = true;
                                     self.restatement_pending_msg = Some(user_msg);
                                     Some(restatement)
                                 }
-                                _ if result.use_coder()
-                                    || matches!(result, crate::RouterResult::Run) =>
+                                _ if result.f365()
+                                    || matches!(result, crate::T94::Run) =>
                                 {
                                     m.content.clear();
                                     let user_msg =
                                         self.router_pending_user_msg.take().unwrap_or_default();
                                     if let Some(path) = crate::f78(crate::ModelRole::Coder) {
-                                        let system = self.build_system_prompt();
+                                        let system = self.f311();
                                         let hist: Vec<(String, String)> = Vec::new();
                                         let rx =
                                             crate::inference::f76(&path, &system, &hist, &user_msg);
@@ -451,7 +451,7 @@ impl eframe::App for KovaApp {
                         }
                         let p = std::path::Path::new(&self.sprite_qc_path);
                         if p.is_dir() {
-                            self.sprite_qc = Some(crate::sprite_qc::SpriteQc::scan(p));
+                            self.sprite_qc = Some(crate::sprite_qc::T213::scan(p));
                         }
                     }
                 }
@@ -467,7 +467,7 @@ impl eframe::App for KovaApp {
                             .join("kova");
                         self.sprite_qc_path = cache.to_string_lossy().to_string();
                         if cache.is_dir() {
-                            self.sprite_qc = Some(crate::sprite_qc::SpriteQc::scan(&cache));
+                            self.sprite_qc = Some(crate::sprite_qc::T213::scan(&cache));
                         }
                     }
                 }
@@ -482,7 +482,7 @@ impl eframe::App for KovaApp {
                     .ok()
                     .and_then(|s| serde_json::from_str::<crate::t9>(&s).ok())
                     .unwrap_or_default();
-                theme::panel_frame().show(ui, |ui| {
+                theme::f323().show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Backlog").color(colors::PRIMARY).strong());
                         ui.add_space(layout::GAP);
@@ -510,7 +510,7 @@ impl eframe::App for KovaApp {
                     ui.add_space(layout::PADDING_SM);
                     egui::ScrollArea::vertical().max_height(150.0).show(ui, |ui| {
                         for entry in &backlog.items {
-                            theme::message_frame().show(ui, |ui| {
+                            theme::f321().show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.label(egui::RichText::new(&entry.intent).color(colors::PRIMARY));
                                     ui.label(egui::RichText::new("·").color(colors::MUTED));
@@ -545,14 +545,14 @@ impl eframe::App for KovaApp {
             }
             // Sprite QC panel — takes over the main area when active
             if self.sprite_qc.is_some() {
-                theme::panel_frame().show(ui, |ui| {
+                theme::f323().show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Dir:").color(colors::MUTED));
                         ui.text_edit_singleline(&mut self.sprite_qc_path);
                         if ui.button("Rescan").clicked() {
                             let p = std::path::Path::new(&self.sprite_qc_path);
                             if p.is_dir() {
-                                self.sprite_qc = Some(crate::sprite_qc::SpriteQc::scan(p));
+                                self.sprite_qc = Some(crate::sprite_qc::T213::scan(p));
                             }
                         }
                     });
@@ -566,7 +566,7 @@ impl eframe::App for KovaApp {
                 return;
             }
             if self.show_prompts {
-                theme::panel_frame().show(ui, |ui| {
+                theme::f323().show(ui, |ui| {
                     egui::CollapsingHeader::new(egui::RichText::new("system.md").color(colors::PRIMARY))
                         .default_open(true)
                         .show(ui, |ui| {
@@ -584,7 +584,7 @@ impl eframe::App for KovaApp {
                 });
                 ui.add_space(layout::GAP);
             }
-            theme::input_frame().show(ui, |ui| {
+            theme::f322().show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Chat").color(colors::PRIMARY).strong());
                 let mut send = false;
@@ -600,7 +600,7 @@ impl eframe::App for KovaApp {
                     if !msg.is_empty() {
                         if let Some(ref mut rec) = self.demo_recording {
                             if is_confirm(&msg) {
-                                let intent = self.pending_intent.as_ref().map(|i| crate::intent_name(&i.s0).to_string()).unwrap_or_default();
+                                let intent = self.pending_intent.as_ref().map(|i| crate::f325(&i.s0).to_string()).unwrap_or_default();
                                 rec.push("egui_confirm", serde_json::json!({ "intent": intent }));
                             } else {
                                 rec.push("egui_send", serde_json::json!({ "text": msg }));
@@ -635,14 +635,14 @@ impl eframe::App for KovaApp {
                             if is_restatement {
                                 self.restatement_pending = false;
                                 let pending = self.restatement_pending_msg.take().unwrap_or_default();
-                                let reply = crate::elicitor::parse_reply(&msg, None);
+                                let reply = crate::elicitor::f303(&msg, None);
                                 match reply {
-                                    crate::elicitor::ElicitorReply::Confirm(true) => {
+                                    crate::elicitor::T177::Confirm(true) => {
                                         let coder = crate::f78(crate::ModelRole::Coder);
                                         let fix = crate::f78(crate::ModelRole::Fix)
                                             .or_else(|| crate::f78(crate::ModelRole::Coder));
                                         if let (Some(cp), Some(fp)) = (coder, fix) {
-                                            let system = self.build_system_prompt();
+                                            let system = self.f311();
                                             let project = self.current_project.clone();
                                             let max_retries = crate::orchestration_max_fix_retries();
                                             let run_clippy = crate::orchestration_run_clippy();
@@ -677,13 +677,13 @@ impl eframe::App for KovaApp {
                             let to_route_opt = if is_clarification {
                                 let orig = self.router_pending_user_msg.take().unwrap_or_default();
                                 self.clarification_pending = false;
-                                let choices = self.clarification_choices.take();
-                                let reply = crate::elicitor::parse_reply(
+                                let choices = self.f364.take();
+                                let reply = crate::elicitor::f303(
                                     &msg,
                                     choices.as_ref().map(|c| c.len()),
                                 );
                                 match reply {
-                                    crate::elicitor::ElicitorReply::Cancel => {
+                                    crate::elicitor::T177::Cancel => {
                                         self.messages.push(crate::Message {
                                             role: "assistant".into(),
                                             content: "Cancelled.".into(),
@@ -691,7 +691,7 @@ impl eframe::App for KovaApp {
                                         self.persist("assistant", "Cancelled.");
                                         None
                                     }
-                                    crate::elicitor::ElicitorReply::Choice(idx) => {
+                                    crate::elicitor::T177::Choice(idx) => {
                                         let s = choices
                                             .as_ref()
                                             .and_then(|ch| ch.get(idx))
@@ -746,7 +746,7 @@ impl eframe::App for KovaApp {
                             } else if let Some(model_path) = crate::inference_model_path() {
                                 #[cfg(feature = "inference")]
                                 {
-                                    let system = self.build_system_prompt();
+                                    let system = self.f311();
                                     let hist: Vec<(String, String)> = Vec::new();
                                     let rx = crate::inference::f76(
                                         &model_path,
@@ -787,7 +787,7 @@ impl eframe::App for KovaApp {
                     } else {
                         ("Assistant", colors::SECONDARY)
                     };
-                    theme::message_frame().show(ui, |ui| {
+                    theme::f321().show(ui, |ui| {
                     ui.label(egui::RichText::new(prefix).color(color).strong());
                     let content = {
                         #[cfg(feature = "inference")]
@@ -890,7 +890,7 @@ impl eframe::App for KovaApp {
 mod tests {
     use super::*;
 
-    /// Prove GUI build_system_prompt includes baked Cursor rules when enabled.
+    /// Prove GUI f311 includes baked Cursor rules when enabled.
     /// Uses temp dir for KOVA_PROJECTS_ROOT to avoid slow discover_projects on home.
     #[test]
     fn gui_build_system_prompt_includes_baked() {

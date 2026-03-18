@@ -10,7 +10,7 @@ use super::registry::T149;
 use super::router::{f243, f242};
 use super::runner::{f244, T156, T155};
 use super::validate::{f263, T173};
-use crate::cluster::Cluster;
+use crate::cluster::T193;
 
 /// T148=PipeResult
 /// Full pipeline result.
@@ -41,13 +41,13 @@ pub struct T148 {
 pub fn f240(
     input: &str,
     registry: &T149,
-    cluster: &Cluster,
+    cluster: &T193,
 ) -> Result<T148, String> {
     let total_start = Instant::now();
     let breaker = T155::new(3);
     let budget = T156::new(100_000);
 
-    // Step 1: Classify via f79 (or keyword fallback if no nodes)
+    // T182 1: Classify via f79 (or keyword fallback if no nodes)
     let classify_start = Instant::now();
     let classification = match registry.get("f79") {
         Some(tmpl) => {
@@ -63,18 +63,18 @@ pub fn f240(
     };
     let classify_duration = classify_start.elapsed();
 
-    // Step 2: Map classification to template
+    // T182 2: Map classification to template
     let template_id = f243(&classification);
     let tmpl = registry
         .get(&template_id)
         .ok_or_else(|| format!("no template for category: {}", classification))?;
 
-    // Step 3: Run the template
+    // T182 3: Run the template
     let run_start = Instant::now();
     let result = f244(tmpl, input, cluster, &breaker, &budget)?;
     let run_duration = run_start.elapsed();
 
-    // Step 4: Validate
+    // T182 4: Validate
     let validation = f263(&result, input, &tmpl.output_schema);
 
     let total_duration = total_start.elapsed();

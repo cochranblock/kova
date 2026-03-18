@@ -10,7 +10,7 @@ use std::time::Instant;
 use super::registry::T149;
 use super::runner::{f244, T156, T155};
 use super::validate;
-use crate::cluster::Cluster;
+use crate::cluster::T193;
 
 /// Held-out challenge: an input the model hasn't seen, with a verification function.
 struct Challenge {
@@ -168,7 +168,7 @@ pub struct T145 {
 
 /// f233=run_bench
 /// Run all held-out challenges.
-pub fn f233(registry: &T149, cluster: &Cluster) -> Vec<T145> {
+pub fn f233(registry: &T149, cluster: &T193) -> Vec<T145> {
     let mut results = Vec::new();
 
     for ch in challenges() {

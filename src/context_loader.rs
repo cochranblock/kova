@@ -10,8 +10,8 @@ use crate::recent_changes::t86;
 
 /// Project context for coder prompt. Cargo.toml deps + file contents + recent changes.
 #[derive(Debug, Default)]
-/// t90=ProjectContext. Cargo.toml + mentioned .rs files for code-gen.
-pub struct ProjectContext {
+/// t90=T90. Cargo.toml + mentioned .rs files for code-gen.
+pub struct T90 {
     pub cargo_toml: Option<String>,
     pub files: Vec<(String, String)>,
     /// f86 recent changes. When set, format_context includes tokenized list for LLM.
@@ -19,7 +19,7 @@ pub struct ProjectContext {
 }
 
 /// f82=load_project_context. Load Cargo.toml and .rs files mentioned in user_input.
-pub fn f82(project_dir: &Path, user_input: &str) -> ProjectContext {
+pub fn f82(project_dir: &Path, user_input: &str) -> T90 {
     f82_with_recent(project_dir, user_input, None)
 }
 
@@ -29,8 +29,8 @@ pub fn f82_with_recent(
     project_dir: &Path,
     user_input: &str,
     within_minutes: Option<u64>,
-) -> ProjectContext {
-    let mut ctx = ProjectContext::default();
+) -> T90 {
+    let mut ctx = T90::default();
 
     let cargo_path = project_dir.join("Cargo.toml");
     if cargo_path.exists() {
@@ -105,8 +105,8 @@ fn try_read_rs_file(project_dir: &Path, name: &str) -> Option<String> {
 
 /// Format context for injection into coder prompt.
 /// Includes recent changes (f86/f87) when present — helps LLM stay on task.
-/// f112=format_context. Format ProjectContext for LLM prompt injection.
-pub fn f112(ctx: &ProjectContext) -> String {
+/// f112=format_context. Format T90 for LLM prompt injection.
+pub fn f112(ctx: &T90) -> String {
     let mut parts = Vec::new();
     if let Some(ref cargo) = ctx.cargo_toml {
         parts.push(format!("## Cargo.toml\n```toml\n{}\n```", cargo.trim()));
@@ -146,13 +146,13 @@ mod tests {
 
     #[test]
     fn format_context_empty() {
-        let ctx = super::ProjectContext::default();
+        let ctx = super::T90::default();
         assert!(super::f112(&ctx).is_empty());
     }
 
     #[test]
     fn format_context_cargo_only() {
-        let ctx = super::ProjectContext {
+        let ctx = super::T90 {
             cargo_toml: Some("[package]\nname = \"foo\"".into()),
             files: vec![],
             recent_changes: None,
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn format_context_with_files() {
-        let ctx = super::ProjectContext {
+        let ctx = super::T90 {
             cargo_toml: None,
             files: vec![("lib.rs".into(), "fn main() {}".into())],
             recent_changes: None,

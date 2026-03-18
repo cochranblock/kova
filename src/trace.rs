@@ -1,16 +1,17 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+#![allow(non_camel_case_types)]
 //! trace — Pipeline trace + LLM call observability.
-//! t93=LastTrace (in-memory pipeline trace).
-//! LlmTrace: sled-backed per-call telemetry for every LLM invocation.
+//! T93=LastTrace (in-memory pipeline trace).
+//! T109=LlmTrace: sled-backed per-call telemetry for every LLM invocation.
 
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// t93=LastTrace. Last pipeline run for Explain feature.
+/// t93=T93. Last pipeline run for Explain feature.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct LastTrace {
+pub struct T93 {
     pub intent: String,
     pub user_msg: String,
     pub stage: String, // "compile" | "clippy" | "tests"
@@ -22,9 +23,9 @@ pub struct LastTrace {
 
 // ── LLM Call Observability ──────────────────────────────────────
 
-/// t109=LlmTrace. Single LLM call trace. Logged to sled after every inference.
+/// t109=T109. Single LLM call trace. Logged to sled after every inference.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LlmTrace {
+pub struct T109 {
     /// Unix timestamp (millis).
     pub ts: u64,
     /// Backend: "ollama" or "kalosm".
@@ -64,8 +65,8 @@ fn trace_db() -> Option<&'static sled::Db> {
         .as_ref()
 }
 
-/// f161=log_llm. Log an LLM trace to sled. Fire-and-forget.
-pub fn log_llm(trace: LlmTrace) {
+/// f161=f161. Log an LLM trace to sled. Fire-and-forget.
+pub fn f161(trace: T109) {
     if let Some(db) = trace_db()
         && let Ok(tree) = db.open_tree(LLM_TRACE_TREE)
     {
@@ -90,8 +91,8 @@ pub fn log_llm(trace: LlmTrace) {
     }
 }
 
-/// f162=recent_llm_traces. Query recent LLM traces (most recent first).
-pub fn recent_llm_traces(limit: usize) -> Vec<LlmTrace> {
+/// f162=f162. Query recent LLM traces (most recent first).
+pub fn f162(limit: usize) -> Vec<T109> {
     let Some(db) = trace_db() else {
         return Vec::new();
     };
@@ -105,7 +106,7 @@ pub fn recent_llm_traces(limit: usize) -> Vec<LlmTrace> {
             break;
         }
         if let Ok((_, val)) = entry
-            && let Ok(t) = serde_json::from_slice::<LlmTrace>(&val)
+            && let Ok(t) = serde_json::from_slice::<T109>(&val)
         {
             traces.push(t);
         }
@@ -113,9 +114,9 @@ pub fn recent_llm_traces(limit: usize) -> Vec<LlmTrace> {
     traces
 }
 
-/// t110=LlmStats. Summary stats for LLM traces.
+/// t110=T110. Summary stats for LLM traces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmStats {
+pub struct T110 {
     pub total_calls: usize,
     pub total_errors: usize,
     pub total_tokens_out: u64,
@@ -125,8 +126,8 @@ pub struct LlmStats {
     pub calls_by_node: Vec<(String, usize)>,
 }
 
-/// f163=llm_stats. Compute aggregate stats from all stored LLM traces.
-pub fn llm_stats() -> LlmStats {
+/// f163=f163. Compute aggregate stats from all stored LLM traces.
+pub fn f163() -> T110 {
     let Some(db) = trace_db() else {
         return empty_stats();
     };
@@ -145,7 +146,7 @@ pub fn llm_stats() -> LlmStats {
 
     for entry in tree.iter() {
         let Ok((_, val)) = entry else { continue };
-        let Ok(t) = serde_json::from_slice::<LlmTrace>(&val) else {
+        let Ok(t) = serde_json::from_slice::<T109>(&val) else {
             continue;
         };
         total += 1;
@@ -167,7 +168,7 @@ pub fn llm_stats() -> LlmStats {
     let mut node_vec: Vec<_> = by_node.into_iter().collect();
     node_vec.sort_by(|a, b| b.1.cmp(&a.1));
 
-    LlmStats {
+    T110 {
         total_calls: total,
         total_errors: errors,
         total_tokens_out: tokens,
@@ -186,8 +187,8 @@ pub fn llm_stats() -> LlmStats {
     }
 }
 
-fn empty_stats() -> LlmStats {
-    LlmStats {
+fn empty_stats() -> T110 {
+    T110 {
         total_calls: 0,
         total_errors: 0,
         total_tokens_out: 0,
@@ -199,16 +200,17 @@ fn empty_stats() -> LlmStats {
 }
 
 /// Get current timestamp in millis.
-pub fn now_ms() -> u64 {
+/// f326=now_ms. Get current timestamp in millis.
+pub fn f326() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
 }
 
-/// f164=print_llm_stats. Print formatted trace stats to stdout.
-pub fn print_llm_stats() {
-    let stats = llm_stats();
+/// f164=f164. Print formatted trace stats to stdout.
+pub fn f164() {
+    let stats = f163();
     println!("LLM Call Traces");
     println!("───────────────────────────────────────");
     println!(
@@ -238,9 +240,9 @@ pub fn print_llm_stats() {
     }
 }
 
-/// f165=print_recent_traces. Print recent traces as a table.
-pub fn print_recent_traces(limit: usize) {
-    let traces = recent_llm_traces(limit);
+/// f165=f165. Print recent traces as a table.
+pub fn f165(limit: usize) {
+    let traces = f162(limit);
     if traces.is_empty() {
         println!("No LLM traces recorded yet.");
         return;

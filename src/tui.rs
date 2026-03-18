@@ -31,14 +31,14 @@ const REJECT_RED: Color = Color::Rgb(0xdc, 0x26, 0x26);
 
 /// Active mode in the TUI.
 #[derive(PartialEq, Debug)]
-pub enum Mode {
+pub enum T201 {
     Chat,
-    VisualQc,
+    T203,
 }
 
 /// Visual QC verdict.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Verdict {
+pub enum T202 {
     Approve,
     Reject,
     Skip,
@@ -48,17 +48,17 @@ pub enum Verdict {
 struct QcEntry {
     path: PathBuf,
     label: String,
-    verdict: Option<Verdict>,
+    verdict: Option<T202>,
 }
 
 /// Visual QC state (terminal version of sprite_qc).
-pub struct VisualQc {
+pub struct T203 {
     entries: Vec<QcEntry>,
     current: usize,
     root: PathBuf,
 }
 
-impl VisualQc {
+impl T203 {
     pub fn scan(root: &Path) -> Self {
         let mut entries = Vec::new();
         collect_images(root, root, &mut entries);
@@ -74,10 +74,10 @@ impl VisualQc {
         self.entries.len()
     }
     pub fn approved(&self) -> usize {
-        self.entries.iter().filter(|e| e.verdict == Some(Verdict::Approve)).count()
+        self.entries.iter().filter(|e| e.verdict == Some(T202::Approve)).count()
     }
     pub fn rejected(&self) -> usize {
-        self.entries.iter().filter(|e| e.verdict == Some(Verdict::Reject)).count()
+        self.entries.iter().filter(|e| e.verdict == Some(T202::Reject)).count()
     }
     pub fn remaining(&self) -> usize {
         self.entries.iter().filter(|e| e.verdict.is_none()).count()
@@ -86,7 +86,7 @@ impl VisualQc {
         self.current >= self.entries.len()
     }
 
-    pub fn decide(&mut self, v: Verdict) {
+    pub fn decide(&mut self, v: T202) {
         if self.current < self.entries.len() {
             self.entries[self.current].verdict = Some(v);
             self.current += 1;
@@ -103,7 +103,7 @@ impl VisualQc {
         for entry in &self.entries {
             let rel = entry.path.strip_prefix(&self.root).unwrap_or(&entry.path);
             match entry.verdict {
-                Some(Verdict::Approve) => {
+                Some(T202::Approve) => {
                     let dest = approved_dir.join(rel);
                     if let Some(p) = dest.parent() {
                         let _ = std::fs::create_dir_all(p);
@@ -111,7 +111,7 @@ impl VisualQc {
                     let _ = std::fs::copy(&entry.path, &dest);
                     a += 1;
                 }
-                Some(Verdict::Reject) => {
+                Some(T202::Reject) => {
                     let dest = rejected_dir.join(rel);
                     if let Some(p) = dest.parent() {
                         let _ = std::fs::create_dir_all(p);
@@ -152,7 +152,7 @@ fn collect_images(root: &Path, dir: &Path, out: &mut Vec<QcEntry>) {
 
 /// Message type for richer rendering.
 #[derive(Clone, PartialEq, Debug)]
-pub enum MsgKind {
+pub enum T204 {
     User,
     Assistant,
     System,
@@ -163,7 +163,7 @@ pub enum MsgKind {
 
 /// Main TUI app state.
 struct App {
-    mode: Mode,
+    mode: T201,
     input: String,
     cursor_pos: usize,
     messages: Vec<ChatMessage>,
@@ -171,7 +171,7 @@ struct App {
     project_dir: PathBuf,
     model_path: Option<PathBuf>,
     system_prompt: String,
-    qc: Option<VisualQc>,
+    qc: Option<T203>,
     status: String,
     running: bool,
     thinking: bool,
@@ -182,13 +182,13 @@ struct App {
 }
 
 struct ChatMessage {
-    kind: MsgKind,
+    kind: T204,
     content: String,
     timestamp: String,
 }
 
 impl ChatMessage {
-    fn new(kind: MsgKind, content: String) -> Self {
+    fn new(kind: T204, content: String) -> Self {
         Self {
             kind,
             content,
@@ -265,10 +265,10 @@ impl App {
         }
         welcome.push_str("\nCommands: /clear /qc /tools /project <path> /help /quit");
 
-        let messages = vec![ChatMessage::new(MsgKind::System, welcome)];
+        let messages = vec![ChatMessage::new(T204::System, welcome)];
 
         Self {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: String::new(),
             cursor_pos: 0,
             messages,
@@ -325,12 +325,12 @@ impl App {
                 self.project_dir = path;
                 self.status = format!(" {} | Ctrl+C exit | /help", name);
                 self.messages.push(ChatMessage::new(
-                    MsgKind::System,
+                    T204::System,
                     format!("project switched to {}", p),
                 ));
             } else {
                 self.messages.push(ChatMessage::new(
-                    MsgKind::System,
+                    T204::System,
                     format!("not found: {}", p),
                 ));
             }
@@ -341,12 +341,12 @@ impl App {
             for tool in crate::tools::TOOLS {
                 lines.push_str(&format!("  {} — {}\n", tool.name, tool.description));
             }
-            self.messages.push(ChatMessage::new(MsgKind::System, lines));
+            self.messages.push(ChatMessage::new(T204::System, lines));
             return;
         }
 
         // Chat message.
-        self.messages.push(ChatMessage::new(MsgKind::User, input.clone()));
+        self.messages.push(ChatMessage::new(T204::User, input.clone()));
         self.thinking = true;
 
         // Run agent loop (blocking — tokens go to a buffer, not stdout).
@@ -373,7 +373,7 @@ impl App {
                 self.parse_and_push_response(&response);
             } else {
                 self.messages.push(ChatMessage::new(
-                    MsgKind::System,
+                    T204::System,
                     "No model loaded. Run: kova model install".into(),
                 ));
             }
@@ -381,7 +381,7 @@ impl App {
         #[cfg(not(feature = "inference"))]
         {
             self.messages.push(ChatMessage::new(
-                MsgKind::System,
+                T204::System,
                 "Inference not available. Build with --features inference".into(),
             ));
         }
@@ -402,7 +402,7 @@ impl App {
                 // Flush text before code block.
                 if !current_text.trim().is_empty() {
                     self.messages.push(ChatMessage::new(
-                        MsgKind::Assistant,
+                        T204::Assistant,
                         current_text.trim().to_string(),
                     ));
                     current_text.clear();
@@ -413,7 +413,7 @@ impl App {
             } else if line.starts_with("```") && in_code_block {
                 // End code block.
                 self.messages.push(ChatMessage::new(
-                    MsgKind::CodeBlock { lang: code_lang.clone() },
+                    T204::CodeBlock { lang: code_lang.clone() },
                     code_content.trim_end().to_string(),
                 ));
                 in_code_block = false;
@@ -430,7 +430,7 @@ impl App {
         // Flush remaining text.
         if !current_text.trim().is_empty() {
             self.messages.push(ChatMessage::new(
-                MsgKind::Assistant,
+                T204::Assistant,
                 current_text.trim().to_string(),
             ));
         }
@@ -444,24 +444,24 @@ impl App {
             .join("kova");
 
         if cache.is_dir() {
-            let qc = VisualQc::scan(&cache);
+            let qc = T203::scan(&cache);
             if qc.total() == 0 {
                 self.messages.push(ChatMessage::new(
-                    MsgKind::System,
+                    T204::System,
                     format!("No images found in {}", cache.display()),
                 ));
             } else {
                 let count = qc.total();
                 self.qc = Some(qc);
-                self.mode = Mode::VisualQc;
+                self.mode = T201::T203;
                 self.messages.push(ChatMessage::new(
-                    MsgKind::System,
+                    T204::System,
                     format!("Visual QC: {} images loaded from {}", count, cache.display()),
                 ));
             }
         } else {
             self.messages.push(ChatMessage::new(
-                MsgKind::System,
+                T204::System,
                 format!("No screenshots dir: {}", cache.display()),
             ));
         }
@@ -490,8 +490,8 @@ pub fn run(project: Option<PathBuf>) -> anyhow::Result<()> {
                 continue;
             }
             match app.mode {
-                Mode::Chat => handle_chat_key(&mut app, key.code, key.modifiers),
-                Mode::VisualQc => handle_qc_key(&mut app, key.code),
+                T201::Chat => handle_chat_key(&mut app, key.code, key.modifiers),
+                T201::T203 => handle_qc_key(&mut app, key.code),
             }
         }
     }
@@ -573,8 +573,8 @@ fn handle_chat_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
         KeyCode::Esc => {
             if app.show_help {
                 app.show_help = false;
-            } else if app.mode == Mode::VisualQc {
-                app.mode = Mode::Chat;
+            } else if app.mode == T201::T203 {
+                app.mode = T201::Chat;
             }
         }
         _ => {}
@@ -586,19 +586,19 @@ fn handle_qc_key(app: &mut App, code: KeyCode) {
         // Approve
         KeyCode::Char('d') | KeyCode::Right => {
             if let Some(ref mut qc) = app.qc {
-                qc.decide(Verdict::Approve);
+                qc.decide(T202::Approve);
             }
         }
         // Reject
         KeyCode::Char('a') | KeyCode::Left => {
             if let Some(ref mut qc) = app.qc {
-                qc.decide(Verdict::Reject);
+                qc.decide(T202::Reject);
             }
         }
         // Skip
         KeyCode::Char('s') | KeyCode::Down => {
             if let Some(ref mut qc) = app.qc {
-                qc.decide(Verdict::Skip);
+                qc.decide(T202::Skip);
             }
         }
         // Save results
@@ -608,16 +608,16 @@ fn handle_qc_key(app: &mut App, code: KeyCode) {
             {
                 let (a, r) = qc.apply_verdicts();
                 app.messages.push(ChatMessage::new(
-                    MsgKind::System,
+                    T204::System,
                     format!("Saved: {} approved, {} rejected", a, r),
                 ));
                 app.qc = None;
-                app.mode = Mode::Chat;
+                app.mode = T201::Chat;
             }
         }
         // Exit QC
         KeyCode::Esc | KeyCode::Char('q') => {
-            app.mode = Mode::Chat;
+            app.mode = T201::Chat;
         }
         _ => {}
     }
@@ -631,8 +631,8 @@ fn ui(f: &mut Frame, app: &App) {
     f.render_widget(bg_block, size);
 
     match app.mode {
-        Mode::Chat => draw_chat(f, app, size),
-        Mode::VisualQc => draw_visual_qc(f, app, size),
+        T201::Chat => draw_chat(f, app, size),
+        T201::T203 => draw_visual_qc(f, app, size),
     }
 }
 
@@ -700,14 +700,14 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
         }
 
         match &msg.kind {
-            MsgKind::User => {
+            T204::User => {
                 lines.push(Line::from(vec![
                     Span::styled(&msg.timestamp, Style::default().fg(MUTED)),
                     Span::styled(" > ", Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD)),
                     Span::styled(&msg.content, Style::default().fg(PRIMARY)),
                 ]));
             }
-            MsgKind::Assistant => {
+            T204::Assistant => {
                 lines.push(Line::from(vec![
                     Span::styled(&msg.timestamp, Style::default().fg(MUTED)),
                     Span::styled("   ", Style::default()),
@@ -742,7 +742,7 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
                     }
                 }
             }
-            MsgKind::System => {
+            T204::System => {
                 for line in msg.content.lines() {
                     lines.push(Line::from(vec![
                         Span::styled("   ", Style::default()),
@@ -750,7 +750,7 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
                     ]));
                 }
             }
-            MsgKind::ToolCall { tool } => {
+            T204::ToolCall { tool } => {
                 lines.push(Line::from(vec![
                     Span::styled("   ", Style::default()),
                     Span::styled(" ", Style::default().bg(TERTIARY)),
@@ -767,7 +767,7 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
                     ]));
                 }
             }
-            MsgKind::ToolResult { tool, success } => {
+            T204::ToolResult { tool, success } => {
                 let (marker, color) = if *success {
                     (" + ", APPROVE_GREEN)
                 } else {
@@ -797,7 +797,7 @@ fn draw_chat(f: &mut Frame, app: &App, area: Rect) {
                     ]));
                 }
             }
-            MsgKind::CodeBlock { lang } => {
+            T204::CodeBlock { lang } => {
                 let lang_label = if lang.is_empty() { "code" } else { lang };
                 lines.push(Line::from(vec![
                     Span::styled("   ", Style::default()),
@@ -1045,7 +1045,7 @@ fn draw_visual_qc(f: &mut Frame, app: &App, area: Rect) {
             Line::from(Span::styled(
                 format!("Approved: {}  Rejected: {}  Skipped: {}",
                     qc.approved(), qc.rejected(),
-                    qc.entries.iter().filter(|e| e.verdict == Some(Verdict::Skip)).count()),
+                    qc.entries.iter().filter(|e| e.verdict == Some(T202::Skip)).count()),
                 Style::default().fg(TEXT),
             )),
             Line::from(""),
@@ -1065,9 +1065,9 @@ fn draw_visual_qc(f: &mut Frame, app: &App, area: Rect) {
                     (">> ", Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD))
                 } else if let Some(v) = entry.verdict {
                     match v {
-                        Verdict::Approve => ("[+] ", Style::default().fg(APPROVE_GREEN)),
-                        Verdict::Reject => ("[-] ", Style::default().fg(REJECT_RED)),
-                        Verdict::Skip => ("[~] ", Style::default().fg(MUTED)),
+                        T202::Approve => ("[+] ", Style::default().fg(APPROVE_GREEN)),
+                        T202::Reject => ("[-] ", Style::default().fg(REJECT_RED)),
+                        T202::Skip => ("[~] ", Style::default().fg(MUTED)),
                     }
                 } else {
                     ("    ", Style::default().fg(TEXT))
@@ -1155,7 +1155,7 @@ mod tests {
     fn visual_qc_scan_finds_pngs() {
         let tmp = TempDir::new().unwrap();
         make_test_images(tmp.path());
-        let qc = VisualQc::scan(tmp.path());
+        let qc = T203::scan(tmp.path());
         assert_eq!(qc.total(), 5);
         assert_eq!(qc.approved(), 0);
         assert_eq!(qc.rejected(), 0);
@@ -1166,7 +1166,7 @@ mod tests {
     #[test]
     fn visual_qc_scan_empty_dir() {
         let tmp = TempDir::new().unwrap();
-        let qc = VisualQc::scan(tmp.path());
+        let qc = T203::scan(tmp.path());
         assert_eq!(qc.total(), 0);
         assert!(qc.is_done());
     }
@@ -1182,7 +1182,7 @@ mod tests {
         fs::create_dir_all(&rejected).unwrap();
         fs::write(rejected.join("old.png"), b"fake").unwrap();
 
-        let qc = VisualQc::scan(tmp.path());
+        let qc = T203::scan(tmp.path());
         assert_eq!(qc.total(), 5);
     }
 
@@ -1190,18 +1190,18 @@ mod tests {
     fn visual_qc_decide_advances() {
         let tmp = TempDir::new().unwrap();
         make_test_images(tmp.path());
-        let mut qc = VisualQc::scan(tmp.path());
+        let mut qc = T203::scan(tmp.path());
 
         assert_eq!(qc.current, 0);
-        qc.decide(Verdict::Approve);
+        qc.decide(T202::Approve);
         assert_eq!(qc.current, 1);
         assert_eq!(qc.approved(), 1);
 
-        qc.decide(Verdict::Reject);
+        qc.decide(T202::Reject);
         assert_eq!(qc.current, 2);
         assert_eq!(qc.rejected(), 1);
 
-        qc.decide(Verdict::Skip);
+        qc.decide(T202::Skip);
         assert_eq!(qc.current, 3);
         assert_eq!(qc.remaining(), 2);
     }
@@ -1210,10 +1210,10 @@ mod tests {
     fn visual_qc_decide_all_marks_done() {
         let tmp = TempDir::new().unwrap();
         make_test_images(tmp.path());
-        let mut qc = VisualQc::scan(tmp.path());
+        let mut qc = T203::scan(tmp.path());
 
         for _ in 0..5 {
-            qc.decide(Verdict::Approve);
+            qc.decide(T202::Approve);
         }
         assert!(qc.is_done());
         assert_eq!(qc.approved(), 5);
@@ -1224,10 +1224,10 @@ mod tests {
     fn visual_qc_decide_past_end_is_noop() {
         let tmp = TempDir::new().unwrap();
         make_test_images(tmp.path());
-        let mut qc = VisualQc::scan(tmp.path());
+        let mut qc = T203::scan(tmp.path());
 
         for _ in 0..10 {
-            qc.decide(Verdict::Approve);
+            qc.decide(T202::Approve);
         }
         assert!(qc.is_done());
         assert_eq!(qc.current, 5);
@@ -1237,13 +1237,13 @@ mod tests {
     fn visual_qc_apply_verdicts_copies_files() {
         let tmp = TempDir::new().unwrap();
         make_test_images(tmp.path());
-        let mut qc = VisualQc::scan(tmp.path());
+        let mut qc = T203::scan(tmp.path());
 
-        qc.decide(Verdict::Approve);
-        qc.decide(Verdict::Reject);
-        qc.decide(Verdict::Skip);
-        qc.decide(Verdict::Approve);
-        qc.decide(Verdict::Reject);
+        qc.decide(T202::Approve);
+        qc.decide(T202::Reject);
+        qc.decide(T202::Skip);
+        qc.decide(T202::Approve);
+        qc.decide(T202::Reject);
 
         let (a, r) = qc.apply_verdicts();
         assert_eq!(a, 2);
@@ -1275,9 +1275,9 @@ mod tests {
 
     #[test]
     fn verdict_equality() {
-        assert_eq!(Verdict::Approve, Verdict::Approve);
-        assert_ne!(Verdict::Approve, Verdict::Reject);
-        assert_ne!(Verdict::Reject, Verdict::Skip);
+        assert_eq!(T202::Approve, T202::Approve);
+        assert_ne!(T202::Approve, T202::Reject);
+        assert_ne!(T202::Reject, T202::Skip);
     }
 
     #[test]
@@ -1301,7 +1301,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         make_test_images(tmp.path());
         let mut app = App {
-            mode: Mode::VisualQc,
+            mode: T201::T203,
             input: String::new(),
             cursor_pos: 0,
             messages: Vec::new(),
@@ -1309,7 +1309,7 @@ mod tests {
             project_dir: tmp.path().to_path_buf(),
             model_path: None,
             system_prompt: String::new(),
-            qc: Some(VisualQc::scan(tmp.path())),
+            qc: Some(T203::scan(tmp.path())),
             status: String::new(),
             running: true,
             thinking: false,
@@ -1332,7 +1332,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         make_test_images(tmp.path());
         let mut app = App {
-            mode: Mode::VisualQc,
+            mode: T201::T203,
             input: String::new(),
             cursor_pos: 0,
             messages: Vec::new(),
@@ -1340,7 +1340,7 @@ mod tests {
             project_dir: tmp.path().to_path_buf(),
             model_path: None,
             system_prompt: String::new(),
-            qc: Some(VisualQc::scan(tmp.path())),
+            qc: Some(T203::scan(tmp.path())),
             status: String::new(),
             running: true,
             thinking: false,
@@ -1351,13 +1351,13 @@ mod tests {
         };
 
         handle_qc_key(&mut app, KeyCode::Esc);
-        assert_eq!(app.mode, Mode::Chat);
+        assert_eq!(app.mode, T201::Chat);
     }
 
     #[test]
     fn handle_chat_key_typing() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: String::new(),
             cursor_pos: 0,
             messages: Vec::new(),
@@ -1388,7 +1388,7 @@ mod tests {
     #[test]
     fn handle_chat_key_ctrl_c_exits() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: String::new(),
             cursor_pos: 0,
             messages: Vec::new(),
@@ -1414,7 +1414,7 @@ mod tests {
     fn submit_input_quit_commands() {
         for cmd in ["/quit", "/exit", "/q"] {
             let mut app = App {
-                mode: Mode::Chat,
+                mode: T201::Chat,
                 input: cmd.to_string(),
                 cursor_pos: cmd.len(),
                 messages: Vec::new(),
@@ -1439,10 +1439,10 @@ mod tests {
     #[test]
     fn submit_input_clear() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: "/clear".to_string(),
             cursor_pos: 6,
-            messages: vec![ChatMessage::new(MsgKind::User, "old".into())],
+            messages: vec![ChatMessage::new(T204::User, "old".into())],
             scroll: 5,
             project_dir: PathBuf::from("."),
             model_path: None,
@@ -1464,7 +1464,7 @@ mod tests {
     #[test]
     fn submit_input_empty_is_noop() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: "   ".to_string(),
             cursor_pos: 3,
             messages: Vec::new(),
@@ -1488,7 +1488,7 @@ mod tests {
     #[test]
     fn submit_input_tools_command() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: "/tools".to_string(),
             cursor_pos: 6,
             messages: Vec::new(),
@@ -1507,14 +1507,14 @@ mod tests {
         };
         app.submit_input();
         assert_eq!(app.messages.len(), 1);
-        assert_eq!(app.messages[0].kind, MsgKind::System);
+        assert_eq!(app.messages[0].kind, T204::System);
         assert!(app.messages[0].content.contains("read_file"));
     }
 
     #[test]
     fn cursor_movement_boundaries() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: "abc".to_string(),
             cursor_pos: 0,
             messages: Vec::new(),
@@ -1560,7 +1560,7 @@ mod tests {
     #[test]
     fn handle_chat_key_scroll() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: String::new(),
             cursor_pos: 0,
             messages: Vec::new(),
@@ -1588,7 +1588,7 @@ mod tests {
     #[test]
     fn input_history_navigation() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: String::new(),
             cursor_pos: 0,
             messages: Vec::new(),
@@ -1629,7 +1629,7 @@ mod tests {
     #[test]
     fn parse_and_push_response_splits_code_blocks() {
         let mut app = App {
-            mode: Mode::Chat,
+            mode: T201::Chat,
             input: String::new(),
             cursor_pos: 0,
             messages: Vec::new(),
@@ -1649,24 +1649,24 @@ mod tests {
 
         app.parse_and_push_response("Here is some code:\n```rust\nfn main() {}\n```\nDone.");
         assert_eq!(app.messages.len(), 3);
-        assert_eq!(app.messages[0].kind, MsgKind::Assistant);
-        assert!(matches!(&app.messages[1].kind, MsgKind::CodeBlock { lang } if lang == "rust"));
+        assert_eq!(app.messages[0].kind, T204::Assistant);
+        assert!(matches!(&app.messages[1].kind, T204::CodeBlock { lang } if lang == "rust"));
         assert_eq!(app.messages[1].content, "fn main() {}");
-        assert_eq!(app.messages[2].kind, MsgKind::Assistant);
+        assert_eq!(app.messages[2].kind, T204::Assistant);
         assert_eq!(app.messages[2].content, "Done.");
     }
 
     #[test]
     fn msg_kind_equality() {
-        assert_eq!(MsgKind::User, MsgKind::User);
-        assert_ne!(MsgKind::User, MsgKind::Assistant);
+        assert_eq!(T204::User, T204::User);
+        assert_ne!(T204::User, T204::Assistant);
         assert_eq!(
-            MsgKind::ToolCall { tool: "bash".into() },
-            MsgKind::ToolCall { tool: "bash".into() }
+            T204::ToolCall { tool: "bash".into() },
+            T204::ToolCall { tool: "bash".into() }
         );
         assert_ne!(
-            MsgKind::ToolResult { tool: "bash".into(), success: true },
-            MsgKind::ToolResult { tool: "bash".into(), success: false },
+            T204::ToolResult { tool: "bash".into(), success: true },
+            T204::ToolResult { tool: "bash".into(), success: false },
         );
     }
 }

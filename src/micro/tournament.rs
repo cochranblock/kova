@@ -30,7 +30,7 @@ type CatBestEntry = (String, String, String, f64, u64, usize, usize);
 use super::bench;
 use super::registry::T149;
 use super::runner;
-use crate::cluster::Cluster;
+use crate::cluster::T193;
 use crate::providers;
 
 // ── Weight Classes ──────────────────────────────────────────────
@@ -275,13 +275,13 @@ const EXCLUDED_MODELS: &[&str] = &["32b", "70b", "72b"];
 
 /// f249=discover_competitors
 /// Discover all competitors with weight classification and arena filtering.
-pub fn f249(cluster: &Cluster) -> Vec<T161> {
+pub fn f249(cluster: &T193) -> Vec<T161> {
     let mut competitors = Vec::new();
     let online = cluster.online_nodes();
 
     for node in online {
         let url = node.base_url();
-        if let Ok(models) = providers::provider_list_models(&node.provider()) {
+        if let Ok(models) = providers::f336(&node.provider()) {
             for m in models {
                 if EXCLUDED_MODELS.iter().any(|ex| m.name.contains(ex)) {
                     eprintln!("  SKIP {} on {} (too large)", m.name, node.id);
@@ -402,7 +402,7 @@ fn tce(tid: &str, cat: &str, event: &'static str, input: &str, verify: &str, des
 
 /// f250=run_tournament
 /// Run the full Olympic-style tournament.
-pub fn f250(registry: &T149, cluster: &Cluster) -> T165 {
+pub fn f250(registry: &T149, cluster: &T193) -> T165 {
     let competitors = f249(cluster);
     let challenges = tournament_challenges(registry);
 
@@ -500,7 +500,7 @@ pub fn f250(registry: &T149, cluster: &Cluster) -> T165 {
 
                         // WIRE-2: Record failures into feedback loop for challenge mining.
                         if !passed {
-                            crate::feedback::f194(crate::feedback::FailureRecord {
+                            crate::feedback::f194(crate::feedback::T126 {
                                 challenge_desc: ch.description.clone(),
                                 input: ch.input.clone(),
                                 expected_verify: ch.verify.clone(),
@@ -537,7 +537,7 @@ pub fn f250(registry: &T149, cluster: &Cluster) -> T165 {
                         });
 
                         // WIRE-2: Record errors into feedback loop.
-                        crate::feedback::f194(crate::feedback::FailureRecord {
+                        crate::feedback::f194(crate::feedback::T126 {
                             challenge_desc: ch.description.clone(),
                             input: ch.input.clone(),
                             expected_verify: ch.verify.clone(),

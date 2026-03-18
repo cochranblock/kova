@@ -39,12 +39,12 @@ pub struct t112 {
 pub struct t113 {
     pub id: Value,
     pub result: Option<Value>,
-    pub error: Option<McpError>,
+    pub error: Option<T210>,
 }
 
 /// MCP error payload.
 #[derive(Debug)]
-pub struct McpError {
+pub struct T210 {
     pub code: i64,
     pub message: String,
 }
@@ -62,7 +62,7 @@ impl t113 {
         Self {
             id,
             result: None,
-            error: Some(McpError { code, message }),
+            error: Some(T210 { code, message }),
         }
     }
 

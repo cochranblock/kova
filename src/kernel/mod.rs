@@ -1,6 +1,6 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! KovaKernel — unified dispatch. All three surfaces (CLI, Serve, GUI) hold Arc<KovaKernel>.
+//! T208 — unified dispatch. All three surfaces (CLI, Serve, GUI) hold Arc<T208>.
 //! Every request goes through the kernel. No surface calls inference/cargo/tools directly.
 
 pub mod commands;
@@ -9,18 +9,18 @@ pub mod stream;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use commands::KovaCommand;
-pub use stream::KovaStream;
+pub use commands::T207;
+pub use stream::T206;
 
-/// KovaKernel. Central dispatch for all Kova capabilities.
-/// All surfaces hold Arc<KovaKernel> and call methods on it.
-pub struct KovaKernel {
+/// T208. Central dispatch for all Kova capabilities.
+/// All surfaces hold Arc<T208> and call methods on it.
+pub struct T208 {
     pub project_dir: PathBuf,
-    pub config: KernelConfig,
+    pub config: T209,
 }
 
 /// Kernel configuration. Assembled at startup.
-pub struct KernelConfig {
+pub struct T209 {
     /// Max fix loop retries.
     pub max_fix_retries: u32,
     /// Run clippy in code gen pipelines.
@@ -29,7 +29,7 @@ pub struct KernelConfig {
     pub model_path: Option<PathBuf>,
 }
 
-impl Default for KernelConfig {
+impl Default for T209 {
     fn default() -> Self {
         Self {
             max_fix_retries: crate::config::orchestration_max_fix_retries(),
@@ -39,17 +39,17 @@ impl Default for KernelConfig {
     }
 }
 
-impl KovaKernel {
+impl T208 {
     /// Create a new kernel with default config.
     pub fn new(project_dir: PathBuf) -> Self {
         Self {
             project_dir,
-            config: KernelConfig::default(),
+            config: T209::default(),
         }
     }
 
     /// Create kernel with explicit config.
-    pub fn with_config(project_dir: PathBuf, config: KernelConfig) -> Self {
+    pub fn with_config(project_dir: PathBuf, config: T209) -> Self {
         Self {
             project_dir,
             config,
@@ -82,7 +82,7 @@ impl KovaKernel {
 
     /// Get cluster status.
     pub fn cluster_status(&self) -> String {
-        crate::inference::cluster::Cluster::default_hive().status()
+        crate::inference::cluster::T193::default_hive().status()
     }
 }
 
@@ -92,19 +92,19 @@ mod tests {
 
     #[test]
     fn kernel_default_config() {
-        let config = KernelConfig::default();
+        let config = T209::default();
         assert!(config.max_fix_retries > 0);
     }
 
     #[test]
     fn kernel_new() {
-        let kernel = KovaKernel::new(PathBuf::from("/tmp/test"));
+        let kernel = T208::new(PathBuf::from("/tmp/test"));
         assert_eq!(kernel.project_dir, PathBuf::from("/tmp/test"));
     }
 
     #[test]
     fn kernel_shared() {
-        let kernel = KovaKernel::new(PathBuf::from("/tmp/test"));
+        let kernel = T208::new(PathBuf::from("/tmp/test"));
         let shared = kernel.shared();
         assert_eq!(shared.project_dir, PathBuf::from("/tmp/test"));
     }

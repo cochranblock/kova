@@ -6,7 +6,7 @@ use std::process::Command;
 
 /// Host resource snapshot.
 #[derive(Debug, Clone, Default)]
-pub struct HostInfo {
+pub struct T205 {
     pub id: String,
     pub cores: Option<i32>,
     pub ram_gb: Option<i32>,
@@ -15,7 +15,7 @@ pub struct HostInfo {
     pub unreachable: bool,
 }
 
-impl HostInfo {
+impl T205 {
     fn unreachable(id: &str) -> Self {
         Self {
             id: id.to_string(),
@@ -29,8 +29,8 @@ impl HostInfo {
 }
 
 /// Inspect c2-core (local) — macOS.
-fn inspect_local_macos() -> HostInfo {
-    let mut info = HostInfo {
+fn inspect_local_macos() -> T205 {
+    let mut info = T205 {
         id: "c2-core".to_string(),
         ..Default::default()
     };
@@ -95,7 +95,7 @@ fn inspect_local_macos() -> HostInfo {
 
 /// Inspect remote worker via SSH — Linux.
 /// Expects SSH CA for host verification (@cert-authority in known_hosts); no host key churn when IPs change.
-fn inspect_remote(node: &str) -> HostInfo {
+fn inspect_remote(node: &str) -> T205 {
     let cmd = r#"cores=$(nproc 2>/dev/null || echo 0)
 ram=$(free -b 2>/dev/null | awk '/^Mem:/{print int($2/1024/1024/1024)}' || echo 0)
 disk=$(df -B1 / 2>/dev/null | tail -1 | awk '{print $4}' || echo 0)
@@ -123,7 +123,7 @@ echo "$gpu"
         Ok(out) if out.status.success() => {
             let text = String::from_utf8_lossy(&out.stdout);
             let parts: Vec<&str> = text.lines().map(|s| s.trim()).collect();
-            let mut info = HostInfo {
+            let mut info = T205 {
                 id: node.to_string(),
                 ..Default::default()
             };
@@ -141,19 +141,19 @@ echo "$gpu"
             }
             info
         }
-        _ => HostInfo::unreachable(node),
+        _ => T205::unreachable(node),
     }
 }
 
 /// Run inspection on c2-core + all workers. Returns vec: [c2-core, lf, gd, bt, st].
-pub fn run_inspect() -> Vec<HostInfo> {
+pub fn f359() -> Vec<T205> {
     let mut results = Vec::new();
 
     // Local (c2-core)
     results.push(inspect_local_macos());
 
     // Remote workers (parallel via spawn)
-    let nodes = crate::c2::default_nodes();
+    let nodes = crate::c2::f350();
     let handles: Vec<_> = nodes
         .iter()
         .map(|n| {
@@ -172,7 +172,7 @@ pub fn run_inspect() -> Vec<HostInfo> {
 }
 
 /// Print human-readable table.
-pub fn print_table(hosts: &[HostInfo]) {
+pub fn f360(hosts: &[T205]) {
     println!(
         "{:<12} {:<8} {:<10} {:<14} GPU",
         "Host", "Cores", "RAM(GB)", "Disk(GB free)"
@@ -202,7 +202,7 @@ pub fn print_table(hosts: &[HostInfo]) {
 }
 
 /// Print placement recommendations based on inspect data.
-pub fn print_recommend(hosts: &[HostInfo]) {
+pub fn f361(hosts: &[T205]) {
     let workers: Vec<_> = hosts
         .iter()
         .filter(|h| h.id != "c2-core" && !h.unreachable)
@@ -296,7 +296,7 @@ pub fn print_recommend(hosts: &[HostInfo]) {
 }
 
 /// Serialize to JSON for scripting.
-pub fn print_json(hosts: &[HostInfo]) {
+pub fn f362(hosts: &[T205]) {
     let items: Vec<serde_json::Value> = hosts
         .iter()
         .map(|h| {

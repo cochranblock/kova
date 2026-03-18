@@ -6,17 +6,17 @@
 //!
 //! This is the "do all the shit" module. Human direction → AI execution.
 
-use crate::cluster::{Cluster, TaskKind};
-use crate::providers::{self, Provider};
-use crate::trace::LastTrace;
+use crate::cluster::{T193, T191};
+use crate::providers::{self, T129};
+use crate::trace::T93;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// f115=explain_trace. Explain a pipeline trace using IRONHIVE cluster.
 /// Kept for serve.rs compat — now cluster-backed instead of Kalosm.
-pub async fn explain_trace(trace: &LastTrace, _model_path: &Path) -> Result<String, String> {
-    let cluster = Cluster::default_hive();
+pub async fn explain_trace(trace: &T93, _model_path: &Path) -> Result<String, String> {
+    let cluster = T193::default_hive();
 
     let project = crate::config::default_project();
     let cursor = crate::cursor_prompts::f111(&project);
@@ -47,22 +47,22 @@ pub async fn explain_trace(trace: &LastTrace, _model_path: &Path) -> Result<Stri
     );
 
     cluster
-        .dispatch(TaskKind::General, &system, &user_msg, Some(4096))
+        .dispatch(T191::General, &system, &user_msg, Some(4096))
         .map(|(_, response)| response)
 }
 
 /// A planned step in the academy pipeline.
 #[derive(Debug, Clone)]
-pub struct Step {
+pub struct T182 {
     pub id: usize,
-    pub action: StepAction,
+    pub action: T183,
     pub description: String,
-    pub status: StepStatus,
+    pub status: T184,
     pub output: String,
 }
 
 #[derive(Debug, Clone)]
-pub enum StepAction {
+pub enum T183 {
     /// Read files to understand context.
     ReadFiles(Vec<String>),
     /// Generate a new file via MoE.
@@ -76,7 +76,7 @@ pub enum StepAction {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum StepStatus {
+pub enum T184 {
     Pending,
     Running,
     Done,
@@ -84,7 +84,7 @@ pub enum StepStatus {
 }
 
 /// Academy configuration.
-pub struct AcademyConfig {
+pub struct T185 {
     pub project_dir: PathBuf,
     pub num_experts: usize,
     pub max_fix_retries: u32,
@@ -93,7 +93,7 @@ pub struct AcademyConfig {
     pub dry_run: bool,
 }
 
-impl Default for AcademyConfig {
+impl Default for T185 {
     fn default() -> Self {
         Self {
             project_dir: std::env::current_dir().unwrap_or_default(),
@@ -108,15 +108,15 @@ impl Default for AcademyConfig {
 
 /// Academy result.
 #[derive(Debug)]
-pub struct AcademyResult {
-    pub steps: Vec<Step>,
+pub struct T186 {
+    pub steps: Vec<T182>,
     pub success: bool,
     pub files_changed: Vec<String>,
 }
 
 /// Run the academy: plan → execute → verify → commit.
-pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
-    let cluster = Cluster::default_hive();
+pub fn f301(task: &str, config: T185) -> T186 {
+    let cluster = T193::default_hive();
 
     println!("[academy] IRONHIVE Academy");
     println!("[academy] task: {}", task);
@@ -142,7 +142,7 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
 
     if config.dry_run {
         println!("[academy] dry run — stopping before execution");
-        return AcademyResult {
+        return T186 {
             steps: plan,
             success: true,
             files_changed: vec![],
@@ -155,7 +155,7 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
     let mut files_changed: Vec<String> = Vec::new();
 
     for i in 0..steps.len() {
-        steps[i].status = StepStatus::Running;
+        steps[i].status = T184::Running;
         println!(
             "\n[academy] step {}/{}: {}",
             i + 1,
@@ -167,7 +167,7 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
 
         match result {
             Ok((output, changed)) => {
-                steps[i].status = StepStatus::Done;
+                steps[i].status = T184::Done;
                 steps[i].output = output.clone();
                 for f in changed {
                     if !files_changed.contains(&f) {
@@ -177,7 +177,7 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
                 println!("[academy] step {} done", i + 1);
             }
             Err(e) => {
-                steps[i].status = StepStatus::Failed(e.clone());
+                steps[i].status = T184::Failed(e.clone());
                 steps[i].output = e.clone();
                 eprintln!("[academy] step {} failed: {}", i + 1, e);
 
@@ -185,7 +185,7 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
                 println!("[academy] attempting fix...");
                 match fix_step(&steps[i], &e, &cluster, &context, &config) {
                     Ok((output, changed)) => {
-                        steps[i].status = StepStatus::Done;
+                        steps[i].status = T184::Done;
                         steps[i].output = output;
                         for f in changed {
                             if !files_changed.contains(&f) {
@@ -195,7 +195,7 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
                         println!("[academy] fix applied, step {} done", i + 1);
                     }
                     Err(e2) => {
-                        steps[i].status = StepStatus::Failed(e2.clone());
+                        steps[i].status = T184::Failed(e2.clone());
                         eprintln!("[academy] fix also failed: {}", e2);
                     }
                 }
@@ -214,16 +214,16 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
         do_git_commit(&config.project_dir, &files_changed, &commit_msg);
     }
 
-    let all_done = steps.iter().all(|s| s.status == StepStatus::Done);
+    let all_done = steps.iter().all(|s| s.status == T184::Done);
 
     // ── Summary ──
     println!("\n── Academy Summary ──");
     for step in &steps {
         let icon = match &step.status {
-            StepStatus::Done => "ok",
-            StepStatus::Failed(_) => "XX",
-            StepStatus::Running => "..",
-            StepStatus::Pending => "--",
+            T184::Done => "ok",
+            T184::Failed(_) => "XX",
+            T184::Running => "..",
+            T184::Pending => "--",
         };
         println!("  [{}] {}", icon, step.description);
     }
@@ -241,7 +241,7 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
         }
     );
 
-    AcademyResult {
+    T186 {
         steps,
         success: all_done && verify_ok,
         files_changed,
@@ -250,7 +250,7 @@ pub fn run_academy(task: &str, config: AcademyConfig) -> AcademyResult {
 
 // ── Context ──
 
-struct ProjectContext {
+struct T90 {
     file_count: usize,
     total_lines: usize,
     /// Key files and their first few lines (for planning context).
@@ -263,8 +263,8 @@ struct ProjectContext {
     cargo_toml: String,
 }
 
-fn gather_context(project_dir: &Path) -> ProjectContext {
-    let mut ctx = ProjectContext {
+fn gather_context(project_dir: &Path) -> T90 {
+    let mut ctx = T90 {
         file_count: 0,
         total_lines: 0,
         file_summaries: HashMap::new(),
@@ -326,7 +326,7 @@ fn gather_context(project_dir: &Path) -> ProjectContext {
                 if trimmed == "}" {
                     break;
                 }
-                // Look for variant names like "Factory(FactoryArgs)," or "Bootstrap,"
+                // Look for variant names like "T181(FactoryArgs)," or "Bootstrap,"
                 if trimmed.starts_with("///") || trimmed.starts_with("#[") {
                     continue;
                 }
@@ -373,11 +373,11 @@ fn glob_rs_files(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
 // ── Planning ──
 
 fn plan_task(
-    cluster: &Cluster,
+    cluster: &T193,
     task: &str,
-    context: &ProjectContext,
-    config: &AcademyConfig,
-) -> Vec<Step> {
+    context: &T90,
+    config: &T185,
+) -> Vec<T182> {
     let modules_list = context.modules.join(", ");
     let commands_list = context.commands.join(", ");
     let files_list: Vec<_> = context.file_summaries.keys().collect();
@@ -424,7 +424,7 @@ fn plan_task(
     let system = "You are a precise development planner. Output only STEP lines. No commentary.";
 
     let response = match cluster.dispatch(
-        TaskKind::General,
+        T191::General,
         system,
         &plan_prompt,
         Some(config.num_ctx),
@@ -434,18 +434,18 @@ fn plan_task(
             eprintln!("[academy] planning failed: {}", e);
             // Fallback: minimal plan
             return vec![
-                Step {
+                T182 {
                     id: 0,
-                    action: StepAction::ReadFiles(vec!["src/lib.rs".into(), "src/main.rs".into()]),
+                    action: T183::ReadFiles(vec!["src/lib.rs".into(), "src/main.rs".into()]),
                     description: "read lib.rs and main.rs".into(),
-                    status: StepStatus::Pending,
+                    status: T184::Pending,
                     output: String::new(),
                 },
-                Step {
+                T182 {
                     id: 1,
-                    action: StepAction::RunCommand("cargo check -p kova".into()),
+                    action: T183::RunCommand("cargo check -p kova".into()),
                     description: "cargo check".into(),
-                    status: StepStatus::Pending,
+                    status: T184::Pending,
                     output: String::new(),
                 },
             ];
@@ -455,7 +455,7 @@ fn plan_task(
     parse_plan(&response)
 }
 
-fn parse_plan(response: &str) -> Vec<Step> {
+fn parse_plan(response: &str) -> Vec<T182> {
     let mut steps = Vec::new();
 
     for line in response.lines() {
@@ -497,55 +497,55 @@ fn parse_plan(response: &str) -> Vec<Step> {
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .collect();
-            steps.push(Step {
+            steps.push(T182 {
                 id,
                 description: format!("read {}", args.trim()),
-                action: StepAction::ReadFiles(files),
-                status: StepStatus::Pending,
+                action: T183::ReadFiles(files),
+                status: T184::Pending,
                 output: String::new(),
             });
         } else if let Some(args) = content.strip_prefix("GENERATE:") {
             let parts: Vec<&str> = args.splitn(2, '|').collect();
             if parts.len() == 2 {
-                steps.push(Step {
+                steps.push(T182 {
                     id,
                     description: format!("generate {}", parts[0].trim()),
-                    action: StepAction::GenerateFile {
+                    action: T183::GenerateFile {
                         path: parts[0].trim().to_string(),
                         prompt: parts[1].trim().to_string(),
                     },
-                    status: StepStatus::Pending,
+                    status: T184::Pending,
                     output: String::new(),
                 });
             }
         } else if let Some(args) = content.strip_prefix("EDIT:") {
             let parts: Vec<&str> = args.splitn(2, '|').collect();
             if parts.len() == 2 {
-                steps.push(Step {
+                steps.push(T182 {
                     id,
                     description: format!("edit {}", parts[0].trim()),
-                    action: StepAction::EditFile {
+                    action: T183::EditFile {
                         path: parts[0].trim().to_string(),
                         prompt: parts[1].trim().to_string(),
                     },
-                    status: StepStatus::Pending,
+                    status: T184::Pending,
                     output: String::new(),
                 });
             }
         } else if let Some(args) = content.strip_prefix("RUN:") {
-            steps.push(Step {
+            steps.push(T182 {
                 id,
                 description: format!("run: {}", args.trim()),
-                action: StepAction::RunCommand(args.trim().to_string()),
-                status: StepStatus::Pending,
+                action: T183::RunCommand(args.trim().to_string()),
+                status: T184::Pending,
                 output: String::new(),
             });
         } else if let Some(args) = content.strip_prefix("COMMIT:") {
-            steps.push(Step {
+            steps.push(T182 {
                 id,
                 description: "git commit".to_string(),
-                action: StepAction::GitCommit(args.trim().to_string()),
-                status: StepStatus::Pending,
+                action: T183::GitCommit(args.trim().to_string()),
+                status: T184::Pending,
                 output: String::new(),
             });
         }
@@ -557,14 +557,14 @@ fn parse_plan(response: &str) -> Vec<Step> {
 // ── Execution ──
 
 fn execute_step(
-    step: &Step,
-    cluster: &Cluster,
-    context: &ProjectContext,
-    config: &AcademyConfig,
+    step: &T182,
+    cluster: &T193,
+    context: &T90,
+    config: &T185,
     _files_changed: &[String],
 ) -> Result<(String, Vec<String>), String> {
     match &step.action {
-        StepAction::ReadFiles(files) => {
+        T183::ReadFiles(files) => {
             let mut output = String::new();
             for file in files {
                 let path = config.project_dir.join(file);
@@ -581,13 +581,13 @@ fn execute_step(
             Ok((output, vec![]))
         }
 
-        StepAction::GenerateFile { path, prompt } => {
+        T183::GenerateFile { path, prompt } => {
             generate_file(cluster, config, path, prompt, context)
         }
 
-        StepAction::EditFile { path, prompt } => edit_file(cluster, config, path, prompt, context),
+        T183::EditFile { path, prompt } => edit_file(cluster, config, path, prompt, context),
 
-        StepAction::RunCommand(cmd) => {
+        T183::RunCommand(cmd) => {
             let output = Command::new("sh")
                 .args(["-c", cmd])
                 .current_dir(&config.project_dir)
@@ -605,7 +605,7 @@ fn execute_step(
             }
         }
 
-        StepAction::GitCommit(msg) => {
+        T183::GitCommit(msg) => {
             do_git_commit(&config.project_dir, &[], msg);
             Ok(("committed".into(), vec![]))
         }
@@ -613,11 +613,11 @@ fn execute_step(
 }
 
 fn generate_file(
-    cluster: &Cluster,
-    config: &AcademyConfig,
+    cluster: &T193,
+    config: &T185,
     rel_path: &str,
     prompt: &str,
-    context: &ProjectContext,
+    context: &T90,
 ) -> Result<(String, Vec<String>), String> {
     let full_path = config.project_dir.join(rel_path);
 
@@ -656,11 +656,11 @@ fn generate_file(
 }
 
 fn edit_file(
-    cluster: &Cluster,
-    config: &AcademyConfig,
+    cluster: &T193,
+    config: &T185,
     rel_path: &str,
     prompt: &str,
-    _context: &ProjectContext,
+    _context: &T90,
 ) -> Result<(String, Vec<String>), String> {
     let full_path = config.project_dir.join(rel_path);
     let existing = std::fs::read_to_string(&full_path).map_err(|e| e.to_string())?;
@@ -689,7 +689,7 @@ fn edit_file(
 
     // Validate the edit compiles before writing
     let tmp = tempfile::TempDir::new().map_err(|e| e.to_string())?;
-    write_validation_project(tmp.path(), &new_content, rel_path);
+    f313(tmp.path(), &new_content, rel_path);
     let (ok, stderr) = cargo_check_local(tmp.path());
 
     if !ok {
@@ -717,10 +717,10 @@ fn edit_file(
 
 /// MoE generation: fan-out to multiple nodes, compile-test, pick best.
 fn moe_generate(
-    cluster: &Cluster,
+    cluster: &T193,
     system: &str,
     prompt: &str,
-    config: &AcademyConfig,
+    config: &T185,
 ) -> Result<String, String> {
     // Pick nodes
     let mut nodes: Vec<(&str, String)> = Vec::new();
@@ -728,7 +728,7 @@ fn moe_generate(
         if nodes.len() >= config.num_experts {
             break;
         }
-        if providers::provider_health(&node.provider()) {
+        if providers::f334(&node.provider()) {
             nodes.push((&node.id, node.base_url()));
         }
     }
@@ -757,12 +757,12 @@ fn moe_generate(
                 .unwrap_or_default();
 
             std::thread::spawn(move || {
-                let provider = Provider::OpenAiCompat {
+                let provider = T129::OpenAiCompat {
                     url: base_url,
                     api_key: String::new(),
                     model: model.clone(),
                 };
-                let result = providers::provider_generate(&provider, &model, &system, &prompt)
+                let result = providers::f199(&provider, &model, &system, &prompt)
                     .map(|r| r.text);
                 let _ = tx.send((node_id, result));
             })
@@ -792,7 +792,7 @@ fn moe_generate(
     // Quick compile test each
     for (node_id, code) in &candidates {
         let tmp = tempfile::TempDir::new().map_err(|e| e.to_string())?;
-        write_temp_crate(tmp.path(), code);
+        f314(tmp.path(), code);
         let (ok, _) = cargo_check_local(tmp.path());
         if ok {
             println!("[academy] winner: {} (compiles)", node_id);
@@ -806,26 +806,26 @@ fn moe_generate(
 
 /// Single-node generation.
 fn single_generate(
-    cluster: &Cluster,
+    cluster: &T193,
     system: &str,
     prompt: &str,
-    config: &AcademyConfig,
+    config: &T185,
 ) -> Result<String, String> {
     let (_, response) =
-        cluster.dispatch(TaskKind::CodeGen, system, prompt, Some(config.num_ctx))?;
+        cluster.dispatch(T191::CodeGen, system, prompt, Some(config.num_ctx))?;
     Ok(extract_rust_block(&response).unwrap_or(response))
 }
 
 /// Fix a failed step.
 fn fix_step(
-    step: &Step,
+    step: &T182,
     error: &str,
-    cluster: &Cluster,
-    context: &ProjectContext,
-    config: &AcademyConfig,
+    cluster: &T193,
+    context: &T90,
+    config: &T185,
 ) -> Result<(String, Vec<String>), String> {
     match &step.action {
-        StepAction::RunCommand(cmd) => {
+        T183::RunCommand(cmd) => {
             // If cargo check/clippy/test failed, we can't fix a command itself
             // But we can try to fix the code that caused the failure
             if cmd.contains("cargo check")
@@ -842,7 +842,7 @@ fn fix_step(
 
                 let (_, response) = cluster
                     .dispatch(
-                        TaskKind::General,
+                        T191::General,
                         "Identify which file needs fixing from this error. Reply with FILE: and FIX: lines.",
                         &fix_prompt,
                         Some(config.num_ctx),
@@ -876,21 +876,21 @@ fn fix_step(
             Err(format!("cannot auto-fix command: {}", cmd))
         }
 
-        StepAction::GenerateFile { path, prompt } => {
+        T183::GenerateFile { path, prompt } => {
             // Re-generate with error context
             let retry_prompt = format!(
                 "{}\n\nPrevious attempt failed with:\n```\n{}\n```\n\nFix the issues.",
                 prompt,
                 truncate(error, 500)
             );
-            let step_retry = Step {
+            let step_retry = T182 {
                 id: step.id,
-                action: StepAction::GenerateFile {
+                action: T183::GenerateFile {
                     path: path.clone(),
                     prompt: retry_prompt,
                 },
                 description: step.description.clone(),
-                status: StepStatus::Pending,
+                status: T184::Pending,
                 output: String::new(),
             };
             execute_step(&step_retry, cluster, context, config, &[])
@@ -928,7 +928,7 @@ fn verify_project(project_dir: &Path) -> bool {
 
 // ── Git ──
 
-fn generate_commit_msg(cluster: &Cluster, task: &str, files: &[String], num_ctx: u32) -> String {
+fn generate_commit_msg(cluster: &T193, task: &str, files: &[String], num_ctx: u32) -> String {
     let prompt = format!(
         "Write a git commit message for this change.\n\
         Task: {}\n\
@@ -941,7 +941,7 @@ fn generate_commit_msg(cluster: &Cluster, task: &str, files: &[String], num_ctx:
     );
 
     match cluster.dispatch(
-        TaskKind::General,
+        T191::General,
         "Write concise git commit messages. Subject line in imperative mood.",
         &prompt,
         Some(num_ctx.min(1024)),
@@ -1002,15 +1002,15 @@ fn do_git_commit(project_dir: &Path, files: &[String], msg: &str) {
 // ── Helpers (delegated to crate::cargo) ──
 
 fn extract_rust_block(s: &str) -> Option<String> {
-    crate::cargo::extract_rust_block(s)
+    crate::cargo::f309(s)
 }
 
-fn write_temp_crate(dir: &Path, code: &str) {
-    crate::cargo::sandbox::write_temp_crate(dir, code);
+fn f314(dir: &Path, code: &str) {
+    crate::cargo::sandbox::f314(dir, code);
 }
 
-fn write_validation_project(dir: &Path, code: &str, rel_path: &str) {
-    crate::cargo::sandbox::write_validation_project(dir, code, rel_path);
+fn f313(dir: &Path, code: &str, rel_path: &str) {
+    crate::cargo::sandbox::f313(dir, code, rel_path);
 }
 
 fn cargo_check_local(dir: &Path) -> (bool, String) {
@@ -1018,5 +1018,5 @@ fn cargo_check_local(dir: &Path) -> (bool, String) {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    crate::cargo::truncate(s, max)
+    crate::cargo::f308(s, max)
 }

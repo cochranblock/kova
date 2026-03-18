@@ -28,7 +28,7 @@ const PROJECT_MAP: &[(&str, &str)] = &[
 ];
 
 /// Resolve pN → crate name, or pass through.
-fn resolve_project(s: &str) -> &str {
+fn f353(s: &str) -> &str {
     PROJECT_MAP
         .iter()
         .find(|(k, _)| *k == s)
@@ -386,7 +386,7 @@ fn f133(
     bin: Option<&str>,
     extra_args: &[String],
 ) -> t100 {
-    let crate_name = resolve_project(project);
+    let crate_name = f353(project);
     let project_token = to_project_token(crate_name).to_string();
 
     // Try build preset from config.
@@ -747,13 +747,13 @@ mod tests {
 
     #[test]
     fn resolve_project_known() {
-        assert_eq!(resolve_project("p0"), "kova");
-        assert_eq!(resolve_project("p2"), "cochranblock");
+        assert_eq!(f353("p0"), "kova");
+        assert_eq!(f353("p2"), "cochranblock");
     }
 
     #[test]
     fn resolve_project_passthrough() {
-        assert_eq!(resolve_project("unknown-crate"), "unknown-crate");
+        assert_eq!(f353("unknown-crate"), "unknown-crate");
     }
 
     #[test]

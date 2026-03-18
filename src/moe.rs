@@ -11,15 +11,15 @@
 //!   5. Pick the winner
 //!   6. Optionally save to ~/.kova/experts/
 
-use crate::cluster::{Cluster, ModelTier, TaskKind};
-use crate::providers::{self, Provider};
+use crate::cluster::{T193, T189, T191};
+use crate::providers::{self, T129};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Instant;
 
 /// Result from a single expert variant.
 #[derive(Debug, Clone)]
-pub struct ExpertVariant {
+pub struct T194 {
     pub node_id: String,
     pub code: String,
     pub gen_ms: u64,
@@ -34,20 +34,20 @@ pub struct ExpertVariant {
 
 /// MoE pipeline result.
 #[derive(Debug)]
-pub struct MoeResult {
-    pub variants: Vec<ExpertVariant>,
+pub struct T195 {
+    pub variants: Vec<T194>,
     pub winner: Option<usize>,
     pub prompt: String,
 }
 
-impl MoeResult {
+impl T195 {
     pub fn winner_code(&self) -> Option<&str> {
         self.winner.map(|i| self.variants[i].code.as_str())
     }
 }
 
 /// MoE configuration.
-pub struct MoeConfig {
+pub struct T196 {
     pub num_experts: usize,
     pub run_clippy: bool,
     pub run_tests: bool,
@@ -56,7 +56,7 @@ pub struct MoeConfig {
     pub save_winner: bool,
 }
 
-impl Default for MoeConfig {
+impl Default for T196 {
     fn default() -> Self {
         Self {
             num_experts: 3,
@@ -70,16 +70,16 @@ impl Default for MoeConfig {
 }
 
 /// Run MoE pipeline: fan-out → compile → score → pick winner.
-pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
-    let cluster = Cluster::default_hive();
+pub fn f341(prompt: &str, config: T196) -> T195 {
+    let cluster = T193::default_hive();
 
     println!("[moe] IRONHIVE Mixture of Experts");
     println!("[moe] prompt: {}", truncate(prompt, 80));
     println!("[moe] experts: {}", config.num_experts);
     println!();
 
-    let wants_binary = prompt_wants_binary(prompt);
-    let system = build_system_prompt(wants_binary);
+    let wants_binary = f310(prompt);
+    let system = f311(wants_binary);
 
     let gen_prompt = format!(
         "{}\n\nGenerate Rust code. Put all code in a single ```rust ... ``` block.\n\
@@ -101,7 +101,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
     let expert_nodes = pick_expert_nodes(&cluster, config.num_experts);
     if expert_nodes.is_empty() {
         eprintln!("[moe] no online nodes available");
-        return MoeResult {
+        return T195 {
             variants: vec![],
             winner: None,
             prompt: prompt.to_string(),
@@ -135,12 +135,12 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
 
             std::thread::spawn(move || {
                 let start = Instant::now();
-                let provider = Provider::OpenAiCompat {
+                let provider = T129::OpenAiCompat {
                     url: base_url,
                     api_key: String::new(),
                     model: model.clone(),
                 };
-                let result = providers::provider_generate(&provider, &model, &system, &gen_prompt)
+                let result = providers::f199(&provider, &model, &system, &gen_prompt)
                     .map(|r| r.text);
                 let elapsed = start.elapsed().as_millis() as u64;
                 let _ = tx.send((node_id, result, elapsed));
@@ -149,7 +149,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
         .collect();
     drop(tx);
 
-    let mut variants: Vec<ExpertVariant> = Vec::new();
+    let mut variants: Vec<T194> = Vec::new();
 
     for (node_id, result, gen_ms) in rx {
         match result {
@@ -161,7 +161,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
                     code.len(),
                     gen_ms as f64 / 1000.0
                 );
-                variants.push(ExpertVariant {
+                variants.push(T194 {
                     node_id,
                     code,
                     gen_ms,
@@ -187,7 +187,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
 
     if variants.is_empty() {
         eprintln!("[moe] all experts failed to generate");
-        return MoeResult {
+        return T195 {
             variants,
             winner: None,
             prompt: prompt.to_string(),
@@ -212,7 +212,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
                         Ok(d) => d,
                         Err(_) => return (false, false, false, 0u64),
                     };
-                    write_temp_project(tmp.path(), &code, wb);
+                    f312(tmp.path(), &code, wb);
 
                     let (check_ok, _) = cargo_check(tmp.path());
                     if !check_ok {
@@ -289,7 +289,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
 
     if survivors.is_empty() {
         eprintln!("[moe] no variants compiled successfully");
-        return MoeResult {
+        return T195 {
             variants,
             winner: None,
             prompt: prompt.to_string(),
@@ -408,7 +408,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
         println!("\n[moe] no winner — all variants failed");
     }
 
-    MoeResult {
+    T195 {
         variants,
         winner,
         prompt: prompt.to_string(),
@@ -416,7 +416,7 @@ pub fn run_moe(prompt: &str, config: MoeConfig) -> MoeResult {
 }
 
 /// Pick expert nodes for fan-out. Prefers heavy + mid nodes, avoids coordinator for gen.
-fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
+fn pick_expert_nodes(cluster: &T193, max: usize) -> Vec<(String, String)> {
     let mut nodes: Vec<(String, String)> = Vec::new();
 
     // Heavy nodes first (32B — best code gen)
@@ -424,7 +424,7 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
         if nodes.len() >= max {
             break;
         }
-        if matches!(node.tier, ModelTier::Heavy) && providers::provider_health(&node.provider()) {
+        if matches!(node.tier, T189::Heavy) && providers::f334(&node.provider()) {
             nodes.push((node.id.clone(), node.base_url()));
         }
     }
@@ -434,8 +434,8 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
         if nodes.len() >= max {
             break;
         }
-        if matches!(node.tier, ModelTier::Mid)
-            && providers::provider_health(&node.provider())
+        if matches!(node.tier, T189::Mid)
+            && providers::f334(&node.provider())
             && !nodes.iter().any(|(id, _)| id == &node.id)
         {
             nodes.push((node.id.clone(), node.base_url()));
@@ -447,8 +447,8 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
         if nodes.len() >= max {
             break;
         }
-        if matches!(node.tier, ModelTier::Light | ModelTier::Router)
-            && providers::provider_health(&node.provider())
+        if matches!(node.tier, T189::Light | T189::Router)
+            && providers::f334(&node.provider())
             && !nodes.iter().any(|(id, _)| id == &node.id)
         {
             nodes.push((node.id.clone(), node.base_url()));
@@ -459,7 +459,7 @@ fn pick_expert_nodes(cluster: &Cluster, max: usize) -> Vec<(String, String)> {
 }
 
 /// Review a variant using a mid-tier node. Returns (score 0-10, review text).
-fn review_variant(cluster: &Cluster, code: &str, num_ctx: u32) -> (u8, String) {
+fn review_variant(cluster: &T193, code: &str, num_ctx: u32) -> (u8, String) {
     let review_prompt = format!(
         "Rate this Rust code from 0-10. Consider:\n\
         - Correctness (does it do what it should?)\n\
@@ -474,7 +474,7 @@ fn review_variant(cluster: &Cluster, code: &str, num_ctx: u32) -> (u8, String) {
     let system =
         "You are a Rust code reviewer. Rate code 0-10. First line must be the number only.";
 
-    match cluster.dispatch(TaskKind::CodeReview, system, &review_prompt, Some(num_ctx)) {
+    match cluster.dispatch(T191::CodeReview, system, &review_prompt, Some(num_ctx)) {
         Ok((_, response)) => {
             let first_line = response.lines().next().unwrap_or("5");
             let score: u8 = first_line
@@ -521,19 +521,19 @@ fn save_expert(prompt: &str, code: &str) -> Option<PathBuf> {
 // ── Helpers (delegated to crate::cargo) ──
 
 fn extract_rust_block(s: &str) -> Option<String> {
-    crate::cargo::extract_rust_block(s)
+    crate::cargo::f309(s)
 }
 
-fn prompt_wants_binary(prompt: &str) -> bool {
-    crate::cargo::prompt_wants_binary(prompt)
+fn f310(prompt: &str) -> bool {
+    crate::cargo::f310(prompt)
 }
 
-fn build_system_prompt(wants_binary: bool) -> String {
-    crate::cargo::build_system_prompt(wants_binary)
+fn f311(wants_binary: bool) -> String {
+    crate::cargo::f311(wants_binary)
 }
 
-fn write_temp_project(dir: &Path, code: &str, is_binary: bool) {
-    crate::cargo::sandbox::write_temp_project(dir, code, is_binary);
+fn f312(dir: &Path, code: &str, is_binary: bool) {
+    crate::cargo::sandbox::f312(dir, code, is_binary);
 }
 
 fn cargo_check(dir: &Path) -> (bool, String) {
@@ -549,5 +549,5 @@ fn cargo_test(dir: &Path) -> (bool, String) {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    crate::cargo::truncate(s, max)
+    crate::cargo::f308(s, max)
 }

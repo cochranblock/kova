@@ -1,17 +1,17 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! training_data — Export scored LLM interactions as training datasets (DPO/SFT).
-//! f181=export_from_traces, f182=export_jsonl, f183=export_csv, f184=export_dpo_pairs
-//! t116=TrainingExample, t117=ExportFormat
+//! f181=f181, f182=f182, f183=f183, f184=f184
+//! t116=T116, t117=T117
 
-use crate::trace::{self, LlmTrace};
+use crate::trace::{self, T109};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// t116=TrainingExample. Single scored LLM interaction for fine-tuning.
+/// t116=T116. Single scored LLM interaction for fine-tuning.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TrainingExample {
+pub struct T116 {
     pub prompt: String,
     pub response: String,
     pub model: String,
@@ -21,16 +21,16 @@ pub struct TrainingExample {
     pub category: String,
 }
 
-/// t117=ExportFormat. Output format for training data.
+/// t117=T117. Output format for training data.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ExportFormat {
+pub enum T117 {
     Jsonl,
     Csv,
     Dpo,
 }
 
-impl ExportFormat {
-    pub fn from_str_loose(s: &str) -> Option<Self> {
+impl T117 {
+    pub fn f316(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "jsonl" => Some(Self::Jsonl),
             "csv" => Some(Self::Csv),
@@ -49,7 +49,7 @@ impl ExportFormat {
 
 /// DPO pair: same prompt, chosen (higher score) vs rejected (lower score).
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DpoPair {
+pub struct T175 {
     pub prompt: String,
     pub chosen: String,
     pub rejected: String,
@@ -61,12 +61,12 @@ pub struct DpoPair {
 }
 
 /// Default output directory: ~/.kova/training_data/
-pub fn default_output_dir() -> PathBuf {
+pub fn f318() -> PathBuf {
     crate::config::kova_dir().join("training_data")
 }
 
-/// Convert an LlmTrace to a TrainingExample. Scores traces by status and latency.
-fn trace_to_example(trace: &LlmTrace) -> TrainingExample {
+/// Convert an T109 to a T116. Scores traces by status and latency.
+fn trace_to_example(trace: &T109) -> T116 {
     let passed = trace.status == "ok";
     // Score: 1.0 for success, 0.0 for failure. Penalize slow responses.
     let base_score: f32 = if passed { 1.0 } else { 0.0 };
@@ -83,7 +83,7 @@ fn trace_to_example(trace: &LlmTrace) -> TrainingExample {
     let category = format!("{}:{}", trace.backend, trace.call_type);
 
     // Prompt/response are stored as byte lengths in traces. Reconstruct placeholder
-    // text showing the size since the actual content isn't persisted in LlmTrace.
+    // text showing the size since the actual content isn't persisted in T109.
     let prompt = format!(
         "[{}B prompt via {} on {}]",
         trace.prompt_bytes, trace.model, trace.node
@@ -93,7 +93,7 @@ fn trace_to_example(trace: &LlmTrace) -> TrainingExample {
         trace.response_bytes, trace.latency_ms, trace.status
     );
 
-    TrainingExample {
+    T116 {
         prompt,
         response,
         model: trace.model.clone(),
@@ -104,15 +104,15 @@ fn trace_to_example(trace: &LlmTrace) -> TrainingExample {
     }
 }
 
-/// f181=export_from_traces. Read LLM traces from sled, convert to training examples,
+/// f181=f181. Read LLM traces from sled, convert to training examples,
 /// export in the given format. Returns count of examples written.
-pub fn export_from_traces(format: ExportFormat, output: Option<PathBuf>) -> anyhow::Result<usize> {
-    let traces = trace::recent_llm_traces(usize::MAX);
+pub fn f181(format: T117, output: Option<PathBuf>) -> anyhow::Result<usize> {
+    let traces = trace::f162(usize::MAX);
     if traces.is_empty() {
         anyhow::bail!("no LLM traces found — run some inference first");
     }
 
-    let examples: Vec<TrainingExample> = traces.iter().map(trace_to_example).collect();
+    let examples: Vec<T116> = traces.iter().map(trace_to_example).collect();
 
     let out_dir = output
         .clone()
@@ -123,13 +123,13 @@ pub fn export_from_traces(format: ExportFormat, output: Option<PathBuf>) -> anyh
                 p.clone()
             }
         })
-        .unwrap_or_else(default_output_dir);
+        .unwrap_or_else(f318);
     std::fs::create_dir_all(&out_dir)?;
 
     let default_filename = match format {
-        ExportFormat::Jsonl => "training.jsonl",
-        ExportFormat::Csv => "training.csv",
-        ExportFormat::Dpo => "dpo_pairs.jsonl",
+        T117::Jsonl => "training.jsonl",
+        T117::Csv => "training.csv",
+        T117::Dpo => "dpo_pairs.jsonl",
     };
 
     let out_path = match output {
@@ -139,18 +139,18 @@ pub fn export_from_traces(format: ExportFormat, output: Option<PathBuf>) -> anyh
     };
 
     let count = match format {
-        ExportFormat::Jsonl => export_jsonl(&examples, &out_path)?,
-        ExportFormat::Csv => export_csv(&examples, &out_path)?,
-        ExportFormat::Dpo => export_dpo_pairs(&examples, &out_path)?,
+        T117::Jsonl => f182(&examples, &out_path)?,
+        T117::Csv => f183(&examples, &out_path)?,
+        T117::Dpo => f184(&examples, &out_path)?,
     };
 
     println!("Exported {} entries to {}", count, out_path.display());
     Ok(count)
 }
 
-/// f182=export_jsonl. Write training examples as JSONL (one JSON object per line).
+/// f182=f182. Write training examples as JSONL (one JSON object per line).
 /// Standard format for SFT fine-tuning pipelines.
-pub fn export_jsonl(examples: &[TrainingExample], path: &Path) -> anyhow::Result<usize> {
+pub fn f182(examples: &[T116], path: &Path) -> anyhow::Result<usize> {
     use std::io::Write;
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
     let mut count = 0;
@@ -163,8 +163,8 @@ pub fn export_jsonl(examples: &[TrainingExample], path: &Path) -> anyhow::Result
     Ok(count)
 }
 
-/// f183=export_csv. Write training examples as CSV with headers.
-pub fn export_csv(examples: &[TrainingExample], path: &Path) -> anyhow::Result<usize> {
+/// f183=f183. Write training examples as CSV with headers.
+pub fn f183(examples: &[T116], path: &Path) -> anyhow::Result<usize> {
     use std::io::Write;
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
     writeln!(f, "prompt,response,model,score,passed,latency_ms,category")?;
@@ -187,14 +187,14 @@ pub fn export_csv(examples: &[TrainingExample], path: &Path) -> anyhow::Result<u
     Ok(count)
 }
 
-/// f184=export_dpo_pairs. Build DPO training pairs: for each prompt that has both
+/// f184=f184. Build DPO training pairs: for each prompt that has both
 /// a higher-scored and lower-scored response, emit (prompt, chosen, rejected).
 /// Groups by category, pairs best vs worst within each group.
-pub fn export_dpo_pairs(examples: &[TrainingExample], path: &Path) -> anyhow::Result<usize> {
+pub fn f184(examples: &[T116], path: &Path) -> anyhow::Result<usize> {
     use std::io::Write;
 
     // Group examples by category.
-    let mut by_category: HashMap<String, Vec<&TrainingExample>> = HashMap::new();
+    let mut by_category: HashMap<String, Vec<&T116>> = HashMap::new();
     for ex in examples {
         by_category.entry(ex.category.clone()).or_default().push(ex);
     }
@@ -215,7 +215,7 @@ pub fn export_dpo_pairs(examples: &[TrainingExample], path: &Path) -> anyhow::Re
                 if (chosen.score - rejected.score).abs() < 0.01 {
                     continue;
                 }
-                let pair = DpoPair {
+                let pair = T175 {
                     prompt: chosen.prompt.clone(),
                     chosen: chosen.response.clone(),
                     rejected: rejected.response.clone(),
@@ -250,9 +250,9 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn sample_examples() -> Vec<TrainingExample> {
+    fn sample_examples() -> Vec<T116> {
         vec![
-            TrainingExample {
+            T116 {
                 prompt: "Write a hello world function".into(),
                 response: "fn hello() { println!(\"Hello, world!\"); }".into(),
                 model: "qwen2.5-coder:1.5b".into(),
@@ -261,7 +261,7 @@ mod tests {
                 latency_ms: 500,
                 category: "ollama:generate".into(),
             },
-            TrainingExample {
+            T116 {
                 prompt: "Write a hello world function".into(),
                 response: "ERROR: timeout".into(),
                 model: "qwen2.5-coder:0.5b".into(),
@@ -270,7 +270,7 @@ mod tests {
                 latency_ms: 15000,
                 category: "ollama:generate".into(),
             },
-            TrainingExample {
+            T116 {
                 prompt: "Classify this intent".into(),
                 response: "build".into(),
                 model: "qwen2.5-coder:1.5b".into(),
@@ -282,35 +282,35 @@ mod tests {
         ]
     }
 
-    /// f182=export_jsonl. Verify JSONL output: one valid JSON object per line.
+    /// f182=f182. Verify JSONL output: one valid JSON object per line.
     #[test]
     fn export_jsonl_writes_valid_jsonl() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("test.jsonl");
         let examples = sample_examples();
 
-        let count = export_jsonl(&examples, &path).unwrap();
+        let count = f182(&examples, &path).unwrap();
         assert_eq!(count, 3);
 
         let content = std::fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 3);
 
-        // Each line must parse as a valid TrainingExample.
+        // Each line must parse as a valid T116.
         for line in &lines {
-            let ex: TrainingExample = serde_json::from_str(line).unwrap();
+            let ex: T116 = serde_json::from_str(line).unwrap();
             assert!(!ex.model.is_empty());
         }
     }
 
-    /// f183=export_csv. Verify CSV output: header row + data rows.
+    /// f183=f183. Verify CSV output: header row + data rows.
     #[test]
     fn export_csv_writes_valid_csv_with_headers() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("test.csv");
         let examples = sample_examples();
 
-        let count = export_csv(&examples, &path).unwrap();
+        let count = f183(&examples, &path).unwrap();
         assert_eq!(count, 3);
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -324,14 +324,14 @@ mod tests {
         assert!(content.contains("qwen2.5-coder:0.5b"));
     }
 
-    /// f184=export_dpo_pairs. Verify DPO pairs: chosen has higher score than rejected.
+    /// f184=f184. Verify DPO pairs: chosen has higher score than rejected.
     #[test]
     fn export_dpo_pairs_creates_correct_pairs() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("dpo.jsonl");
         let examples = sample_examples();
 
-        let count = export_dpo_pairs(&examples, &path).unwrap();
+        let count = f184(&examples, &path).unwrap();
         // "ollama:generate" category has score 1.0 vs 0.0 → 1 pair.
         // "ollama:chat" category has only 1 example → 0 pairs.
         assert_eq!(count, 1);
@@ -340,7 +340,7 @@ mod tests {
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 1);
 
-        let pair: DpoPair = serde_json::from_str(lines[0]).unwrap();
+        let pair: T175 = serde_json::from_str(lines[0]).unwrap();
         assert!(pair.chosen_score > pair.rejected_score);
         assert_eq!(pair.category, "ollama:generate");
         assert_eq!(pair.chosen_model, "qwen2.5-coder:1.5b");
@@ -357,20 +357,20 @@ mod tests {
         assert_eq!(csv_escape("has\rcarriage"), "\"has\rcarriage\"");
     }
 
-    /// ExportFormat from_str_loose handles case and unknown.
+    /// T117 f316 handles case and unknown.
     #[test]
     fn export_format_from_str() {
-        assert_eq!(ExportFormat::from_str_loose("jsonl"), Some(ExportFormat::Jsonl));
-        assert_eq!(ExportFormat::from_str_loose("CSV"), Some(ExportFormat::Csv));
-        assert_eq!(ExportFormat::from_str_loose("DPO"), Some(ExportFormat::Dpo));
-        assert_eq!(ExportFormat::from_str_loose("nope"), None);
+        assert_eq!(T117::f316("jsonl"), Some(T117::Jsonl));
+        assert_eq!(T117::f316("CSV"), Some(T117::Csv));
+        assert_eq!(T117::f316("DPO"), Some(T117::Dpo));
+        assert_eq!(T117::f316("nope"), None);
     }
 
-    /// ExportFormat extensions.
+    /// T117 extensions.
     #[test]
     fn export_format_extensions() {
-        assert_eq!(ExportFormat::Jsonl.extension(), "jsonl");
-        assert_eq!(ExportFormat::Csv.extension(), "csv");
-        assert_eq!(ExportFormat::Dpo.extension(), "jsonl");
+        assert_eq!(T117::Jsonl.extension(), "jsonl");
+        assert_eq!(T117::Csv.extension(), "csv");
+        assert_eq!(T117::Dpo.extension(), "jsonl");
     }
 }

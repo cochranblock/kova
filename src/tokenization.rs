@@ -103,6 +103,9 @@ fn walk_dir(dir: &Path, entries: &mut Vec<TokenEntry>) {
     }
 }
 
+/// Type names that appear in test fixtures / string literals — not real types.
+const SKIP_TYPE: &[&str] = &["Foo", "TokenEntry", "TokenKind", "TokenReport"];
+
 /// Common impl method names and trait methods that don't need tokenization.
 const SKIP_FN: &[&str] = &[
     "main", "new", "default", "fmt", "update", "short", "from", "run",
@@ -120,7 +123,7 @@ const SKIP_FN: &[&str] = &[
     "scan", "total", "approved", "rejected", "decide", "apply_verdicts",
     "print", "by_tier", "build_prompt",
     "collect_blocking", "to_stdout",
-    "temporary", "pick_idlest",
+    "temporary", "pick_idlest", "show", "extension", "name", "destroy",
     // Kernel/infra methods
     "cargo_check", "cargo_clippy", "cargo_test", "cluster_status",
     "base_url", "provider", "default_hive", "health_check",
@@ -162,8 +165,8 @@ fn scan_file(path: &Path, entries: &mut Vec<TokenEntry>) {
         // pub fn NAME — only count top-level or in impl blocks
         if let Some(rest) = trimmed.strip_prefix("pub fn ") {
             if let Some(name) = extract_ident(rest) {
-                // Skip known impl methods and trait methods
-                if in_impl && SKIP_FN.contains(&name.as_str()) {
+                // Skip known helper/infra names (impl methods, delegators, trait methods)
+                if SKIP_FN.contains(&name.as_str()) {
                     continue;
                 }
                 let tokenized = is_fn_token(&name);
@@ -182,6 +185,9 @@ fn scan_file(path: &Path, entries: &mut Vec<TokenEntry>) {
             .or_else(|| trimmed.strip_prefix("pub enum "))
         {
             if let Some(name) = extract_ident(rest) {
+                if SKIP_TYPE.contains(&name.as_str()) {
+                    continue;
+                }
                 let tokenized = is_type_token(&name);
                 entries.push(TokenEntry {
                     file: path.to_path_buf(),
@@ -212,9 +218,9 @@ fn is_fn_token(name: &str) -> bool {
         && (num_part.len() == rest.len() || rest.as_bytes()[num_part.len()] == b'_')
 }
 
-/// TN or tN pattern: starts with 'T' or 't' followed by digits.
+/// TN, tN, or EN pattern: starts with 'T', 't', or 'E' followed by digits.
 fn is_type_token(name: &str) -> bool {
-    (name.starts_with('T') || name.starts_with('t'))
+    (name.starts_with('T') || name.starts_with('t') || name.starts_with('E'))
         && name[1..].chars().all(|c| c.is_ascii_digit())
         && name.len() > 1
 }
@@ -289,7 +295,8 @@ mod tests {
         assert!(!is_fn_token("foo"));
         assert!(!is_fn_token("f"));
         assert!(is_type_token("T91"));
-        assert!(!is_type_token("t91"));
+        assert!(is_type_token("t91"));
+        assert!(is_type_token("E0"));
         assert!(!is_type_token("Token"));
     }
 

@@ -46,10 +46,10 @@ enum Cmd {
     S(SShortArgs),
     /// IRONHIVE cluster inference. Distributed AI across worker nodes.
     #[command(name = "cluster")]
-    Cluster(ClusterArgs),
-    /// Rust Binary Factory. Full pipeline: classify → generate → compile → review → fix.
+    T193(ClusterArgs),
+    /// Rust Binary T181. Full pipeline: classify → generate → compile → review → fix.
     #[command(name = "factory")]
-    Factory(FactoryArgs),
+    T181(FactoryArgs),
     /// Mixture of Experts. Fan-out to N nodes, compile all, score, pick winner.
     #[command(name = "moe")]
     Moe(MoeArgs),
@@ -257,7 +257,7 @@ enum C2Cmd {
     /// Run tokenized command (f18–f23).
     Run {
         #[arg(value_enum)]
-        token: kova::c2::Token,
+        token: kova::c2::T212,
         #[arg(short, long)]
         project: Option<std::path::PathBuf>,
         #[arg(short, long)]
@@ -715,7 +715,7 @@ fn run_test() -> anyhow::Result<()> {
         let status = std::process::Command::new(&test_bin).status()?;
         std::process::exit(status.code().unwrap_or(1));
     }
-    kova::run_test_suite()
+    kova::f315()
 }
 
 #[cfg(feature = "serve")]
@@ -753,7 +753,7 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
     kova::bootstrap()?;
     match args.cmd {
         C2Cmd::Nodes => {
-            kova::c2::run_nodes();
+            kova::c2::f355();
             Ok(())
         }
         C2Cmd::Run {
@@ -763,20 +763,20 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             release,
             nodes,
             local,
-        } => kova::c2::run_command(token, project, broadcast, release, nodes, local),
+        } => kova::c2::f354(token, project, broadcast, release, nodes, local),
         C2Cmd::Inspect { json } => {
-            let hosts = kova::inspect::run_inspect();
+            let hosts = kova::inspect::f359();
             if json {
-                kova::inspect::print_json(&hosts);
+                kova::inspect::f362(&hosts);
             } else {
-                kova::inspect::print_table(&hosts);
+                kova::inspect::f360(&hosts);
             }
             Ok(())
         }
         C2Cmd::Recommend => {
-            let hosts = kova::inspect::run_inspect();
-            kova::inspect::print_table(&hosts);
-            kova::inspect::print_recommend(&hosts);
+            let hosts = kova::inspect::f359();
+            kova::inspect::f360(&hosts);
+            kova::inspect::f361(&hosts);
             Ok(())
         }
         C2Cmd::Build {
@@ -786,16 +786,16 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             local,
             nodes,
             project,
-        } => kova::c2::run_build(broadcast, release, no_sync, local, nodes, project),
+        } => kova::c2::f356(broadcast, release, no_sync, local, nodes, project),
         C2Cmd::Sync {
             dry_run,
             target,
             local,
             all,
             full,
-        } => kova::c2::run_sync(dry_run, &target, local, all, full),
+        } => kova::c2::f358(dry_run, &target, local, all, full),
         C2Cmd::Wake { node } => {
-            match kova::c2::wake_node(&node) {
+            match kova::c2::f352(&node) {
                 Ok(()) => {
                     println!("WoL sent to {}", node);
                     Ok(())
@@ -804,9 +804,9 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             }
         }
         C2Cmd::SshCa { cmd } => match cmd {
-            SshCaCmd::Init => kova::ssh_ca::run_init(),
-            SshCaCmd::Sign { node } => kova::ssh_ca::run_sign(&node),
-            SshCaCmd::Setup => kova::ssh_ca::run_setup(),
+            SshCaCmd::Init => kova::ssh_ca::f298(),
+            SshCaCmd::Sign { node } => kova::ssh_ca::f299(&node),
+            SshCaCmd::Setup => kova::ssh_ca::f300(),
         },
         C2Cmd::Ncmd {
             cmd,
@@ -819,7 +819,7 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             oneline,
         } => {
             let nodes_opt = if idle {
-                let all: Vec<String> = kova::c2::default_nodes()
+                let all: Vec<String> = kova::c2::f350()
                     .into_iter()
                     .map(String::from)
                     .collect();
@@ -881,7 +881,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 runner::f245(tmpl, &input_text, &url, model.as_deref())
                     .map_err(|e| anyhow::anyhow!("{}", e))?
             } else {
-                let cluster = kova::cluster::Cluster::default_hive();
+                let cluster = kova::cluster::T193::default_hive();
                 let breaker = runner::T155::new(3);
                 let budget = runner::T156::new(100_000);
                 runner::f244(tmpl, &input_text, &cluster, &breaker, &budget)
@@ -965,7 +965,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             if input_text.is_empty() {
                 anyhow::bail!("pipe requires input text");
             }
-            let cluster = kova::cluster::Cluster::default_hive();
+            let cluster = kova::cluster::T193::default_hive();
             match pipe::f240(&input_text, &registry, &cluster) {
                 Ok(result) => {
                     pipe::f241(&result);
@@ -986,7 +986,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             }
         }
         MicroCmd::Bench => {
-            let cluster = kova::cluster::Cluster::default_hive();
+            let cluster = kova::cluster::T193::default_hive();
             let results = bench::f233(&registry, &cluster);
             bench::f236(&results);
 
@@ -1018,7 +1018,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
         }
         MicroCmd::Tournament => {
             use kova::micro::tournament;
-            let cluster = kova::cluster::Cluster::default_hive();
+            let cluster = kova::cluster::T193::default_hive();
             let result = tournament::f250(&registry, &cluster);
             tournament::f251(&result);
 
@@ -1113,7 +1113,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
 }
 
 fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
-    let cluster = kova::cluster::Cluster::default_hive();
+    let cluster = kova::cluster::T193::default_hive();
     match args.cmd {
         ClusterCmd::Status => {
             print!("{}", cluster.status());
@@ -1144,7 +1144,7 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
             });
             println!("[cluster] dispatching code gen...");
             match cluster.dispatch(
-                kova::cluster::TaskKind::CodeGen,
+                kova::cluster::T191::CodeGen,
                 &system,
                 &prompt,
                 Some(ctx),
@@ -1162,7 +1162,7 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
             let system = "Review this Rust code. Flag: correctness issues, anti-patterns, P12 slop words (utilize/leverage/optimize/comprehensive/robust/seamlessly), unnecessary abstractions. Be direct.";
             println!("[cluster] dispatching review of {}...", file.display());
             match cluster.dispatch(
-                kova::cluster::TaskKind::CodeReview,
+                kova::cluster::T191::CodeReview,
                 system,
                 &code,
                 Some(8192),
@@ -1177,7 +1177,7 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
         }
         ClusterCmd::Fix { file, error } => {
             let code = std::fs::read_to_string(&file)?;
-            match kova::cluster::quick_fix(
+            match kova::cluster::f340(
                 "Fix this Rust code. Return only the corrected code block.",
                 &code,
                 &error,
@@ -1205,7 +1205,7 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
                     std::thread::spawn(move || {
                         let start = std::time::Instant::now();
                         let result =
-                            kova::providers::provider_generate(&provider, &model, system, prompt)
+                            kova::providers::f199(&provider, &model, system, prompt)
                                 .map(|r| r.text);
                         let elapsed = start.elapsed();
                         (id, model, result, elapsed)
@@ -1237,7 +1237,7 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
         ClusterCmd::Models => {
             for node in &cluster.nodes {
                 print!("  {} — ", node.id);
-                match kova::providers::provider_list_models(&node.provider()) {
+                match kova::providers::f336(&node.provider()) {
                     Ok(models) => {
                         let names: Vec<_> = models
                             .iter()
@@ -1256,21 +1256,21 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
 }
 
 fn run_review(args: ReviewArgs) -> anyhow::Result<()> {
-    let provider = kova::providers::default_provider();
+    let provider = kova::providers::f333();
 
     match args.cmd {
         ReviewCmd::Staged { project } => {
             let project = project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let result = kova::review::review_staged(&project, &provider)
+            let result = kova::review::f186(&project, &provider)
                 .map_err(|e| anyhow::anyhow!(e))?;
-            println!("{}", kova::review::format_review(&result));
+            println!("{}", kova::review::f188(&result));
             Ok(())
         }
         ReviewCmd::Branch { base, project } => {
             let project = project.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let result = kova::review::review_branch(&project, &base, &provider)
+            let result = kova::review::f187(&project, &base, &provider)
                 .map_err(|e| anyhow::anyhow!(e))?;
-            println!("{}", kova::review::format_review(&result));
+            println!("{}", kova::review::f188(&result));
             Ok(())
         }
     }
@@ -1320,7 +1320,7 @@ fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
                 println!("No failures to generate challenges from.");
                 return Ok(());
             }
-            let provider = kova::providers::default_provider();
+            let provider = kova::providers::f333();
             let mut challenges = Vec::new();
             for f in &failures {
                 match kova::feedback::f196(f, &provider) {
@@ -1341,9 +1341,9 @@ fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
 fn run_export(args: ExportArgs) -> anyhow::Result<()> {
     match args.cmd {
         ExportCmd::Training { format, output } => {
-            let fmt = kova::training_data::ExportFormat::from_str_loose(&format)
+            let fmt = kova::training_data::T117::f316(&format)
                 .ok_or_else(|| anyhow::anyhow!("unknown format: {} (expected jsonl, csv, or dpo)", format))?;
-            kova::training_data::export_from_traces(fmt, output)?;
+            kova::training_data::f181(fmt, output)?;
             Ok(())
         }
     }
@@ -1354,8 +1354,8 @@ fn main() -> anyhow::Result<()> {
 
     // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
     match &args.cmd {
-        Some(Cmd::Cluster(_))
-        | Some(Cmd::Factory(_))
+        Some(Cmd::T193(_))
+        | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
@@ -1369,12 +1369,12 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Feedback(_))
         | Some(Cmd::Tokens) => {
             return match args.cmd.unwrap() {
-                Cmd::Cluster(a) => run_cluster(a),
-                Cmd::Factory(a) => {
+                Cmd::T193(a) => run_cluster(a),
+                Cmd::T181(a) => {
                     let project = a
                         .project
                         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-                    let config = kova::factory::FactoryConfig {
+                    let config = kova::factory::T180 {
                         max_fix_retries: a.retries,
                         run_clippy: !a.no_clippy,
                         run_tests: !a.no_tests,
@@ -1382,11 +1382,11 @@ fn main() -> anyhow::Result<()> {
                         num_ctx: a.ctx,
                         ..Default::default()
                     };
-                    kova::factory::run_factory(&a.prompt.join(" "), &project, config);
+                    kova::factory::f297(&a.prompt.join(" "), &project, config);
                     Ok(())
                 }
                 Cmd::Moe(a) => {
-                    let config = kova::moe::MoeConfig {
+                    let config = kova::moe::T196 {
                         num_experts: a.experts,
                         run_clippy: !a.no_clippy,
                         run_tests: !a.no_tests,
@@ -1394,11 +1394,11 @@ fn main() -> anyhow::Result<()> {
                         num_ctx: a.ctx,
                         save_winner: a.save,
                     };
-                    kova::moe::run_moe(&a.prompt.join(" "), config);
+                    kova::moe::f341(&a.prompt.join(" "), config);
                     Ok(())
                 }
                 Cmd::Academy(a) => {
-                    let config = kova::academy::AcademyConfig {
+                    let config = kova::academy::T185 {
                         project_dir: a
                             .project
                             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
@@ -1408,7 +1408,7 @@ fn main() -> anyhow::Result<()> {
                         auto_commit: !a.no_commit,
                         dry_run: a.dry_run,
                     };
-                    kova::academy::run_academy(&a.task.join(" "), config);
+                    kova::academy::f301(&a.task.join(" "), config);
                     Ok(())
                 }
                 Cmd::Gauntlet(a) => {
@@ -1417,7 +1417,7 @@ fn main() -> anyhow::Result<()> {
                     } else {
                         Some(a.phases)
                     };
-                    kova::gauntlet::run_gauntlet(phases);
+                    kova::gauntlet::f305(phases);
                     Ok(())
                 }
                 Cmd::Micro(a) => run_micro(a),
@@ -1581,8 +1581,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Some(Cmd::Cluster(_))
-        | Some(Cmd::Factory(_))
+        Some(Cmd::T193(_))
+        | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
@@ -1628,12 +1628,12 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
     match args.cmd {
         RagCmd::Index { dir } => {
             let dir = std::path::Path::new(&dir).canonicalize()?;
-            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
-            let count = rag::index_directory(&store, &dir)?;
+            let store = rag::T200::open(&rag::T200::default_path())?;
+            let count = rag::f345(&store, &dir)?;
             println!("{} chunks indexed from {}", count, dir.display());
         }
         RagCmd::Search { query, k } => {
-            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let store = rag::T200::open(&rag::T200::default_path())?;
             let results = rag::search(&store, &query, k)?;
             if results.is_empty() {
                 println!("No results. Run `kova rag index` first.");
@@ -1655,7 +1655,7 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
             }
         }
         RagCmd::Stats => {
-            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let store = rag::T200::open(&rag::T200::default_path())?;
             let stats = store.stats()?;
             println!("RAG Index Stats:");
             println!("  Chunks: {}", stats.total_chunks);
@@ -1663,12 +1663,12 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
             println!("  Dim:    {}", stats.embedding_dim);
         }
         RagCmd::Clear => {
-            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let store = rag::T200::open(&rag::T200::default_path())?;
             store.clear()?;
             println!("Index cleared.");
         }
         RagCmd::IndexAll => {
-            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let store = rag::T200::open(&rag::T200::default_path())?;
             let projects = kova::discover_projects();
             if projects.is_empty() {
                 println!("No projects found. Run `kova bootstrap` first.");
@@ -1676,7 +1676,7 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
                 let mut total = 0;
                 for p in &projects {
                     if p.exists() {
-                        match rag::index_directory(&store, p) {
+                        match rag::f345(&store, p) {
                             Ok(n) => {
                                 println!("{}: {} chunks", p.display(), n);
                                 total += n;
@@ -1691,7 +1691,7 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
             }
         }
         RagCmd::Auto => {
-            let store = rag::VectorStore::open(&rag::VectorStore::default_path())?;
+            let store = rag::T200::open(&rag::T200::default_path())?;
             let projects = kova::discover_projects();
             if projects.is_empty() {
                 println!("No projects found. Run `kova bootstrap` first.");
@@ -1703,7 +1703,7 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
                         eprintln!("{}: not found, skipping", p.display());
                         continue;
                     }
-                    match rag::auto_reindex(&store, p) {
+                    match rag::f169(&store, p) {
                         Ok(0) => {
                             println!("{}: fresh", p.display());
                         }
@@ -1730,8 +1730,8 @@ fn run_rag(args: RagArgs) -> anyhow::Result<()> {
 
 fn run_traces(args: TracesArgs) -> anyhow::Result<()> {
     match args.cmd {
-        TracesCmd::Recent { limit } => kova::trace::print_recent_traces(limit),
-        TracesCmd::Stats => kova::trace::print_llm_stats(),
+        TracesCmd::Recent { limit } => kova::trace::f165(limit),
+        TracesCmd::Stats => kova::trace::f164(),
     }
     Ok(())
 }

@@ -1,7 +1,7 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! kova c2 — Tokenized orchestration. f18–f23 local or broadcast.
-//! run_build: one-command sync + broadcast with parallel execution.
+//! kova c2 — T212ized orchestration. f18–f23 local or broadcast.
+//! f356: one-command sync + broadcast with parallel execution.
 //! Sync: tar-stream for full sync (dir missing), rsync for incremental.
 
 #![allow(non_camel_case_types)]
@@ -14,7 +14,7 @@ use std::sync::mpsc;
 use std::thread;
 
 #[derive(Clone, Copy, ValueEnum)]
-pub enum Token {
+pub enum T212 {
     #[value(name = "f18")]
     F18,
     #[value(name = "f19")]
@@ -29,40 +29,40 @@ pub enum Token {
     F23,
 }
 
-impl Token {
-    pub fn to_intent(self, release: bool) -> crate::t0 {
+impl T212 {
+    pub fn f347(self, release: bool) -> crate::t0 {
         match self {
-            Token::F18 => crate::t0::f18(release),
-            Token::F19 => crate::t0::f19(),
-            Token::F20 => crate::t0::f20(),
-            Token::F21 => crate::t0::f21(),
-            Token::F22 => crate::t0::f22(),
-            Token::F23 => crate::t0::f23(),
+            T212::F18 => crate::t0::f18(release),
+            T212::F19 => crate::t0::f19(),
+            T212::F20 => crate::t0::f20(),
+            T212::F21 => crate::t0::f21(),
+            T212::F22 => crate::t0::f22(),
+            T212::F23 => crate::t0::f23(),
         }
     }
 
     pub fn name(&self) -> &'static str {
         match self {
-            Token::F18 => "f18",
-            Token::F19 => "f19",
-            Token::F20 => "f20",
-            Token::F21 => "f21",
-            Token::F22 => "f22",
-            Token::F23 => "f23",
+            T212::F18 => "f18",
+            T212::F19 => "f19",
+            T212::F20 => "f20",
+            T212::F21 => "f21",
+            T212::F22 => "f22",
+            T212::F23 => "f23",
         }
     }
 
-    pub fn is_local_only(&self) -> bool {
-        matches!(self, Token::F21 | Token::F22 | Token::F23)
+    pub fn f349(&self) -> bool {
+        matches!(self, T212::F21 | T212::F22 | T212::F23)
     }
 }
 
-pub fn default_nodes() -> Vec<&'static str> {
+pub fn f350() -> Vec<&'static str> {
     vec!["lf", "gd", "bt", "st"]
 }
 
 /// MAC addresses for Wake-on-LAN. st has no WoL support.
-pub fn node_mac(node: &str) -> Option<&'static str> {
+pub fn f351(node: &str) -> Option<&'static str> {
     match node {
         "lf" | "n0" => Some("6c:24:08:df:7c:39"),
         "gd" | "n1" => Some("cc:96:e5:bd:01:3a"),
@@ -72,8 +72,8 @@ pub fn node_mac(node: &str) -> Option<&'static str> {
 }
 
 /// Send Wake-on-LAN magic packet to a node.
-pub fn wake_node(node: &str) -> Result<(), String> {
-    let mac = node_mac(node).ok_or_else(|| format!("{}: no WoL MAC (st has no WoL support)", node))?;
+pub fn f352(node: &str) -> Result<(), String> {
+    let mac = f351(node).ok_or_else(|| format!("{}: no WoL MAC (st has no WoL support)", node))?;
     let output = std::process::Command::new("wakeonlan")
         .arg(mac)
         .output()
@@ -85,7 +85,7 @@ pub fn wake_node(node: &str) -> Result<(), String> {
     }
 }
 
-pub fn resolve_project(project: Option<PathBuf>) -> PathBuf {
+pub fn f353(project: Option<PathBuf>) -> PathBuf {
     project
         .or_else(|| std::env::var("KOVA_PROJECT").ok().map(PathBuf::from))
         .filter(|p| p.exists())
@@ -140,16 +140,16 @@ fn run_local(plan: &crate::plan::t3) -> anyhow::Result<()> {
 }
 
 /// f119=kova_c2_run. CLI orchestration. Local or broadcast.
-pub fn run_command(
-    token: Token,
+pub fn f354(
+    token: T212,
     project: Option<PathBuf>,
     broadcast: bool,
     release: bool,
     nodes_override: Option<String>,
     local: bool,
 ) -> anyhow::Result<()> {
-    let project_path = resolve_project(project);
-    let intent = token.to_intent(release);
+    let project_path = f353(project);
+    let intent = token.f347(release);
     let approuter_dir = std::env::var("HOME")
         .ok()
         .map(|h| PathBuf::from(h).join("approuter"));
@@ -160,7 +160,7 @@ pub fn run_command(
         return Ok(());
     }
 
-    if token.is_local_only() {
+    if token.f349() {
         run_local(&plan)
     } else if broadcast {
         if !is_under_hive_vault(&project_path) {
@@ -171,14 +171,14 @@ pub fn run_command(
                 token.name()
             );
         }
-        // Delegate to run_build for shared sync + parallel broadcast logic.
+        // Delegate to f356 for shared sync + parallel broadcast logic.
         let nodes: Vec<String> = if let Some(s) = nodes_override {
             s.split(',')
                 .map(|x| x.trim().to_string())
                 .filter(|x| !x.is_empty())
                 .collect()
         } else {
-            let hosts = crate::inspect::run_inspect();
+            let hosts = crate::inspect::f359();
             hosts
                 .iter()
                 .filter(|h| h.id != "c2-core" && !h.unreachable)
@@ -196,14 +196,14 @@ pub fn run_command(
     }
 }
 
-pub fn run_nodes() {
-    for n in default_nodes() {
+pub fn f355() {
+    for n in f350() {
         println!("{}", n);
     }
 }
 
-/// f121=run_build. One-command sync + broadcast. Parallel execution.
-pub fn run_build(
+/// f121=f356. One-command sync + broadcast. Parallel execution.
+pub fn f356(
     broadcast: bool,
     release: bool,
     no_sync: bool,
@@ -215,7 +215,7 @@ pub fn run_build(
         anyhow::bail!("kova c2 build requires --broadcast. For local build, use: kova c2 run f20");
     }
 
-    let project_path = resolve_project(project);
+    let project_path = f353(project);
     if !is_under_hive_vault(&project_path) {
         anyhow::bail!(
             "Project must be under ~/hive-vault for broadcast.\n\
@@ -232,7 +232,7 @@ pub fn run_build(
     run_build_with_plan(plan, local, no_sync, nodes_override).map(|_| ())
 }
 
-/// Shared sync + broadcast. Used by run_build and run_command --broadcast.
+/// Shared sync + broadcast. Used by f356 and f354 --broadcast.
 fn run_build_with_plan(
     plan: crate::plan::t3,
     local: bool,
@@ -245,7 +245,7 @@ fn run_build_with_plan(
             .filter(|x| !x.is_empty())
             .collect()
     } else {
-        let hosts = crate::inspect::run_inspect();
+        let hosts = crate::inspect::f359();
         hosts
             .iter()
             .filter(|h| h.id != "c2-core" && !h.unreachable)
@@ -277,7 +277,7 @@ fn run_build_with_plan(
             "[build] Syncing to {} workers (parallel, tar-stream)...",
             nodes.len()
         );
-        sync_parallel(&nodes, local, true)?;
+        f357(&nodes, local, true)?;
     }
 
     eprintln!(
@@ -291,7 +291,7 @@ fn run_build_with_plan(
 }
 
 /// Parallel sync. full_sync=true: tar-stream (faster for first sync). full_sync=false: rsync (incremental).
-pub fn sync_parallel(nodes: &[String], local: bool, full_sync: bool) -> anyhow::Result<()> {
+pub fn f357(nodes: &[String], local: bool, full_sync: bool) -> anyhow::Result<()> {
     if full_sync {
         sync_tar_stream(nodes, local)
     } else {
@@ -636,7 +636,7 @@ fn kova_root() -> PathBuf {
 }
 
 /// Sync workspace from c2-core to workers. Replaces sync-hive.sh.
-pub fn run_sync(
+pub fn f358(
     dry_run: bool,
     target: &str,
     local: bool,
@@ -644,7 +644,7 @@ pub fn run_sync(
     full: bool,
 ) -> anyhow::Result<()> {
     let nodes: Vec<String> = if all {
-        default_nodes().into_iter().map(String::from).collect()
+        f350().into_iter().map(String::from).collect()
     } else {
         vec![target.to_string()]
     };
@@ -655,7 +655,7 @@ pub fn run_sync(
             nodes.len(),
             if full { "tar-stream" } else { "rsync" }
         );
-        sync_parallel(&nodes, local, full)?;
+        f357(&nodes, local, full)?;
         eprintln!("[sync] Done.");
         return Ok(());
     }

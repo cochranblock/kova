@@ -161,8 +161,75 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f218 | hive_local_base | config | Hive sync-to-local path |
 | f219 | hive_shared_base | config | Hive NFS shared path |
 | f220 | fast_localhost | config | Skip TLS on loopback |
+| f296 | error_block_with_context | pipeline/error_kind | Build error block with categorized context |
+| f297 | run_factory | factory | Run factory pipeline |
+| f298 | run_init | ssh_ca | Create CA key and known_hosts entry |
+| f299 | run_sign | ssh_ca | Sign host key with CA |
+| f300 | run_setup | ssh_ca | Full CA setup for node |
+| f301 | run_academy | academy | Run academy: plan, execute, verify, commit |
+| f302 | format_question | elicitor | Format question with optional choices |
+| f303 | parse_reply | elicitor | Parse user input into ElicitorReply |
+| f304 | build_restatement | elicitor | Build "I'll do X in Y. Proceed?" |
+| f305 | run_gauntlet | gauntlet | Run gauntlet challenges |
+| f306 | run_cargo | cargo | Run cargo with args, return (success, stderr) |
+| f307 | extract_error_key | cargo | Extract core error identifier for loop detection |
+| f308 | truncate | cargo | Truncate string to max chars |
+| f309 | extract_rust_block | cargo | Extract first ```rust block from text |
+| f310 | prompt_wants_binary | cargo | Detect if prompt asks for binary |
+| f311 | build_system_prompt | cargo | Build system prompt for code gen |
+| f312 | write_temp_project | cargo/sandbox | Write temp Cargo project |
+| f313 | write_validation_project | cargo/sandbox | Write validation project |
+| f314 | write_temp_crate | cargo/sandbox | Write simple temp lib crate |
+| f315 | run_test_suite | lib | Deploy quality gate |
+| f316 | from_str_loose | training_data | Parse format string loosely |
+| f317 | extension | training_data | File extension for format |
+| f318 | default_output_dir | training_data | Default output directory |
+| f320 | apply | theme | Apply full theme to egui context |
+| f321 | message_frame | theme | Message frame style |
+| f322 | input_frame | theme | Input frame style |
+| f323 | panel_frame | theme | Panel frame style |
+| f325 | intent_name | intent | Intent name for display |
+| f326 | now_ms | trace | Current timestamp in millis |
+| f327 | extract_rust_block | codegen/helpers | Delegate to cargo f309 |
+| f328 | build_system_prompt | codegen/helpers | Delegate to cargo f311 |
+| f329 | prompt_wants_binary | codegen/helpers | Delegate to cargo f310 |
+| f330 | truncate | codegen/helpers | Delegate to cargo f308 |
+| f331 | fix_and_retry_cluster | codegen/fix_loop | Fix via cluster dispatch |
+| f333 | default_provider | providers | Default provider selection |
+| f334 | provider_health | providers | Check provider health |
+| f335 | provider_version | providers | Get provider version |
+| f336 | provider_list_models | providers | List models on provider |
+| f337 | provider_generate_stream | providers | Stream generation from provider |
+| f338 | quick_gen | cluster | Quick code generation dispatch |
+| f339 | quick_review | cluster | Quick code review dispatch |
+| f340 | quick_fix | cluster | Quick fix dispatch |
+| f341 | run_moe | moe | Run MoE pipeline |
+| f342 | embed_texts | rag | Generate embeddings for texts |
+| f343 | embed_query | rag | Generate query embedding |
+| f344 | chunk_rust_file | rag | Chunk a Rust file for indexing |
+| f345 | index_directory | rag | Index all .rs files in directory |
+| f346 | format_context | rag | Format search results as LLM context |
+| f347 | to_intent | c2 | Convert c2 token to intent |
+| f348 | name | c2 | Token name string |
+| f349 | is_local_only | c2 | Check if token is local-only |
+| f350 | default_nodes | c2 | Default node list |
+| f351 | node_mac | c2 | MAC address for Wake-on-LAN |
+| f352 | wake_node | c2 | Send WoL magic packet |
+| f353 | resolve_project | c2 | Resolve project path for node |
+| f354 | run_command | c2 | Run c2 command on nodes |
+| f355 | run_nodes | c2 | Run command across nodes |
+| f356 | run_build | c2 | Sync + build on nodes |
+| f357 | sync_parallel | c2 | Parallel sync to nodes |
+| f358 | run_sync | c2 | Run sync operation |
+| f359 | run_inspect | inspect | Run c2 inspect |
+| f360 | print_table | inspect | Print resource table |
+| f361 | print_recommend | inspect | Print recommendations |
+| f362 | print_json | inspect | Print JSON output |
+| f363 | clarification_question | router | Get clarification question |
+| f364 | clarification_choices | router | Get clarification choices |
+| f365 | use_coder | router | Check if coder model needed |
 
-## Types (tN)
+## Types (TN)
 
 | Token | Human name |
 |-------|------------|
@@ -175,12 +242,12 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | t86 | RecentChange |
 | t88 | BuildPreset |
 | t89 | ModelRole |
-| t90 | ProjectContext |
+| T90 | ProjectContext |
 | t91 | Message |
-| t92 | AppState |
-| t93 | LastTrace |
-| t94 | RouterResult |
-| t95 | ErrorKind |
+| T92 | AppState |
+| T93 | LastTrace |
+| T94 | RouterResult |
+| T95 | ErrorKind |
 | t96 | NodeCmd |
 | t97 | NodeResult |
 | t99 | CargoCmd |
@@ -192,31 +259,70 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | t106 | AgentAction |
 | t107 | GitCmd |
 | t108 | GitResult |
-| t109 | LlmTrace |
-| t110 | LlmStats |
+| T109 | LlmTrace |
+| T110 | LlmStats |
 | t111 | ContextBudget |
-| t122 | ImageProvider |
-| t123 | ImageRequest |
-| t124 | ImageResult |
-| t125 | ImageFormat |
-| t112 | McpRequest |
-| t113 | McpResponse |
+| T112 | McpRequest |
+| T113 | McpResponse |
 | t114 | CiConfig |
 | t115 | CiResult |
-| t116 | TrainingExample |
-| t117 | ExportFormat |
-| t126 | FailureRecord |
-| t127 | GeneratedChallenge |
-| t128 | FeedbackStats |
-| t118 | ReviewRequest |
-| t119 | ReviewResult |
-| t120 | ReviewIssue |
-| t121 | Severity |
-| t129 | Provider |
-| t130 | ProviderConfig |
-| t131 | ProviderResponse |
-| t132 | Symbol |
-| t133 | SymbolKind |
+| T116 | TrainingExample |
+| T117 | ExportFormat |
+| T118 | ReviewRequest |
+| T119 | ReviewResult |
+| T120 | ReviewIssue |
+| T121 | Severity |
+| T122 | ImageProvider |
+| T123 | ImageRequest |
+| T124 | ImageResult |
+| T125 | ImageFormat |
+| T126 | FailureRecord |
+| T127 | GeneratedChallenge |
+| T128 | FeedbackStats |
+| T129 | Provider |
+| T130 | ProviderConfig |
+| T131 | ProviderResponse |
+| T132 | Symbol |
+| T133 | SymbolKind |
+| T175 | DpoPair |
+| T176 | KovaError |
+| T177 | ElicitorReply |
+| T178 | FactoryResult |
+| T179 | StageResult |
+| T180 | FactoryConfig |
+| T181 | Factory |
+| T182 | Step |
+| T183 | StepAction |
+| T184 | StepStatus |
+| T185 | AcademyConfig |
+| T186 | AcademyResult |
+| T187 | GauntletReport |
+| T188 | ModelInfo |
+| T189 | ModelTier |
+| T190 | NodeRole |
+| T191 | TaskKind |
+| T192 | InferNode |
+| T193 | Cluster |
+| T194 | ExpertVariant |
+| T195 | MoeResult |
+| T196 | MoeConfig |
+| T197 | Chunk |
+| T198 | SearchResult |
+| T199 | RagStats |
+| T200 | VectorStore |
+| T201 | Mode |
+| T202 | Verdict |
+| T203 | VisualQc |
+| T204 | MsgKind |
+| T205 | HostInfo |
+| T206 | KovaStream |
+| T207 | KovaCommand |
+| T208 | KovaKernel |
+| T209 | KernelConfig |
+| T210 | McpError |
+| T211 | StrategyConfig |
+| T212 | Token (c2) |
+| T213 | SpriteQc |
 
 ## Struct fields (sN) — plan t3
 

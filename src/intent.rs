@@ -131,7 +131,7 @@ pub fn f62(input: &str) -> Option<t0> {
 }
 
 /// Intent name for display (e.g. "full-pipeline").
-pub fn intent_name(i: &t1) -> &'static str {
+pub fn f325(i: &t1) -> &'static str {
     match i {
         t1::Compile { .. } => "compile",
         t1::Test => "test",

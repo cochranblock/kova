@@ -22,7 +22,7 @@ use super::registry::T149;
 
 // ── DPO Pair ────────────────────────────────────────────────────
 
-/// T167=DpoPair
+/// T167=T175
 /// A single DPO preference pair.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct T167 {

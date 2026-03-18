@@ -11,8 +11,8 @@
 //!   Phase 4: Fight (adversarial — ambiguous prompts, edge cases, traps)
 //!   Phase 5: Survive (endurance — chained tasks, large context, multi-file)
 
-use crate::factory::{Factory, FactoryConfig};
-use crate::moe::{self, MoeConfig};
+use crate::factory::{T181, T180};
+use crate::moe::{self, T196};
 use std::time::Instant;
 
 /// A single gauntlet challenge.
@@ -45,7 +45,7 @@ struct ChallengeResult {
 
 /// Full gauntlet report.
 #[derive(Debug)]
-pub struct GauntletReport {
+pub struct T187 {
     results: Vec<ChallengeResult>,
     pub phase_scores: Vec<(u8, usize, usize)>, // (phase, passed, total)
     pub total_passed: usize,
@@ -53,7 +53,7 @@ pub struct GauntletReport {
     pub total_time_secs: f64,
 }
 
-impl GauntletReport {
+impl T187 {
     pub fn grade(&self) -> &'static str {
         let pct = if self.total_challenges == 0 {
             0.0
@@ -286,7 +286,7 @@ const PHASE5: &[Challenge] = &[
 ];
 
 /// Run the full gauntlet. Returns report.
-pub fn run_gauntlet(phases: Option<Vec<u8>>) -> GauntletReport {
+pub fn f305(phases: Option<Vec<u8>>) -> T187 {
     let all_phases: Vec<&[Challenge]> = vec![PHASE1, PHASE2, PHASE3, PHASE4, PHASE5];
     let run_phases = phases.unwrap_or_else(|| vec![1, 2, 3, 4, 5]);
 
@@ -356,7 +356,7 @@ pub fn run_gauntlet(phases: Option<Vec<u8>>) -> GauntletReport {
     let total_passed = results.iter().filter(|r| r.passed).count();
     let total_challenges = results.len();
 
-    let report = GauntletReport {
+    let report = T187 {
         results,
         phase_scores,
         total_passed,
@@ -496,7 +496,7 @@ fn run_challenge(challenge: &Challenge) -> ChallengeResult {
 }
 
 fn run_factory_challenge(challenge: &Challenge) -> (String, bool) {
-    let config = FactoryConfig {
+    let config = T180 {
         max_fix_retries: 4,
         run_clippy: true,
         run_tests: true,
@@ -505,7 +505,7 @@ fn run_factory_challenge(challenge: &Challenge) -> (String, bool) {
         ..Default::default()
     };
 
-    let factory = Factory::new(config);
+    let factory = T181::new(config);
     let project_dir = std::env::current_dir().unwrap_or_default();
     let result = factory.run(challenge.prompt, &project_dir);
 
@@ -513,7 +513,7 @@ fn run_factory_challenge(challenge: &Challenge) -> (String, bool) {
 }
 
 fn run_moe_challenge(challenge: &Challenge) -> (String, bool) {
-    let config = MoeConfig {
+    let config = T196 {
         num_experts: 2,
         run_clippy: true,
         run_tests: true,
@@ -522,7 +522,7 @@ fn run_moe_challenge(challenge: &Challenge) -> (String, bool) {
         save_winner: false,
     };
 
-    let result = moe::run_moe(challenge.prompt, config);
+    let result = moe::f341(challenge.prompt, config);
 
     match result.winner {
         Some(idx) => (result.variants[idx].code.clone(), true),

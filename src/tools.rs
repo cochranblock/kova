@@ -834,8 +834,8 @@ fn f166(call: &t103) -> t104 {
         .and_then(|v| v.parse().ok())
         .unwrap_or(5);
 
-    let store_path = crate::rag::VectorStore::default_path();
-    let store = match crate::rag::VectorStore::open(&store_path) {
+    let store_path = crate::rag::T200::default_path();
+    let store = match crate::rag::T200::open(&store_path) {
         Ok(s) => s,
         Err(e) => {
             return t104 {
@@ -855,7 +855,7 @@ fn f166(call: &t103) -> t104 {
                     output: "No results. Run `kova rag index` first.".into(),
                 };
             }
-            let context = crate::rag::format_context(&results, 4000);
+            let context = crate::rag::f346(&results, 4000);
             t104 {
                 tool: call.tool.clone(),
                 success: true,
@@ -879,13 +879,13 @@ fn f207(call: &t103, _project_dir: &Path) -> t104 {
         Err(e) => return e,
     };
 
-    let provider = crate::providers::default_provider();
+    let provider = crate::providers::f333();
 
-    match crate::review::review_diff(diff, &provider) {
+    match crate::review::f185(diff, &provider) {
         Ok(result) => t104 {
             tool: call.tool.clone(),
             success: true,
-            output: crate::review::format_review(&result),
+            output: crate::review::f188(&result),
         },
         Err(e) => t104 {
             tool: call.tool.clone(),
@@ -951,7 +951,7 @@ fn f209(call: &t103) -> t104 {
         Err(e) => return e,
     };
 
-    crate::feedback::f194(crate::feedback::FailureRecord {
+    crate::feedback::f194(crate::feedback::T126 {
         challenge_desc: challenge,
         input,
         expected_verify: expected,

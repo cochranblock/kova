@@ -1,15 +1,15 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! Cluster inference — distributed model dispatch across IRONHIVE nodes.
+//! T193 inference — distributed model dispatch across IRONHIVE nodes.
 //! Routes tasks to the best available node based on role, model tier, and load.
 
-use crate::providers::{self, Provider};
+use crate::providers::{self, T129};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
 /// Model tier — determines which tasks a node can handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModelTier {
+pub enum T189 {
     /// 32B models — high quality code gen and fix
     Heavy,
     /// 14B models — fast review, test writing
@@ -21,18 +21,18 @@ pub enum ModelTier {
 }
 
 /// Numeric rank for tier comparison. Higher = more capable.
-fn tier_rank(t: ModelTier) -> u8 {
+fn tier_rank(t: T189) -> u8 {
     match t {
-        ModelTier::Router => 0,
-        ModelTier::Light => 1,
-        ModelTier::Mid => 2,
-        ModelTier::Heavy => 3,
+        T189::Router => 0,
+        T189::Light => 1,
+        T189::Mid => 2,
+        T189::Heavy => 3,
     }
 }
 
 /// Node role in the factory pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeRole {
+pub enum T190 {
     /// Primary code generation (32B)
     PrimaryGen,
     /// Secondary code gen + heavy compilation (32B)
@@ -47,7 +47,7 @@ pub enum NodeRole {
 
 /// Task type for dispatch routing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskKind {
+pub enum T191 {
     CodeGen,
     CodeReview,
     TestWrite,
@@ -59,26 +59,26 @@ pub enum TaskKind {
 
 /// A node in the inference cluster.
 #[derive(Debug, Clone)]
-pub struct InferNode {
+pub struct T192 {
     pub id: String,
     pub host: String,
     pub port: u16,
     pub model: String,
     pub general_model: Option<String>,
-    pub role: NodeRole,
-    pub tier: ModelTier,
+    pub role: T190,
+    pub tier: T189,
     pub busy: Arc<AtomicBool>,
 }
 
-impl InferNode {
+impl T192 {
     pub fn base_url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
     }
 
     /// Get provider for this node's HTTP inference endpoint.
     /// Uses OpenAI-compat — kova serve acts as inference server on each node.
-    pub fn provider(&self) -> Provider {
-        Provider::OpenAiCompat {
+    pub fn provider(&self) -> T129 {
+        T129::OpenAiCompat {
             url: self.base_url(),
             api_key: String::new(), // local LAN, no auth needed
             model: self.model.clone(),
@@ -95,63 +95,63 @@ impl InferNode {
 }
 
 /// The cluster state — all inference nodes.
-pub struct Cluster {
-    pub nodes: Vec<InferNode>,
+pub struct T193 {
+    pub nodes: Vec<T192>,
 }
 
-impl Cluster {
+impl T193 {
     /// Default IRONHIVE cluster configuration.
     pub fn default_hive() -> Self {
-        Cluster {
+        T193 {
             nodes: vec![
-                InferNode {
+                T192 {
                     id: "n0".into(),
                     host: "192.168.1.47".into(),
                     port: 3002, // lf — kova serve
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:7b".into()),
-                    role: NodeRole::PrimaryGen,
-                    tier: ModelTier::Mid,
+                    role: T190::PrimaryGen,
+                    tier: T189::Mid,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
-                InferNode {
+                T192 {
                     id: "n1".into(),
                     host: "192.168.1.44".into(),
                     port: 3002, // gd — kova serve
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:7b".into()),
-                    role: NodeRole::Reviewer,
-                    tier: ModelTier::Mid,
+                    role: T190::Reviewer,
+                    tier: T189::Mid,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
-                InferNode {
+                T192 {
                     id: "n2".into(),
                     host: "192.168.1.45".into(),
                     port: 3002, // bt — kova serve (150W muzzle)
                     model: "qwen2.5-coder:32b".into(),
                     general_model: Some("starcoder2:15b".into()),
-                    role: NodeRole::SecondaryGen,
-                    tier: ModelTier::Heavy,
+                    role: T190::SecondaryGen,
+                    tier: T189::Heavy,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
-                InferNode {
+                T192 {
                     id: "n3".into(),
                     host: "192.168.1.43".into(),
                     port: 3002, // st — kova serve
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:14b".into()),
-                    role: NodeRole::Batch,
-                    tier: ModelTier::Mid,
+                    role: T190::Batch,
+                    tier: T189::Mid,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
-                InferNode {
+                T192 {
                     id: "c2".into(),
                     host: "localhost".into(),
                     port: 3002, // local kova serve
                     model: "qwen2.5-coder:7b".into(),
                     general_model: Some("qwen2.5:3b".into()),
-                    role: NodeRole::Coordinator,
-                    tier: ModelTier::Light,
+                    role: T190::Coordinator,
+                    tier: T189::Light,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
             ],
@@ -167,8 +167,8 @@ impl Cluster {
                 let id = node.id.clone();
                 let prov = node.provider();
                 std::thread::spawn(move || {
-                    let online = providers::provider_health(&prov);
-                    let ver = if online { providers::provider_version(&prov) } else { None };
+                    let online = providers::f334(&prov);
+                    let ver = if online { providers::f335(&prov) } else { None };
                     (id, online, ver)
                 })
             })
@@ -178,37 +178,37 @@ impl Cluster {
     }
 
     /// Get all online nodes.
-    pub fn online_nodes(&self) -> Vec<&InferNode> {
+    pub fn online_nodes(&self) -> Vec<&T192> {
         self.nodes
             .iter()
-            .filter(|n| providers::provider_health(&n.provider()))
+            .filter(|n| providers::f334(&n.provider()))
             .collect()
     }
 
     /// Pick the best node for a given task kind.
     /// Enforces minimum tier: code gen/fix tasks never fall back to Light/Router nodes.
-    pub fn pick_node(&self, task: TaskKind) -> Option<&InferNode> {
-        let preferred_roles: &[NodeRole] = match task {
-            TaskKind::CodeGen => &[NodeRole::PrimaryGen, NodeRole::SecondaryGen],
-            TaskKind::CodeReview => &[NodeRole::Reviewer, NodeRole::Batch, NodeRole::Coordinator],
-            TaskKind::TestWrite => &[NodeRole::Reviewer, NodeRole::Batch],
-            TaskKind::FixCompile => &[NodeRole::PrimaryGen, NodeRole::SecondaryGen],
-            TaskKind::ClippyFix => &[NodeRole::Reviewer, NodeRole::Batch],
-            TaskKind::Classify => &[NodeRole::Coordinator, NodeRole::Reviewer],
-            TaskKind::General => &[NodeRole::Reviewer, NodeRole::PrimaryGen, NodeRole::Batch],
+    pub fn pick_node(&self, task: T191) -> Option<&T192> {
+        let preferred_roles: &[T190] = match task {
+            T191::CodeGen => &[T190::PrimaryGen, T190::SecondaryGen],
+            T191::CodeReview => &[T190::Reviewer, T190::Batch, T190::Coordinator],
+            T191::TestWrite => &[T190::Reviewer, T190::Batch],
+            T191::FixCompile => &[T190::PrimaryGen, T190::SecondaryGen],
+            T191::ClippyFix => &[T190::Reviewer, T190::Batch],
+            T191::Classify => &[T190::Coordinator, T190::Reviewer],
+            T191::General => &[T190::Reviewer, T190::PrimaryGen, T190::Batch],
         };
 
         // Minimum tier for the task — prevents weak nodes grabbing heavy work
         let min_tier = match task {
-            TaskKind::CodeGen | TaskKind::FixCompile => ModelTier::Heavy,
-            TaskKind::CodeReview | TaskKind::TestWrite | TaskKind::ClippyFix => ModelTier::Mid,
-            TaskKind::Classify | TaskKind::General => ModelTier::Router,
+            T191::CodeGen | T191::FixCompile => T189::Heavy,
+            T191::CodeReview | T191::TestWrite | T191::ClippyFix => T189::Mid,
+            T191::Classify | T191::General => T189::Router,
         };
 
         // Try preferred roles in order, pick first non-busy online node
         for role in preferred_roles {
             for node in &self.nodes {
-                if node.role == *role && !node.is_busy() && providers::provider_health(&node.provider()) {
+                if node.role == *role && !node.is_busy() && providers::f334(&node.provider()) {
                     return Some(node);
                 }
             }
@@ -218,7 +218,7 @@ impl Cluster {
         self.nodes.iter().find(|n| {
             !n.is_busy()
                 && tier_rank(n.tier) >= tier_rank(min_tier)
-                && providers::provider_health(&n.provider())
+                && providers::f334(&n.provider())
         })
     }
 
@@ -226,7 +226,7 @@ impl Cluster {
     /// Returns (node_id, response).
     pub fn dispatch(
         &self,
-        task: TaskKind,
+        task: T191,
         system: &str,
         prompt: &str,
         _num_ctx: Option<u32>,
@@ -236,17 +236,17 @@ impl Cluster {
 
         // Use coding model for code tasks, general model for others
         let model = match task {
-            TaskKind::CodeGen
-            | TaskKind::FixCompile
-            | TaskKind::TestWrite
-            | TaskKind::ClippyFix => &node.model,
-            TaskKind::Classify | TaskKind::General | TaskKind::CodeReview => {
+            T191::CodeGen
+            | T191::FixCompile
+            | T191::TestWrite
+            | T191::ClippyFix => &node.model,
+            T191::Classify | T191::General | T191::CodeReview => {
                 node.general_model.as_deref().unwrap_or(&node.model)
             }
         };
 
         node.set_busy(true);
-        let result = providers::provider_generate(&node.provider(), model, system, prompt);
+        let result = providers::f199(&node.provider(), model, system, prompt);
         node.set_busy(false);
 
         result.map(|r| (node_id, r.text))
@@ -255,7 +255,7 @@ impl Cluster {
     /// Dispatch with streaming. Returns (node_id, receiver).
     pub fn dispatch_stream(
         &self,
-        task: TaskKind,
+        task: T191,
         system: &str,
         prompt: &str,
         _num_ctx: Option<u32>,
@@ -265,7 +265,7 @@ impl Cluster {
         let model = &node.model;
 
         node.set_busy(true);
-        let rx = providers::provider_generate_stream(&node.provider(), model, system, prompt);
+        let rx = providers::f337(&node.provider(), model, system, prompt);
         // Note: busy flag should be cleared when stream ends — caller responsibility
         Ok((node_id, rx))
     }
@@ -273,14 +273,14 @@ impl Cluster {
     /// Fan-out: send same prompt to multiple nodes, return first response (speculative).
     pub fn speculative_dispatch(
         &self,
-        task: TaskKind,
+        task: T191,
         system: &str,
         prompt: &str,
         num_ctx: Option<u32>,
     ) -> Result<(String, String), String> {
-        let preferred_roles: &[NodeRole] = match task {
-            TaskKind::CodeGen | TaskKind::FixCompile => {
-                &[NodeRole::PrimaryGen, NodeRole::SecondaryGen]
+        let preferred_roles: &[T190] = match task {
+            T191::CodeGen | T191::FixCompile => {
+                &[T190::PrimaryGen, T190::SecondaryGen]
             }
             _ => return self.dispatch(task, system, prompt, num_ctx),
         };
@@ -310,12 +310,12 @@ impl Cluster {
 
                 std::thread::spawn(move || {
                     busy.store(true, Ordering::SeqCst);
-                    let provider = Provider::OpenAiCompat {
+                    let provider = T129::OpenAiCompat {
                         url,
                         api_key: String::new(),
                         model: model.clone(),
                     };
-                    let result = providers::provider_generate(&provider, &model, &system, &prompt)
+                    let result = providers::f199(&provider, &model, &system, &prompt)
                         .map(|r| r.text);
                     busy.store(false, Ordering::SeqCst);
                     let _ = tx.send((id, result));
@@ -337,7 +337,7 @@ impl Cluster {
     /// Print cluster status table.
     pub fn status(&self) -> String {
         let mut out = String::new();
-        out.push_str("IRONHIVE Cluster Status\n");
+        out.push_str("IRONHIVE T193 Status\n");
         out.push_str("─────────────────────────────────────────────────────────────────\n");
         out.push_str(&format!(
             "{:<5} {:<14} {:<22} {:<10} {:<8} {}\n",
@@ -365,7 +365,7 @@ impl Cluster {
             let tier = format!("{:?}", node.tier);
 
             let models = if online {
-                match providers::provider_list_models(&node.provider()) {
+                match providers::f336(&node.provider()) {
                     Ok(ms) => ms
                         .iter()
                         .map(|m| m.name.clone())
@@ -395,30 +395,30 @@ impl Cluster {
 }
 
 /// Convenience: create default cluster and dispatch a code gen request.
-pub fn quick_gen(system: &str, prompt: &str) -> Result<String, String> {
-    let cluster = Cluster::default_hive();
+pub fn f338(system: &str, prompt: &str) -> Result<String, String> {
+    let cluster = T193::default_hive();
     cluster
-        .dispatch(TaskKind::CodeGen, system, prompt, Some(8192))
+        .dispatch(T191::CodeGen, system, prompt, Some(8192))
         .map(|(_, r)| r)
 }
 
 /// Convenience: create default cluster and dispatch a code review request.
-pub fn quick_review(system: &str, code: &str) -> Result<String, String> {
-    let cluster = Cluster::default_hive();
+pub fn f339(system: &str, code: &str) -> Result<String, String> {
+    let cluster = T193::default_hive();
     let prompt = format!("Review this Rust code for correctness, idiom violations, and potential issues:\n\n```rust\n{}\n```", code);
     cluster
-        .dispatch(TaskKind::CodeReview, system, &prompt, Some(8192))
+        .dispatch(T191::CodeReview, system, &prompt, Some(8192))
         .map(|(_, r)| r)
 }
 
 /// Convenience: dispatch a fix-compile request with error context.
-pub fn quick_fix(system: &str, code: &str, error: &str) -> Result<String, String> {
-    let cluster = Cluster::default_hive();
+pub fn f340(system: &str, code: &str, error: &str) -> Result<String, String> {
+    let cluster = T193::default_hive();
     let prompt = format!(
         "Fix this Rust code. The compiler error is:\n```\n{}\n```\n\nCode:\n```rust\n{}\n```\n\nReturn only the fixed code.",
         error, code
     );
     cluster
-        .dispatch(TaskKind::FixCompile, system, &prompt, Some(8192))
+        .dispatch(T191::FixCompile, system, &prompt, Some(8192))
         .map(|(_, r)| r)
 }

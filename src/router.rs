@@ -20,7 +20,7 @@ Rules:
 
 Reply with valid JSON only: {"classification": "..."} or {"classification": "needs_clarification", "question": "Which file?", "choices": ["compute.rs", "plan.rs"]}"#;
 
-/// Structured output for grammar-constrained Router. Maps to RouterResult.
+/// Structured output for grammar-constrained Router. Maps to T94.
 #[derive(Clone, Debug, kalosm::language::Parse, kalosm::language::Schema)]
 struct RouterOutput {
     classification: String,
@@ -30,8 +30,8 @@ struct RouterOutput {
 
 /// Router classification result.
 #[derive(Debug, Clone, PartialEq, Eq)]
-/// t94=RouterResult. Router classification output.
-pub enum RouterResult {
+/// t94=T94. Router classification output.
+pub enum T94 {
     CodeGen,
     Refactor,
     Explain,
@@ -45,12 +45,12 @@ pub enum RouterResult {
     Error(String),
 }
 
-impl RouterResult {
+impl T94 {
     /// Suggested question when NeedsClarification. Canned fallback if model didn't provide one.
-    /// Uses elicitor::format_question when choices are available.
-    pub fn clarification_question(&self, original_msg: &str) -> String {
+    /// Uses elicitor::f302 when choices are available.
+    pub fn f363(&self, original_msg: &str) -> String {
         match self {
-            RouterResult::NeedsClarification { question, choices } => {
+            T94::NeedsClarification { question, choices } => {
                 let q = question
                     .as_deref()
                     .filter(|s| !s.is_empty())
@@ -65,7 +65,7 @@ impl RouterResult {
                         }
                     });
                 if let Some(ch) = choices && !ch.is_empty() {
-                    return crate::elicitor::format_question(q, Some(ch));
+                    return crate::elicitor::f302(q, Some(ch));
                 }
                 // Canned choices for fix/add when model didn't provide any
                 let lower = original_msg.to_lowercase();
@@ -76,11 +76,11 @@ impl RouterResult {
                         "lib.rs".into(),
                         "other".into(),
                     ];
-                    return crate::elicitor::format_question(q, Some(&canned));
+                    return crate::elicitor::f302(q, Some(&canned));
                 }
                 if lower.contains("add") || lower.contains("implement") {
                     let canned = vec!["lib.rs".into(), "main.rs".into(), "other".into()];
-                    return crate::elicitor::format_question(q, Some(&canned));
+                    return crate::elicitor::f302(q, Some(&canned));
                 }
                 q.to_string()
             }
@@ -89,22 +89,22 @@ impl RouterResult {
     }
 
     /// Choices when NeedsClarification. None if freeform only.
-    pub fn clarification_choices(&self) -> Option<&[String]> {
+    pub fn f364(&self) -> Option<&[String]> {
         match self {
-            RouterResult::NeedsClarification { choices, .. } => choices.as_deref(),
+            T94::NeedsClarification { choices, .. } => choices.as_deref(),
             _ => None,
         }
     }
 
     /// Use coder model for response (code_gen, refactor, explain, fix, custom).
-    pub fn use_coder(&self) -> bool {
+    pub fn f365(&self) -> bool {
         matches!(
             self,
-            RouterResult::CodeGen
-                | RouterResult::Refactor
-                | RouterResult::Explain
-                | RouterResult::Fix
-                | RouterResult::Custom
+            T94::CodeGen
+                | T94::Refactor
+                | T94::Explain
+                | T94::Fix
+                | T94::Custom
         )
     }
 
@@ -117,35 +117,35 @@ impl RouterResult {
                 .nth(1)
                 .map(|q| q.trim().to_string())
                 .filter(|q| !q.is_empty());
-            return RouterResult::NeedsClarification {
+            return T94::NeedsClarification {
                 question,
                 choices: None,
             };
         }
         if t.contains("code_gen") || t.contains("code gen") {
-            return RouterResult::CodeGen;
+            return T94::CodeGen;
         }
         if t.contains("refactor") {
-            return RouterResult::Refactor;
+            return T94::Refactor;
         }
         if t.contains("explain") {
-            return RouterResult::Explain;
+            return T94::Explain;
         }
         if t.contains("fix") {
-            return RouterResult::Fix;
+            return T94::Fix;
         }
         if t.contains("run") {
-            return RouterResult::Run;
+            return T94::Run;
         }
         if t.contains("custom") {
-            return RouterResult::Custom;
+            return T94::Custom;
         }
-        RouterResult::CodeGen
+        T94::CodeGen
     }
 }
 
-/// f79=classify. Spawn router inference. Returns receiver for single RouterResult.
-pub fn f79(model_path: &Path, user_input: &str) -> mpsc::Receiver<RouterResult> {
+/// f79=classify. Spawn router inference. Returns receiver for single T94.
+pub fn f79(model_path: &Path, user_input: &str) -> mpsc::Receiver<T94> {
     let (tx, rx) = mpsc::channel();
     let path = model_path.to_path_buf();
     let input = user_input.to_string();
@@ -154,7 +154,7 @@ pub fn f79(model_path: &Path, user_input: &str) -> mpsc::Receiver<RouterResult> 
         let rt = match tokio::runtime::Runtime::new() {
             Ok(r) => r,
             Err(e) => {
-                let _ = tx.send(RouterResult::Error(format!("tokio: {}", e)));
+                let _ = tx.send(T94::Error(format!("tokio: {}", e)));
                 return;
             }
         };
@@ -167,12 +167,12 @@ pub fn f79(model_path: &Path, user_input: &str) -> mpsc::Receiver<RouterResult> 
     rx
 }
 
-async fn run_classify(model_path: &Path, user_input: &str) -> RouterResult {
+async fn run_classify(model_path: &Path, user_input: &str) -> T94 {
     use kalosm::language::StreamExt;
 
     let model = match crate::inference::get_or_load_model(model_path).await {
         Ok(m) => m,
-        Err(e) => return RouterResult::Error(format!("model load: {}", e)),
+        Err(e) => return T94::Error(format!("model load: {}", e)),
     };
 
     if crate::config::router_structured()
@@ -189,13 +189,13 @@ async fn run_classify(model_path: &Path, user_input: &str) -> RouterResult {
         out.push_str(&token.to_string());
     }
 
-    RouterResult::parse(&out)
+    T94::parse(&out)
 }
 
 async fn run_classify_structured(
     model: &kalosm::language::Llama,
     user_input: &str,
-) -> Result<RouterResult, ()> {
+) -> Result<T94, ()> {
     let task = model
         .task(CLASSIFY_PROMPT)
         .with_constraints(Arc::new(RouterOutput::new_parser()));
@@ -206,34 +206,34 @@ async fn run_classify_structured(
     Ok(router_output_to_result(&output))
 }
 
-fn router_output_to_result(out: &RouterOutput) -> RouterResult {
+fn router_output_to_result(out: &RouterOutput) -> T94 {
     let c = out.classification.to_lowercase().trim().to_string();
     let t = c.as_str();
     if t.contains("needs_clarification") || t.contains("clarification") {
-        return RouterResult::NeedsClarification {
+        return T94::NeedsClarification {
             question: out.question.clone(),
             choices: out.choices.clone(),
         };
     }
     if t.contains("code_gen") || t.contains("code gen") {
-        return RouterResult::CodeGen;
+        return T94::CodeGen;
     }
     if t.contains("refactor") {
-        return RouterResult::Refactor;
+        return T94::Refactor;
     }
     if t.contains("explain") {
-        return RouterResult::Explain;
+        return T94::Explain;
     }
     if t.contains("fix") {
-        return RouterResult::Fix;
+        return T94::Fix;
     }
     if t.contains("run") {
-        return RouterResult::Run;
+        return T94::Run;
     }
     if t.contains("custom") {
-        return RouterResult::Custom;
+        return T94::Custom;
     }
-    RouterResult::CodeGen
+    T94::CodeGen
 }
 
 #[cfg(test)]
@@ -243,17 +243,17 @@ mod tests {
     use assert_matches::assert_matches;
 
     kova_test!(f79, parse_needs_clarification_with_question, {
-        let r = RouterResult::parse("needs_clarification|Which file?");
-        assert_matches!(r, RouterResult::NeedsClarification { question: Some(q), .. } => {
+        let r = T94::parse("needs_clarification|Which file?");
+        assert_matches!(r, T94::NeedsClarification { question: Some(q), .. } => {
             assert_eq!(q, "which file?");
         });
     });
 
     kova_test!(f79, parse_needs_clarification_without_question, {
-        let r = RouterResult::parse("needs_clarification");
+        let r = T94::parse("needs_clarification");
         assert_matches!(
             r,
-            RouterResult::NeedsClarification {
+            T94::NeedsClarification {
                 question: None,
                 choices: None
             }
@@ -261,14 +261,14 @@ mod tests {
     });
 
     kova_test!(f79, clarification_question_canned, {
-        let r = RouterResult::NeedsClarification {
+        let r = T94::NeedsClarification {
             question: None,
             choices: None,
         };
-        assert!(r.clarification_question("fix the bug").contains("file"));
-        assert!(r.clarification_question("add a retry").contains("file"));
+        assert!(r.f363("fix the bug").contains("file"));
+        assert!(r.f363("add a retry").contains("file"));
         assert_eq!(
-            r.clarification_question("something vague"),
+            r.f363("something vague"),
             "Could you clarify what you need?"
         );
     });

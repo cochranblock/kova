@@ -1,12 +1,12 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
-//! KovaError — unified error type. Replaces Result<T, String> and raw anyhow across the codebase.
+//! T176 — unified error type. Replaces Result<T, String> and raw anyhow across the codebase.
 
 use thiserror::Error;
 
-/// t176=KovaError. One error type for all Kova operations.
+/// t176=T176. One error type for all Kova operations.
 #[derive(Debug, Error)]
-pub enum KovaError {
+pub enum T176 {
     #[error("{0}")]
     Storage(#[from] crate::storage::E0),
 
@@ -17,7 +17,7 @@ pub enum KovaError {
     Inference(String),
 
     #[error("cluster: {0}")]
-    Cluster(String),
+    T193(String),
 
     #[error("cargo: {0}")]
     Cargo(String),
@@ -29,7 +29,7 @@ pub enum KovaError {
     Config(String),
 
     #[error("provider: {0}")]
-    Provider(String),
+    T129(String),
 
     #[error("tool: {0}")]
     Tool(String),
@@ -41,32 +41,32 @@ pub enum KovaError {
     Other(String),
 }
 
-impl From<String> for KovaError {
+impl From<String> for T176 {
     fn from(s: String) -> Self {
-        KovaError::Other(s)
+        T176::Other(s)
     }
 }
 
-impl From<&str> for KovaError {
+impl From<&str> for T176 {
     fn from(s: &str) -> Self {
-        KovaError::Other(s.to_string())
+        T176::Other(s.to_string())
     }
 }
 
-impl From<serde_json::Error> for KovaError {
+impl From<serde_json::Error> for T176 {
     fn from(e: serde_json::Error) -> Self {
-        KovaError::Serde(e.to_string())
+        T176::Serde(e.to_string())
     }
 }
 
-impl From<anyhow::Error> for KovaError {
+impl From<anyhow::Error> for T176 {
     fn from(e: anyhow::Error) -> Self {
-        KovaError::Other(e.to_string())
+        T176::Other(e.to_string())
     }
 }
 
 /// Convenience alias.
-pub type KovaResult<T> = Result<T, KovaError>;
+pub type T176Result<T> = Result<T, T176>;
 
 #[cfg(test)]
 mod tests {
@@ -74,23 +74,23 @@ mod tests {
 
     #[test]
     fn from_string() {
-        let e: KovaError = "something broke".into();
+        let e: T176 = "something broke".into();
         assert!(e.to_string().contains("something broke"));
     }
 
     #[test]
     fn from_io_error() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
-        let e: KovaError = io_err.into();
+        let io_err = std::io::Error::new(std::io::T95::NotFound, "missing");
+        let e: T176 = io_err.into();
         assert!(e.to_string().contains("missing"));
     }
 
     #[test]
     fn display_variants() {
-        let e = KovaError::Inference("model load failed".into());
+        let e = T176::Inference("model load failed".into());
         assert_eq!(e.to_string(), "inference: model load failed");
 
-        let e = KovaError::Cargo("check failed".into());
+        let e = T176::Cargo("check failed".into());
         assert_eq!(e.to_string(), "cargo: check failed");
     }
 }

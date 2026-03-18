@@ -1,8 +1,8 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 //! Multi-provider image generation client.
-//! t122=ImageProvider, t123=ImageRequest, t124=ImageResult, t125=ImageFormat.
-//! f189=generate_image, f190=generate_sd, f191=generate_dalle, f192=save_image, f193=list_sd_models.
+//! t122=T122, t123=T123, t124=T124, t125=T125.
+//! f189=f189, f190=f190, f191=f191, f192=f192, f193=f193.
 
 use std::path::Path;
 use std::time::Instant;
@@ -10,14 +10,14 @@ use std::time::Instant;
 // ── Types ──────────────────────────────────────────────────
 
 /// t122: Image generation provider.
-pub enum ImageProvider {
+pub enum T122 {
     StableDiffusion { url: String },
     DallE { api_key: String },
     Local { model_path: String },
 }
 
 /// t123: Image generation request.
-pub struct ImageRequest {
+pub struct T123 {
     pub prompt: String,
     pub negative_prompt: Option<String>,
     pub width: u32,
@@ -25,7 +25,7 @@ pub struct ImageRequest {
     pub steps: Option<u32>,
 }
 
-impl Default for ImageRequest {
+impl Default for T123 {
     fn default() -> Self {
         Self {
             prompt: String::new(),
@@ -38,22 +38,22 @@ impl Default for ImageRequest {
 }
 
 /// t124: Image generation result.
-pub struct ImageResult {
+pub struct T124 {
     pub image_bytes: Vec<u8>,
-    pub format: ImageFormat,
+    pub format: T125,
     pub provider: String,
     pub generation_ms: u64,
 }
 
 /// t125: Output image format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ImageFormat {
+pub enum T125 {
     Png,
     Jpeg,
     Webp,
 }
 
-impl ImageFormat {
+impl T125 {
     /// File extension for this format.
     pub fn extension(&self) -> &'static str {
         match self {
@@ -67,11 +67,11 @@ impl ImageFormat {
 // ── Functions ──────────────────────────────────────────────
 
 /// f189: Dispatch image generation to the right provider.
-pub fn generate_image(provider: &ImageProvider, request: &ImageRequest) -> Result<ImageResult, String> {
+pub fn f189(provider: &T122, request: &T123) -> Result<T124, String> {
     match provider {
-        ImageProvider::StableDiffusion { url } => generate_sd(url, request),
-        ImageProvider::DallE { api_key } => generate_dalle(api_key, request),
-        ImageProvider::Local { model_path } => {
+        T122::StableDiffusion { url } => f190(url, request),
+        T122::DallE { api_key } => f191(api_key, request),
+        T122::Local { model_path } => {
             Err(format!("local provider not yet implemented: {}", model_path))
         }
     }
@@ -79,7 +79,7 @@ pub fn generate_image(provider: &ImageProvider, request: &ImageRequest) -> Resul
 
 /// f190: Call Stable Diffusion WebUI API (POST /sdapi/v1/txt2img).
 /// Response JSON: `{ "images": ["base64..."] }`.
-pub fn generate_sd(url: &str, request: &ImageRequest) -> Result<ImageResult, String> {
+pub fn f190(url: &str, request: &T123) -> Result<T124, String> {
     use reqwest::blocking::Client;
     use serde_json::{json, Value};
 
@@ -123,9 +123,9 @@ pub fn generate_sd(url: &str, request: &ImageRequest) -> Result<ImageResult, Str
     let image_bytes = base64_decode(b64)?;
     let generation_ms = start.elapsed().as_millis() as u64;
 
-    Ok(ImageResult {
+    Ok(T124 {
         image_bytes,
-        format: ImageFormat::Png,
+        format: T125::Png,
         provider: "stable-diffusion".into(),
         generation_ms,
     })
@@ -133,7 +133,7 @@ pub fn generate_sd(url: &str, request: &ImageRequest) -> Result<ImageResult, Str
 
 /// f191: Call OpenAI DALL-E API (POST /v1/images/generations).
 /// Response JSON: `{ "data": [{"url": "..."}] }`.
-pub fn generate_dalle(api_key: &str, request: &ImageRequest) -> Result<ImageResult, String> {
+pub fn f191(api_key: &str, request: &T123) -> Result<T124, String> {
     use reqwest::blocking::Client;
     use serde_json::{json, Value};
 
@@ -187,16 +187,16 @@ pub fn generate_dalle(api_key: &str, request: &ImageRequest) -> Result<ImageResu
 
     let generation_ms = start.elapsed().as_millis() as u64;
 
-    Ok(ImageResult {
+    Ok(T124 {
         image_bytes,
-        format: ImageFormat::Png,
+        format: T125::Png,
         provider: "dall-e".into(),
         generation_ms,
     })
 }
 
 /// f192: Write image bytes to disk.
-pub fn save_image(result: &ImageResult, path: &Path) -> anyhow::Result<()> {
+pub fn f192(result: &T124, path: &Path) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -205,7 +205,7 @@ pub fn save_image(result: &ImageResult, path: &Path) -> anyhow::Result<()> {
 }
 
 /// f193: List available Stable Diffusion models.
-pub fn list_sd_models(url: &str) -> Result<Vec<String>, String> {
+pub fn f193(url: &str) -> Result<Vec<String>, String> {
     use reqwest::blocking::Client;
     use serde_json::Value;
 
@@ -322,7 +322,7 @@ mod tests {
     use crate::kova_test;
 
     kova_test!(f189, image_request_defaults, {
-        let req = ImageRequest::default();
+        let req = T123::default();
         assert_eq!(req.width, 512);
         assert_eq!(req.height, 512);
         assert!(req.prompt.is_empty());
@@ -331,21 +331,21 @@ mod tests {
     });
 
     kova_test!(f189, image_format_extensions, {
-        assert_eq!(ImageFormat::Png.extension(), "png");
-        assert_eq!(ImageFormat::Jpeg.extension(), "jpg");
-        assert_eq!(ImageFormat::Webp.extension(), "webp");
+        assert_eq!(T125::Png.extension(), "png");
+        assert_eq!(T125::Jpeg.extension(), "jpg");
+        assert_eq!(T125::Webp.extension(), "webp");
     });
 
     kova_test!(f192, save_image_to_temp_file, {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("output.png");
-        let result = ImageResult {
+        let result = T124 {
             image_bytes: vec![0x89, 0x50, 0x4E, 0x47], // PNG magic bytes
-            format: ImageFormat::Png,
+            format: T125::Png,
             provider: "test".into(),
             generation_ms: 42,
         };
-        save_image(&result, &path).unwrap();
+        f192(&result, &path).unwrap();
         let read_back = std::fs::read(&path).unwrap();
         assert_eq!(read_back, vec![0x89, 0x50, 0x4E, 0x47]);
     });
@@ -353,13 +353,13 @@ mod tests {
     kova_test!(f192, save_image_creates_parent_dirs, {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("deep").join("nested").join("image.jpg");
-        let result = ImageResult {
+        let result = T124 {
             image_bytes: vec![0xFF, 0xD8, 0xFF], // JPEG magic
-            format: ImageFormat::Jpeg,
+            format: T125::Jpeg,
             provider: "test".into(),
             generation_ms: 0,
         };
-        save_image(&result, &path).unwrap();
+        f192(&result, &path).unwrap();
         assert!(path.exists());
     });
 

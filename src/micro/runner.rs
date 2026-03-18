@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use super::template::T159;
-use crate::cluster::Cluster;
-use crate::providers::{Provider, provider_generate, provider_list_models};
+use crate::cluster::T193;
+use crate::providers::{T129, f199, f336};
 
 /// T154=MicroResult
 /// Result of running a micro-model.
@@ -133,7 +133,7 @@ impl T156 {
 pub fn f244(
     template: &T159,
     input: &str,
-    cluster: &Cluster,
+    cluster: &T193,
     breaker: &T155,
     budget: &T156,
 ) -> Result<T154, String> {
@@ -176,12 +176,12 @@ pub fn f244(
     };
 
     // Remote node → kova serve (OpenAI-compat).
-    let provider = Provider::OpenAiCompat {
+    let provider = T129::OpenAiCompat {
         url: url.clone(),
         api_key: String::new(),
         model: model.clone(),
     };
-    let result = provider_generate(&provider, &model, &template.system_prompt, &prompt);
+    let result = f199(&provider, &model, &template.system_prompt, &prompt);
 
     match result {
         Ok(resp) => {
@@ -210,12 +210,12 @@ pub fn f244(
 /// If the exact model exists, use it. Otherwise, find a model from the same family
 /// (e.g. qwen2.5-coder:3b → qwen2.5-coder:7b).
 fn pick_model(base_url: &str, preferred: &str) -> Option<String> {
-    let provider = Provider::OpenAiCompat {
+    let provider = T129::OpenAiCompat {
         url: base_url.to_string(),
         api_key: String::new(),
         model: preferred.to_string(),
     };
-    let models = provider_list_models(&provider).ok()?;
+    let models = f336(&provider).ok()?;
     let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
 
     // Exact match
@@ -246,12 +246,12 @@ pub fn f245(
     let model = model_override.unwrap_or(&template.model);
     let start = Instant::now();
 
-    let provider = Provider::OpenAiCompat {
+    let provider = T129::OpenAiCompat {
         url: base_url.to_string(),
         api_key: String::new(),
         model: model.to_string(),
     };
-    let resp = provider_generate(&provider, model, &template.system_prompt, &prompt)?;
+    let resp = f199(&provider, model, &template.system_prompt, &prompt)?;
 
     let duration = start.elapsed();
     let est_tokens = resp.tokens_out.unwrap_or((resp.text.len() / 4) as u64);
