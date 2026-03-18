@@ -61,8 +61,6 @@ pub mod serve;
 pub mod sprite_qc;
 #[cfg(feature = "gui")]
 pub mod theme;
-#[cfg(feature = "gui")]
-pub mod web;
 
 #[cfg(feature = "autopilot")]
 pub mod autopilot;

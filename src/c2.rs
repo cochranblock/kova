@@ -618,8 +618,6 @@ const WORKSPACE_CRATES: &[&str] = &[
     "cochranblock",
     "oakilydokily",
     "kova",
-    "kova-core",
-    "kova-web",
     "exopack",
     "whyyoulying",
     "wowasticker",

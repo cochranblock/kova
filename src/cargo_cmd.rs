@@ -25,7 +25,6 @@ const PROJECT_MAP: &[(&str, &str)] = &[
     ("p7", "exopack"),
     ("p8", "whyyoulying"),
     ("p9", "wowasticker"),
-    ("p10", "kova-web"),
 ];
 
 /// Resolve pN → crate name, or pass through.

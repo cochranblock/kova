@@ -108,12 +108,12 @@ struct TestRunResponse {
 }
 
 async fn serve_index() -> impl IntoResponse {
-    let html = include_str!("../kova-web/dist/index.html");
+    let html = include_str!("../wasm/dist/index.html");
     Html(html)
 }
 
 async fn serve_js() -> impl IntoResponse {
-    let js = include_str!("../kova-web/dist/kova_web.js");
+    let js = include_str!("../wasm/dist/kova_web.js");
     Response::builder()
         .header(header::CONTENT_TYPE, "application/javascript")
         .body(Body::from(js))
@@ -121,7 +121,7 @@ async fn serve_js() -> impl IntoResponse {
 }
 
 async fn serve_wasm() -> impl IntoResponse {
-    let wasm = include_bytes!("../kova-web/dist/kova_web_bg.wasm");
+    let wasm = include_bytes!("../wasm/dist/kova_web_bg.wasm");
     Response::builder()
         .header(header::CONTENT_TYPE, "application/wasm")
         .body(Body::from(wasm.as_slice()))

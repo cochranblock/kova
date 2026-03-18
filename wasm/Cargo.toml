@@ -1,6 +1,6 @@
 # Unlicense — cochranblock.org
-# Kova web client. Pure Rust (egui) compiled to WASM. No JavaScript.
-# Built by kova's build script when serve feature is enabled.
+# Contributors: GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+# Thin WASM build manifest. Source lives in ../src/web_client/.
 
 [workspace]
 
@@ -11,6 +11,7 @@ edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+path = "../src/web_client/mod.rs"
 
 [dependencies]
 eframe = { version = "0.33", default-features = false, features = ["glow", "persistence"] }
@@ -24,4 +25,3 @@ wasm-bindgen = "0.2.114"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["HtmlCanvasElement", "Window", "Location"] }
 futures = { version = "0.3", default-features = false, features = ["std"] }
-
