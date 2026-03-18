@@ -101,6 +101,7 @@ pub mod review;
 pub mod ssh_ca;
 pub mod syntax;
 pub mod tools;
+pub mod tokenization;
 pub mod training_data;
 
 #[cfg(test)]

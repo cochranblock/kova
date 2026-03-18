@@ -83,6 +83,9 @@ enum Cmd {
     /// Feedback loop. View/export tournament failure data and generated challenges.
     #[command(name = "feedback")]
     Feedback(FeedbackArgs),
+    /// Tokenization validator. Check compression protocol coverage.
+    #[command(name = "tokens")]
+    Tokens,
 }
 
 #[derive(clap::Args)]
@@ -1363,7 +1366,8 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
         | Some(Cmd::Review(_))
-        | Some(Cmd::Feedback(_)) => {
+        | Some(Cmd::Feedback(_))
+        | Some(Cmd::Tokens) => {
             return match args.cmd.unwrap() {
                 Cmd::Cluster(a) => run_cluster(a),
                 Cmd::Factory(a) => {
@@ -1431,6 +1435,14 @@ fn main() -> anyhow::Result<()> {
                 Cmd::Export(a) => run_export(a),
                 Cmd::Review(a) => run_review(a),
                 Cmd::Feedback(a) => run_feedback(a),
+                Cmd::Tokens => {
+                    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+                    let report = kova::tokenization::f294(&src);
+                    print!("{}", report);
+                    if report.ok() { Ok(()) } else {
+                        anyhow::bail!("{} untokenized items", report.untokenized.len())
+                    }
+                }
                 _ => unreachable!(),
             };
         }
@@ -1581,7 +1593,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
         | Some(Cmd::Review(_))
-        | Some(Cmd::Feedback(_)) => unreachable!("handled before tokio"),
+        | Some(Cmd::Feedback(_))
+        | Some(Cmd::Tokens) => unreachable!("handled before tokio"),
         None => {
             // Default: TUI (like Claude Code). Fallback: REPL, then GUI.
             #[cfg(feature = "tui")]
