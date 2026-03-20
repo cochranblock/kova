@@ -100,15 +100,61 @@ pub struct T193 {
     pub nodes: Vec<T192>,
 }
 
+fn parse_tier(s: &str) -> T189 {
+    match s.to_lowercase().as_str() {
+        "heavy" | "32b" => T189::Heavy,
+        "mid" | "14b" => T189::Mid,
+        "light" | "7b" => T189::Light,
+        "router" | "3b" => T189::Router,
+        _ => T189::Mid,
+    }
+}
+
+fn parse_role(s: &str) -> T190 {
+    match s.to_lowercase().as_str() {
+        "primary" | "primarygen" => T190::PrimaryGen,
+        "secondary" | "secondarygen" => T190::SecondaryGen,
+        "reviewer" | "review" => T190::Reviewer,
+        "batch" => T190::Batch,
+        "coordinator" | "coord" => T190::Coordinator,
+        _ => T190::Batch,
+    }
+}
+
 impl T193 {
-    /// Default IRONHIVE cluster configuration.
+    /// Load cluster from config. Falls back to hardcoded defaults if not configured.
     pub fn default_hive() -> Self {
+        let config_nodes = crate::config::cluster_nodes();
+        if !config_nodes.is_empty() {
+            return Self::from_config(&config_nodes);
+        }
+        Self::hardcoded_defaults()
+    }
+
+    /// Build cluster from config entries.
+    fn from_config(nodes: &[crate::config::ClusterNodeConfig]) -> Self {
+        T193 {
+            nodes: nodes.iter().map(|n| T192 {
+                id: n.id.clone(),
+                host: n.host.clone(),
+                port: n.port,
+                model: n.model.clone(),
+                general_model: n.general_model.clone(),
+                role: parse_role(&n.role),
+                tier: parse_tier(&n.tier),
+                busy: Arc::new(AtomicBool::new(false)),
+            }).collect(),
+        }
+    }
+
+    /// Original hardcoded IRONHIVE cluster (LAN IPs).
+    fn hardcoded_defaults() -> Self {
         T193 {
             nodes: vec![
                 T192 {
                     id: "n0".into(),
                     host: "192.168.1.47".into(),
-                    port: 3002, // lf — kova serve
+                    port: 3002,
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:7b".into()),
                     role: T190::PrimaryGen,
@@ -118,7 +164,7 @@ impl T193 {
                 T192 {
                     id: "n1".into(),
                     host: "192.168.1.44".into(),
-                    port: 3002, // gd — kova serve
+                    port: 3002,
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:7b".into()),
                     role: T190::Reviewer,
@@ -128,7 +174,7 @@ impl T193 {
                 T192 {
                     id: "n2".into(),
                     host: "192.168.1.45".into(),
-                    port: 3002, // bt — kova serve (150W muzzle)
+                    port: 3002,
                     model: "qwen2.5-coder:32b".into(),
                     general_model: Some("starcoder2:15b".into()),
                     role: T190::SecondaryGen,
@@ -138,7 +184,7 @@ impl T193 {
                 T192 {
                     id: "n3".into(),
                     host: "192.168.1.43".into(),
-                    port: 3002, // st — kova serve
+                    port: 3002,
                     model: "qwen2.5-coder:14b".into(),
                     general_model: Some("qwen2.5:14b".into()),
                     role: T190::Batch,
@@ -148,7 +194,7 @@ impl T193 {
                 T192 {
                     id: "c2".into(),
                     host: "localhost".into(),
-                    port: 3002, // local kova serve
+                    port: 3002,
                     model: "qwen2.5-coder:7b".into(),
                     general_model: Some("qwen2.5:3b".into()),
                     role: T190::Coordinator,

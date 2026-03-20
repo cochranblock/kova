@@ -32,7 +32,34 @@ struct ConfigFile {
     hive: HiveSection,
     #[serde(default)]
     offload: OffloadSection,
+    #[serde(default)]
+    cluster: ClusterSection,
 }
+
+#[derive(serde::Deserialize, Default, Clone)]
+struct ClusterSection {
+    #[serde(default)]
+    nodes: Vec<ClusterNodeConfig>,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct ClusterNodeConfig {
+    pub id: String,
+    pub host: String,
+    #[serde(default = "default_cluster_port")]
+    pub port: u16,
+    pub model: String,
+    #[serde(default)]
+    pub general_model: Option<String>,
+    #[serde(default = "default_tier")]
+    pub tier: String,
+    #[serde(default = "default_role")]
+    pub role: String,
+}
+
+fn default_cluster_port() -> u16 { 3002 }
+fn default_tier() -> String { "mid".to_string() }
+fn default_role() -> String { "batch".to_string() }
 
 #[derive(serde::Deserialize)]
 struct OffloadSection {
@@ -564,6 +591,12 @@ pub fn is_remote_only(crate_name: &str) -> bool {
 pub fn remote_build_node() -> String {
     load_config().build.build_node.unwrap_or_else(|| "gd".to_string())
 }
+
+/// Load cluster node configs. Empty vec if not configured.
+pub fn cluster_nodes() -> Vec<ClusterNodeConfig> {
+    load_config().cluster.nodes
+}
+
 pub use f108 as bind_addr;
 pub use f109 as bootstrap;
 pub use f110 as load_prompt;
