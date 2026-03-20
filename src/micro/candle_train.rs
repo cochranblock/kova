@@ -169,7 +169,7 @@ pub fn train_sft(config: &TrainConfig) -> Result<PathBuf, String> {
         .map_err(|e| format!("load tokenizer: {}", e))?;
 
     // Load weights into VarMap (trainable)
-    let varmap = VarMap::new();
+    let mut varmap = VarMap::new();
     let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
 
     // Find safetensors files
