@@ -626,6 +626,14 @@ pub fn f136(
 
     // Single project.
     let proj = project.as_deref().unwrap_or("p0");
+    let crate_name = f353(proj);
+
+    // Remote-only check: route to build node via SSH.
+    if crate::config::is_remote_only(crate_name) {
+        let node = crate::config::remote_build_node();
+        return f361_remote_build(&cmd, crate_name, features.as_deref(), &extra, &node, expand);
+    }
+
     let result = f133(&cmd, proj, features.as_deref(), bin.as_deref(), &extra);
     let failed = !result.r2;
     print_result(&result, expand);
@@ -648,6 +656,100 @@ fn parse_cmd_token(s: &str) -> Option<t99> {
         "x8" => Some(t99::X8),
         "x9" => Some(t99::X9),
         _ => None,
+    }
+}
+
+/// f361=remote_build. Execute cargo command on remote node via SSH.
+/// Used for remote-only projects (websites that build on gd, not locally).
+fn f361_remote_build(
+    cmd: &t99,
+    crate_name: &str,
+    features: Option<&str>,
+    extra_args: &[String],
+    node: &str,
+    expand: bool,
+) -> anyhow::Result<()> {
+    let base = crate::config::hive_shared_base();
+    let workspace = format!("{}/projects/workspace", base);
+
+    // Build the cargo command string
+    let mut cargo_args = Vec::new();
+    for a in cmd.base_args() {
+        cargo_args.push(a.to_string());
+    }
+    cargo_args.push("-p".into());
+    cargo_args.push(crate_name.into());
+
+    if let Some(f) = features {
+        cargo_args.push("--features".into());
+        cargo_args.push(f.into());
+    }
+    if supports_json(cmd) {
+        cargo_args.push("--message-format=json".into());
+    }
+    for a in extra_args {
+        cargo_args.push(a.clone());
+    }
+
+    let remote_cmd = format!("cd {} && cargo {}", workspace, cargo_args.join(" "));
+    let project_token = to_project_token(crate_name);
+
+    eprintln!(
+        "[remote] {} {} → {} ({})",
+        cmd.name(),
+        project_token,
+        node,
+        crate_name
+    );
+
+    let start = Instant::now();
+    let output = Command::new("ssh")
+        .args(["-o", "ConnectTimeout=10", node])
+        .arg(&remote_cmd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+
+    match output {
+        Ok(out) => {
+            let elapsed = start.elapsed();
+            let ok = out.status.success();
+
+            // Print output
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+
+            if !stdout.is_empty() {
+                // Try to compress JSON output like local builds
+                let (w, e, compressed, _) = compress_json_messages(&stdout);
+                if !compressed.is_empty() {
+                    let result = t100 {
+                        r0: cmd.name().to_string(),
+                        r1: project_token.to_string(),
+                        r2: ok,
+                        r3: elapsed.as_secs_f64(),
+                        r4: w,
+                        r5: e,
+                        r6: compressed,
+                        r7: Some(format!("remote:{}", node)),
+                    };
+                    print_result(&result, expand);
+                } else {
+                    print!("{}", stdout);
+                }
+            }
+            if !stderr.is_empty() && !ok {
+                eprint!("{}", stderr);
+            }
+
+            if !ok {
+                anyhow::bail!("[remote] cargo {} failed on {}", cmd.name(), node);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            anyhow::bail!("[remote] cannot reach {}: {}", node, e);
+        }
     }
 }
 

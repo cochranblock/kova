@@ -110,6 +110,12 @@ struct BuildSection {
     workspace_root: Option<String>,
     #[serde(default)]
     presets: std::collections::HashMap<String, T88>,
+    /// Projects that only build on remote nodes, never locally.
+    #[serde(default)]
+    remote_only: Vec<String>,
+    /// Default remote build node (e.g. "gd").
+    #[serde(default)]
+    build_node: Option<String>,
 }
 
 /// t88=BuildPreset. Package, target, features for correct cargo invocations.
@@ -548,6 +554,16 @@ pub use f104 as workspace_root;
 pub use f105 as load_build_preset;
 pub use f106 as all_build_presets;
 pub use f107 as infer_preset_name;
+
+/// Check if a crate is remote-only (should not build locally).
+pub fn is_remote_only(crate_name: &str) -> bool {
+    load_config().build.remote_only.iter().any(|s| s == crate_name)
+}
+
+/// Remote build node for remote-only projects. Default: gd.
+pub fn remote_build_node() -> String {
+    load_config().build.build_node.unwrap_or_else(|| "gd".to_string())
+}
 pub use f108 as bind_addr;
 pub use f109 as bootstrap;
 pub use f110 as load_prompt;
