@@ -5,7 +5,9 @@
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use eframe::egui;
+#[cfg(feature = "inference")]
 use std::sync::{mpsc, Arc};
+#[cfg(feature = "inference")]
 use tokio::sync::broadcast;
 
 use crate::theme::{self, colors, layout};
@@ -47,6 +49,7 @@ struct KovaApp {
     router_pending_user_msg: Option<String>,
     #[cfg(feature = "inference")]
     pipeline_receiver: Option<broadcast::Receiver<Arc<str>>>,
+    #[cfg(feature = "inference")]
     last_applied: Option<String>,
     #[cfg(feature = "inference")]
     clarification_pending: bool,
@@ -62,6 +65,8 @@ struct KovaApp {
     sprite_qc: Option<crate::sprite_qc::T213>,
     /// Path input for sprite QC directory.
     sprite_qc_path: String,
+    /// Pixel Forge panel state.
+    pixel_forge: Option<super::pixel_forge::T220>,
 }
 
 impl DemoRecording {
@@ -112,6 +117,7 @@ struct DemoRecording {
     started_at: String,
 }
 
+#[cfg(feature = "inference")]
 fn response_for_input(input: &str) -> (String, Option<crate::t0>) {
     match crate::f62(input) {
         Some(intent) => {
@@ -128,6 +134,7 @@ fn is_confirm(s: &str) -> bool {
 }
 
 /// Shared logic for building system prompt with Cursor rules. Testable.
+#[cfg(feature = "inference")]
 fn build_system_prompt_impl(system: &str, persona: &str, project: &std::path::Path) -> String {
     let cursor = crate::cursor_prompts::f111(project);
     if cursor.is_empty() {
@@ -188,6 +195,7 @@ impl KovaApp {
             router_pending_user_msg: None,
             #[cfg(feature = "inference")]
             pipeline_receiver: None,
+            #[cfg(feature = "inference")]
             last_applied: None,
             #[cfg(feature = "inference")]
             clarification_pending: false,
@@ -200,9 +208,11 @@ impl KovaApp {
             demo_recording,
             sprite_qc: None,
             sprite_qc_path: String::new(),
+            pixel_forge: None,
         }
     }
 
+    #[cfg(feature = "inference")]
     fn f311(&self) -> String {
         build_system_prompt_impl(&self.system_prompt, &self.persona, &self.current_project)
     }
@@ -456,6 +466,13 @@ impl eframe::App for KovaApp {
                         }
                     }
                 }
+                if ui.button("Pixel Forge").clicked() {
+                    if self.pixel_forge.is_some() {
+                        self.pixel_forge = None;
+                    } else {
+                        self.pixel_forge = Some(super::pixel_forge::T220::new());
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new("~/.kova/prompts/").color(colors::MUTED).small());
                 });
@@ -527,6 +544,16 @@ impl eframe::App for KovaApp {
                     });
                 });
                 ui.add_space(layout::GAP);
+            }
+            // Pixel Forge panel — takes over the main area when active
+            if self.pixel_forge.is_some() {
+                theme::f323().show(ui, |ui| {
+                    let close = self.pixel_forge.as_mut().unwrap().show(ui, ctx);
+                    if close {
+                        self.pixel_forge = None;
+                    }
+                });
+                return;
             }
             // Sprite QC panel — takes over the main area when active
             if self.sprite_qc.is_some() {

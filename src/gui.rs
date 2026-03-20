@@ -5,7 +5,9 @@
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use eframe::egui;
+#[cfg(feature = "inference")]
 use std::sync::{mpsc, Arc};
+#[cfg(feature = "inference")]
 use tokio::sync::broadcast;
 
 use crate::theme::{self, colors, layout};
@@ -47,6 +49,7 @@ pub struct KovaApp {
     router_pending_user_msg: Option<String>,
     #[cfg(feature = "inference")]
     pipeline_receiver: Option<broadcast::Receiver<Arc<str>>>,
+    #[cfg(feature = "inference")]
     last_applied: Option<String>,
     #[cfg(feature = "inference")]
     clarification_pending: bool,
@@ -112,6 +115,7 @@ struct DemoRecording {
     started_at: String,
 }
 
+#[cfg(feature = "inference")]
 fn response_for_input(input: &str) -> (String, Option<crate::t0>) {
     match crate::f62(input) {
         Some(intent) => {
@@ -128,6 +132,7 @@ fn is_confirm(s: &str) -> bool {
 }
 
 /// Shared logic for building system prompt with Cursor rules. Testable.
+#[cfg(feature = "inference")]
 fn build_system_prompt_impl(system: &str, persona: &str, project: &std::path::Path) -> String {
     let cursor = crate::cursor_prompts::f111(project);
     if cursor.is_empty() {
@@ -188,6 +193,7 @@ impl KovaApp {
             router_pending_user_msg: None,
             #[cfg(feature = "inference")]
             pipeline_receiver: None,
+            #[cfg(feature = "inference")]
             last_applied: None,
             #[cfg(feature = "inference")]
             clarification_pending: false,
@@ -203,6 +209,7 @@ impl KovaApp {
         }
     }
 
+    #[cfg(feature = "inference")]
     fn f311(&self) -> String {
         build_system_prompt_impl(&self.system_prompt, &self.persona, &self.current_project)
     }
