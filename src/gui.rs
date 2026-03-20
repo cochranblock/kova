@@ -870,7 +870,7 @@ impl eframe::App for KovaApp {
             // ════════════════════════════════════════════════════════════
             // ZONE 2: Chat (scrollable, takes remaining space minus input)
             // ════════════════════════════════════════════════════════════
-            let input_height = 40.0;
+            let input_height = 48.0;
             let available = ui.available_height() - input_height - layout::GAP * 2.0;
             egui::ScrollArea::vertical()
                 .max_height(available.max(80.0))
@@ -1043,18 +1043,32 @@ impl eframe::App for KovaApp {
             // ZONE 3: Prompt (bottom, always visible)
             // ════════════════════════════════════════════════════════════
             ui.add_space(layout::GAP);
+            let prompt_height = 48.0; // Bigger touch target for mobile
             ui.horizontal(|ui| {
                 let mut send = false;
+                let send_width = 64.0;
                 let input_resp = ui.add_sized(
-                    [ui.available_width() - 60.0, input_height],
-                    egui::TextEdit::singleline(&mut self.input).hint_text("Ask Kova..."),
+                    [ui.available_width() - send_width - 8.0, prompt_height],
+                    egui::TextEdit::singleline(&mut self.input)
+                        .hint_text("Ask Kova...")
+                        .font(egui::TextStyle::Body)
+                        .margin(egui::Margin::symmetric(12, 10)),
                 );
+                // On mobile: tap input → keyboard appears (handled by MobileApp wrapper)
+                // Keep focus on input after send so keyboard stays up
                 if input_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.input.is_empty() {
                     send = true;
                     input_resp.request_focus();
                 }
-                if ui.add_sized([55.0, input_height], egui::Button::new("Send")).clicked() && !self.input.is_empty() {
+                let send_btn = ui.add_sized(
+                    [send_width, prompt_height],
+                    egui::Button::new(egui::RichText::new("Send").color(colors::BG).strong())
+                        .fill(colors::PRIMARY),
+                );
+                if send_btn.clicked() && !self.input.is_empty() {
                     send = true;
+                    // Re-focus input so keyboard stays up for rapid messages
+                    input_resp.request_focus();
                 }
                 if send {
                     let msg = std::mem::take(&mut self.input);
