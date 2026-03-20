@@ -1,0 +1,14 @@
+[package]
+name = "kova-ios"
+version = "0.7.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "kova_ios"
+crate-type = ["staticlib"]
+
+[dependencies]
+kova = { path = "..", features = ["gui", "mobile-llm"], default-features = false }
+log = "0.4"
+oslog = "0.2"
