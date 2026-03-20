@@ -17,6 +17,8 @@ autopilot = ["dep:enigo"]
 daemon = ["dep:capnp", "dep:capnpc"]  # Requires capnp compiler: brew install capnp
 tests = ["exopack"]
 rag = ["dep:fastembed", "dep:ordered-float"]
+# mobile-llm: on-device GGUF inference via llama.cpp (Android/iOS). No kalosm.
+mobile-llm = ["dep:llama-cpp-2", "dep:encoding_rs"]
 # io_uring: stub for future kernel-bypass. No-op; design doc in SPEED.md.
 io_uring = []
 
@@ -30,6 +32,9 @@ sled = "0.34"
 bincode = { version = "2", features = ["serde"] }
 zstd = "0.13"
 toml = "0.8"
+csv = "1"
+pdf-extract = "0.7"
+flate2 = "1"
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
 similar = { version = "2", optional = true }
@@ -57,6 +62,8 @@ dirs = "5"
 glob = "0.3"
 enigo = { version = "0.2", optional = true, default-features = false, features = ["x11rb"] }
 capnp = { version = "0.25", optional = true }
+llama-cpp-2 = { version = "0.1", optional = true }
+encoding_rs = { version = "0.8", optional = true }
 
 [build-dependencies]
 capnpc = { version = "0.25", optional = true }

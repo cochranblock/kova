@@ -76,6 +76,9 @@ pub mod autopilot;
 #[cfg(feature = "daemon")]
 pub mod daemon;
 
+#[cfg(feature = "mobile-llm")]
+pub mod mobile_llm;
+
 #[cfg(feature = "inference")]
 pub mod agent_loop;
 pub mod c2;
