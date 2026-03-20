@@ -13,6 +13,29 @@ use tokio::sync::broadcast;
 
 use crate::theme::{self, colors, layout};
 
+// ── Tab Navigation ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tab {
+    Chat,
+    Artifacts,
+    Moe,
+    Forge,
+    Deploy,
+}
+
+impl Tab {
+    fn label(&self) -> &'static str {
+        match self {
+            Tab::Chat => "Chat",
+            Tab::Artifacts => "Artifacts",
+            Tab::Moe => "MoE",
+            Tab::Forge => "Forge",
+            Tab::Deploy => "Deploy",
+        }
+    }
+}
+
 // ── Remote MoE types ──────────────────────────────────────────
 
 /// MoE variant from remote /api/moe/run response.
@@ -157,6 +180,13 @@ pub struct KovaApp {
     sprite_qc: Option<crate::sprite_qc::T213>,
     /// Path input for sprite QC directory.
     sprite_qc_path: String,
+    // ── Navigation ──
+    active_tab: Tab,
+    // ── Proof of Artifacts ──
+    proof_git_line: String,
+    proof_expanded: bool,
+    /// Track which project the proof card was last fetched for.
+    proof_project: std::path::PathBuf,
     // ── Remote MoE (works without inference feature) ──
     /// Cluster URL for remote inference (e.g. "http://192.168.1.44:3002").
     cluster_url: String,
@@ -170,6 +200,8 @@ pub struct KovaApp {
     moe_result: Option<MoeResult>,
     /// Remote chat receiver (from background thread).
     remote_chat_receiver: Option<std::sync::mpsc::Receiver<String>>,
+    /// Startup cluster check receiver (non-blocking).
+    cluster_check_rx: Option<std::sync::mpsc::Receiver<bool>>,
 }
 
 impl DemoRecording {
@@ -311,12 +343,24 @@ impl KovaApp {
             demo_recording,
             sprite_qc: None,
             sprite_qc_path: String::new(),
+            active_tab: Tab::Chat,
+            proof_git_line: String::new(),
+            proof_expanded: true,
+            proof_project: std::path::PathBuf::new(),
             cluster_url: load_cluster_url(),
             cluster_online: false,
             show_cluster_config: false,
             moe_receiver: None,
             moe_result: None,
             remote_chat_receiver: None,
+            cluster_check_rx: {
+                let url = load_cluster_url();
+                let (tx, rx) = mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = tx.send(check_cluster(&url));
+                });
+                Some(rx)
+            },
         }
     }
 
@@ -562,16 +606,39 @@ impl eframe::App for KovaApp {
             ctx.request_repaint();
         }
 
+        // ── Poll startup cluster check ──
+        if let Some(rx) = &self.cluster_check_rx {
+            if let Ok(online) = rx.try_recv() {
+                self.cluster_online = online;
+                self.cluster_check_rx = None;
+            }
+        }
+
+        // ── Refresh proof card when project changes ──
+        if self.proof_project != self.current_project {
+            self.proof_project = self.current_project.clone();
+            self.proof_git_line = match std::process::Command::new("git")
+                .args(["log", "-1", "--oneline"])
+                .current_dir(&self.current_project)
+                .output()
+            {
+                Ok(o) if o.status.success() => {
+                    String::from_utf8_lossy(&o.stdout).trim().to_string()
+                }
+                _ => "(no git info)".into(),
+            };
+        }
+
         egui::CentralPanel::default()
             .frame(egui::Frame::default().fill(colors::BG).inner_margin(egui::Margin::same(layout::MARGIN_I8)))
             .show(ctx, |ui| {
+            // ════════════════════════════════════════════════════════════
+            // ZONE 1: Header + Proof Card
+            // ════════════════════════════════════════════════════════════
             ui.add_space(layout::GAP);
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Kova").color(colors::PRIMARY).size(22.0).strong());
                 ui.add_space(layout::MARGIN);
-                ui.separator();
-                ui.add_space(layout::GAP);
-                ui.label(egui::RichText::new("Project").color(colors::MUTED).small());
                 let projects = crate::discover_projects();
                 let current_name = self.current_project.file_name()
                     .and_then(|n| n.to_str())
@@ -590,51 +657,6 @@ impl eframe::App for KovaApp {
                             ui.label(egui::RichText::new("(none)").color(colors::MUTED));
                         }
                     });
-                ui.add_space(layout::GAP);
-                if ui.button("Prompts").clicked() {
-                    self.show_prompts = !self.show_prompts;
-                }
-                if ui.button("Backlog").clicked() {
-                    self.show_backlog = !self.show_backlog;
-                }
-                if ui.button("Sprite QC").clicked() {
-                    if self.sprite_qc.is_some() {
-                        self.sprite_qc = None;
-                    } else {
-                        // Default to rogue-runner assets if path empty
-                        if self.sprite_qc_path.is_empty() {
-                            let home = std::env::var("HOME").unwrap_or_default();
-                            self.sprite_qc_path = format!("{}/rogue-repo/rogue-runner/assets", home);
-                        }
-                        let p = std::path::Path::new(&self.sprite_qc_path);
-                        if p.is_dir() {
-                            self.sprite_qc = Some(crate::sprite_qc::T213::scan(p));
-                        }
-                    }
-                }
-                if ui.button("Visual QC").clicked() {
-                    if self.sprite_qc.is_some() {
-                        self.sprite_qc = None;
-                    } else {
-                        // Point to exopack screenshot output dir
-                        let cache = dirs::cache_dir()
-                            .unwrap_or_else(|| std::path::PathBuf::from("."))
-                            .join("screenshots")
-                            .join(std::env::consts::OS)
-                            .join("kova");
-                        self.sprite_qc_path = cache.to_string_lossy().to_string();
-                        if cache.is_dir() {
-                            self.sprite_qc = Some(crate::sprite_qc::T213::scan(&cache));
-                        }
-                    }
-                }
-                if ui.button("Cluster").clicked() {
-                    self.show_cluster_config = !self.show_cluster_config;
-                    if self.show_cluster_config {
-                        let url = self.cluster_url.clone();
-                        self.cluster_online = check_cluster(&url);
-                    }
-                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let (dot, tip) = if self.cluster_online {
                         ("\u{25CF}", "Cluster online")
@@ -644,234 +666,217 @@ impl eframe::App for KovaApp {
                     let color = if self.cluster_online { colors::TERTIARY } else { colors::MUTED };
                     ui.label(egui::RichText::new(dot).color(color).size(14.0))
                         .on_hover_text(tip);
-                    ui.label(egui::RichText::new("~/.kova/prompts/").color(colors::MUTED).small());
                 });
             });
+
+            // ── Proof of Artifacts card ──
+            ui.add_space(layout::PADDING_SM);
+            let proof_header = if self.proof_expanded { "Proof of Artifacts  \u{25B4}" } else { "Proof of Artifacts  \u{25BE}" };
+            if ui.add(egui::Label::new(
+                egui::RichText::new(proof_header).color(colors::PRIMARY).strong().size(13.0),
+            ).sense(egui::Sense::click())).clicked() {
+                self.proof_expanded = !self.proof_expanded;
+            }
+            if self.proof_expanded {
+                let project_name = self.current_project.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("?");
+                let is_remote = crate::config::is_remote_only(project_name);
+                let build_loc = if is_remote {
+                    format!("builds on {}", crate::config::remote_build_node())
+                } else {
+                    "builds locally".into()
+                };
+                let deploy_url = match project_name {
+                    "cochranblock" => "cochranblock.org",
+                    "oakilydokily" => "oakilydokily.com",
+                    "rogue-repo" => "rogue-repo (localhost:3001)",
+                    "ronin-sites" => "ronin-sites (localhost:8000)",
+                    "approuter" => "approuter (localhost:8080)",
+                    _ => "",
+                };
+                theme::f321().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Build:").color(colors::MUTED));
+                        ui.label(egui::RichText::new(&build_loc).color(colors::TEXT));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Last commit:").color(colors::MUTED));
+                        ui.label(egui::RichText::new(&self.proof_git_line).color(colors::TEXT).monospace());
+                    });
+                    if !deploy_url.is_empty() {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Deploy:").color(colors::MUTED));
+                            ui.label(egui::RichText::new(deploy_url).color(colors::TERTIARY));
+                        });
+                    }
+                });
+            }
             ui.add_space(layout::GAP);
-            if self.show_backlog {
-                let backlog_path = crate::backlog_path();
-                let backlog = std::fs::read_to_string(&backlog_path)
-                    .ok()
-                    .and_then(|s| serde_json::from_str::<crate::t9>(&s).ok())
-                    .unwrap_or_default();
-                theme::f323().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Backlog").color(colors::PRIMARY).strong());
-                        ui.add_space(layout::GAP);
-                        if ui.button("Run all").clicked() {
-                        let default_approuter = std::env::var("HOME")
-                            .ok()
-                            .map(|h| std::path::PathBuf::from(h).join("approuter"));
-                        for entry in &backlog.items {
-                            if let Some(intent) = crate::f293(entry) {
-                                let project = entry
-                                    .project
-                                    .as_ref()
-                                    .map(std::path::PathBuf::from)
-                                    .unwrap_or_else(|| self.current_project.clone());
-                                let approuter_dir = entry
-                                    .approuter_dir
-                                    .as_ref()
-                                    .map(std::path::PathBuf::from)
-                                    .or_else(|| default_approuter.clone());
-                                self.run_intent(intent, project, approuter_dir);
+            ui.separator();
+
+            // ════════════════════════════════════════════════════════════
+            // ZONE 2: Chat (scrollable, takes remaining space minus input)
+            // ════════════════════════════════════════════════════════════
+            let input_height = 40.0;
+            let available = ui.available_height() - input_height - layout::GAP * 2.0;
+            egui::ScrollArea::vertical()
+                .max_height(available.max(80.0))
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                for (i, m) in self.messages.iter().enumerate() {
+                    let (prefix, color) = if m.role == "user" {
+                        ("You", colors::PRIMARY)
+                    } else {
+                        ("Kova", colors::SECONDARY)
+                    };
+                    theme::f321().show(ui, |ui| {
+                    ui.label(egui::RichText::new(prefix).color(color).strong());
+                    let content = {
+                        #[cfg(feature = "inference")]
+                        let (llm_waiting, router_waiting) =
+                            (self.llm_receiver.is_some(), self.router_receiver.is_some());
+                        #[cfg(not(feature = "inference"))]
+                        let (llm_waiting, router_waiting) = (false, false);
+                        if m.role == "assistant" && i == self.messages.len() - 1 {
+                            #[cfg(feature = "inference")]
+                            let pipeline_waiting = self.pipeline_receiver.is_some();
+                            #[cfg(not(feature = "inference"))]
+                            let pipeline_waiting = false;
+                            if router_waiting {
+                                "Classifying…"
+                            } else if pipeline_waiting {
+                                "Generating…"
+                            } else if m.content.is_empty() && llm_waiting {
+                                "Thinking…"
+                            } else {
+                                &m.content
                             }
+                        } else {
+                            &m.content
                         }
-                    }
-                    });
+                    };
                     ui.add_space(layout::PADDING_SM);
-                    egui::ScrollArea::vertical().max_height(150.0).show(ui, |ui| {
-                        for entry in &backlog.items {
-                            theme::f321().show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(&entry.intent).color(colors::PRIMARY));
-                                    ui.label(egui::RichText::new("·").color(colors::MUTED));
-                                    ui.label(egui::RichText::new(entry.project.as_deref().unwrap_or("-")).color(colors::MUTED).small());
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.button("Run").clicked()
-                                            && let Some(intent) = crate::f293(entry)
-                                        {
-                                            let project = entry
-                                                .project
-                                                .as_ref()
-                                                .map(std::path::PathBuf::from)
-                                                .unwrap_or_else(|| self.current_project.clone());
-                                            let approuter_dir = entry
-                                                .approuter_dir
-                                                .as_ref()
-                                                .map(std::path::PathBuf::from)
-                                                .or_else(|| {
-                                                    std::env::var("HOME")
-                                                        .ok()
-                                                        .map(|h| std::path::PathBuf::from(h).join("approuter"))
-                                                });
-                                            self.run_intent(intent, project, approuter_dir);
-                                        }
-                                    });
-                                });
-                            });
-                        }
-                    });
-                });
-                ui.add_space(layout::GAP);
-            }
-            // ── Cluster config panel ──
-            if self.show_cluster_config {
-                theme::f323().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Cluster").color(colors::PRIMARY).strong());
-                        let status = if self.cluster_online { "Online" } else { "Offline" };
-                        let sc = if self.cluster_online { colors::TERTIARY } else { colors::SECONDARY };
-                        ui.label(egui::RichText::new(status).color(sc));
-                    });
-                    ui.add_space(layout::PADDING_SM);
-                    ui.horizontal(|ui| {
-                        ui.label("URL:");
-                        ui.text_edit_singleline(&mut self.cluster_url);
-                        if ui.button("Test").clicked() {
-                            self.cluster_online = check_cluster(&self.cluster_url);
-                        }
-                    });
-                    if self.cluster_online {
-                        ui.add_space(layout::PADDING_SM);
-                        ui.horizontal(|ui| {
-                            if ui.button("MoE Generate").clicked() && self.moe_receiver.is_none() {
-                                let url = self.cluster_url.clone();
-                                let prompt = if self.input.is_empty() {
-                                    "write a function that checks if a number is prime".to_string()
-                                } else {
-                                    self.input.clone()
-                                };
-                                let (tx, rx) = mpsc::channel();
-                                self.moe_receiver = Some(rx);
-                                let prompt_display = prompt.clone();
-                                std::thread::spawn(move || {
-                                    let result = remote_moe(&url, &prompt);
-                                    match result {
-                                        Ok(r) => { let _ = tx.send(r); }
-                                        Err(e) => {
-                                            let _ = tx.send(MoeResult {
-                                                variants: vec![],
-                                                winner: None,
-                                                prompt: format!("Error: {}", e),
-                                            });
-                                        }
+                    ui.label(egui::RichText::new(content).color(colors::TEXT).monospace());
+
+                    #[cfg(feature = "inference")]
+                    if m.role == "assistant"
+                        && let Some(code) = crate::pipeline::extract_rust_block(&m.content)
+                    {
+                            ui.add_space(layout::PADDING_SM);
+                            let user_msg = self
+                                .messages
+                                .iter()
+                                .enumerate()
+                                .rev()
+                                .find(|(j, x)| *j < i && x.role == "user")
+                                .map(|(_, x)| x.content.as_str())
+                                .unwrap_or("");
+                            let hint = crate::context_loader::f83(user_msg);
+                            let project = &self.current_project;
+                            let target = crate::output::f85(project, hint.as_deref());
+                            let current = std::fs::read_to_string(&target).unwrap_or_default();
+
+                            ui.horizontal(|ui| {
+                                if ui.button("Copy").clicked() {
+                                    ui.ctx().output_mut(|o| o.commands.push(egui::OutputCommand::CopyText(code.clone())));
+                                }
+                                if ui.button("Apply").clicked() {
+                                    let parent = target.parent().unwrap_or(project);
+                                    if let Err(e) = std::fs::create_dir_all(parent) {
+                                        self.last_applied =
+                                            Some(format!("Apply failed: {}", e));
+                                    } else if let Err(e) = std::fs::write(&target, &code) {
+                                        self.last_applied =
+                                            Some(format!("Apply failed: {}", e));
+                                    } else {
+                                        self.last_applied =
+                                            Some(format!("Applied to {}", target.display()));
                                     }
-                                });
-                                self.messages.push(crate::Message {
-                                    role: "user".into(),
-                                    content: format!("[MoE] {}", prompt_display),
-                                });
-                                self.persist("user", &format!("[MoE] {}", prompt_display));
-                            }
-                            if self.moe_receiver.is_some() {
-                                ui.label(egui::RichText::new("Running MoE...").color(colors::MUTED));
-                            }
-                        });
-                    }
-                });
-                ui.add_space(layout::GAP);
-            }
+                                }
+                                if let Some(ref msg) = self.last_applied {
+                                    let c = if msg.starts_with("Applied") {
+                                        colors::TERTIARY
+                                    } else {
+                                        colors::SECONDARY
+                                    };
+                                    ui.label(egui::RichText::new(msg).color(c));
+                                }
+                            });
 
-            // ── MoE results panel ──
-            let mut dismiss_moe = false;
-            if let Some(result) = self.moe_result.clone() {
-                theme::f323().show(ui, |ui| {
-                    ui.label(egui::RichText::new("MoE Results").color(colors::PRIMARY).strong());
-                    ui.add_space(layout::PADDING_SM);
-                    egui::Grid::new("moe_grid").striped(true).show(ui, |ui| {
-                        ui.label(egui::RichText::new("Node").color(colors::MUTED).strong());
-                        ui.label(egui::RichText::new("Compile").color(colors::MUTED).strong());
-                        ui.label(egui::RichText::new("Clippy").color(colors::MUTED).strong());
-                        ui.label(egui::RichText::new("Tests").color(colors::MUTED).strong());
-                        ui.label(egui::RichText::new("Score").color(colors::MUTED).strong());
-                        ui.end_row();
-                        for v in &result.variants {
-                            let is_winner = result.winner.as_ref().map(|w| w.node_id == v.node_id).unwrap_or(false);
-                            let nc = if is_winner { colors::TERTIARY } else { colors::TEXT };
-                            ui.label(egui::RichText::new(&v.node_id).color(nc));
-                            ui.label(if v.compile_ok { "ok" } else { "FAIL" });
-                            ui.label(if v.clippy_ok { "ok" } else { "FAIL" });
-                            ui.label(if v.tests_ok { "ok" } else { "FAIL" });
-                            ui.label(egui::RichText::new(format!("{}", v.total_score)).color(nc));
-                            ui.end_row();
-                        }
+                            egui::CollapsingHeader::new(format!("Show diff ({})", i))
+                                .default_open(false)
+                                .show(ui, |ui| {
+                                    let diff = crate::output::f84(&current, &code);
+                                    egui::ScrollArea::vertical()
+                                        .max_height(200.0)
+                                        .show(ui, |ui| {
+                                            ui.label(egui::RichText::new(diff).color(colors::TEXT).monospace());
+                                        });
+                                });
+                    }
                     });
-                    if let Some(ref w) = result.winner {
-                        ui.add_space(layout::PADDING_SM);
-                        ui.label(egui::RichText::new(format!("Winner: {} (score {})", w.node_id, w.total_score)).color(colors::TERTIARY));
-                        ui.add_space(layout::PADDING_SM);
-                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                            ui.label(egui::RichText::new(&w.code).color(colors::TEXT).monospace());
-                        });
-                        ui.horizontal(|ui| {
-                            if ui.button("Copy").clicked() {
-                                ui.ctx().output_mut(|o| o.commands.push(egui::OutputCommand::CopyText(w.code.clone())));
-                            }
-                        });
-                    } else if !result.variants.is_empty() {
-                        ui.label(egui::RichText::new("No winner — all variants failed").color(colors::SECONDARY));
-                    }
-                    if ui.button("Dismiss").clicked() {
-                        dismiss_moe = true;
-                    }
-                });
-                ui.add_space(layout::GAP);
-            }
-            if dismiss_moe {
-                self.moe_result = None;
-            }
+                    ui.add_space(layout::GAP);
+                }
 
-            // Sprite QC panel — takes over the main area when active
-            if self.sprite_qc.is_some() {
-                theme::f323().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Dir:").color(colors::MUTED));
-                        ui.text_edit_singleline(&mut self.sprite_qc_path);
-                        if ui.button("Rescan").clicked() {
-                            let p = std::path::Path::new(&self.sprite_qc_path);
-                            if p.is_dir() {
-                                self.sprite_qc = Some(crate::sprite_qc::T213::scan(p));
+                // ── MoE results inline in chat ──
+                if let Some(result) = self.moe_result.clone() {
+                    theme::f321().show(ui, |ui| {
+                        ui.label(egui::RichText::new("MoE Results").color(colors::SECONDARY).strong());
+                        ui.add_space(layout::PADDING_SM);
+                        egui::Grid::new("moe_grid").striped(true).show(ui, |ui| {
+                            ui.label(egui::RichText::new("Node").color(colors::MUTED).strong());
+                            ui.label(egui::RichText::new("Compile").color(colors::MUTED).strong());
+                            ui.label(egui::RichText::new("Clippy").color(colors::MUTED).strong());
+                            ui.label(egui::RichText::new("Tests").color(colors::MUTED).strong());
+                            ui.label(egui::RichText::new("Score").color(colors::MUTED).strong());
+                            ui.end_row();
+                            for v in &result.variants {
+                                let is_winner = result.winner.as_ref().map(|w| w.node_id == v.node_id).unwrap_or(false);
+                                let nc = if is_winner { colors::TERTIARY } else { colors::TEXT };
+                                ui.label(egui::RichText::new(&v.node_id).color(nc));
+                                ui.label(if v.compile_ok { "ok" } else { "FAIL" });
+                                ui.label(if v.clippy_ok { "ok" } else { "FAIL" });
+                                ui.label(if v.tests_ok { "ok" } else { "FAIL" });
+                                ui.label(egui::RichText::new(format!("{}", v.total_score)).color(nc));
+                                ui.end_row();
                             }
+                        });
+                        if let Some(ref w) = result.winner {
+                            ui.add_space(layout::PADDING_SM);
+                            ui.label(egui::RichText::new(format!("Winner: {} (score {})", w.node_id, w.total_score)).color(colors::TERTIARY));
+                            ui.add_space(layout::PADDING_SM);
+                            egui::ScrollArea::vertical().max_height(200.0).id_salt("moe_code").show(ui, |ui| {
+                                ui.label(egui::RichText::new(&w.code).color(colors::TEXT).monospace());
+                            });
+                            ui.horizontal(|ui| {
+                                if ui.button("Copy").clicked() {
+                                    ui.ctx().output_mut(|o| o.commands.push(egui::OutputCommand::CopyText(w.code.clone())));
+                                }
+                            });
+                        } else if !result.variants.is_empty() {
+                            ui.label(egui::RichText::new("No winner — all variants failed").color(colors::SECONDARY));
                         }
                     });
                     ui.add_space(layout::GAP);
-                    let close = self.sprite_qc.as_mut().unwrap().show(ui, ctx);
-                    if close {
-                        self.sprite_qc = None;
-                    }
-                });
-                // When sprite QC is active, skip the rest of the UI
-                return;
-            }
-            if self.show_prompts {
-                theme::f323().show(ui, |ui| {
-                    egui::CollapsingHeader::new(egui::RichText::new("system.md").color(colors::PRIMARY))
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
-                                ui.label(egui::RichText::new(&self.system_prompt).color(colors::TEXT).monospace());
-                            });
-                        });
-                    egui::CollapsingHeader::new(egui::RichText::new("persona.md").color(colors::PRIMARY))
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            egui::ScrollArea::vertical().max_height(80.0).show(ui, |ui| {
-                                ui.label(egui::RichText::new(&self.persona).color(colors::TEXT).monospace());
-                            });
-                        });
-                });
-                ui.add_space(layout::GAP);
-            }
-            theme::f322().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Chat").color(colors::PRIMARY).strong());
-                let mut send = false;
-                ui.text_edit_singleline(&mut self.input);
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.input.is_empty() {
-                    send = true;
                 }
-                if ui.button("Send").clicked() && !self.input.is_empty() {
+            });
+
+            // ════════════════════════════════════════════════════════════
+            // ZONE 3: Prompt (bottom, always visible)
+            // ════════════════════════════════════════════════════════════
+            ui.add_space(layout::GAP);
+            ui.horizontal(|ui| {
+                let mut send = false;
+                let input_resp = ui.add_sized(
+                    [ui.available_width() - 60.0, input_height],
+                    egui::TextEdit::singleline(&mut self.input).hint_text("Ask Kova..."),
+                );
+                if input_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.input.is_empty() {
+                    send = true;
+                    input_resp.request_focus();
+                }
+                if ui.add_sized([55.0, input_height], egui::Button::new("Send")).clicked() && !self.input.is_empty() {
                     send = true;
                 }
                 if send {
@@ -1058,15 +1063,43 @@ impl eframe::App for KovaApp {
                                         content: "Thinking...".into(),
                                     });
                                 } else if !self.cluster_online {
-                                    #[cfg(feature = "inference")]
-                                    let fallback = "No local model. Run: kova model install";
-                                    #[cfg(not(feature = "inference"))]
-                                    let fallback = "Cluster offline. Set URL in Cluster panel.";
-                                    self.messages.push(crate::Message {
-                                        role: "assistant".into(),
-                                        content: fallback.into(),
-                                    });
-                                    self.persist("assistant", fallback);
+                                    // Try mobile-llm (bundled GGUF) if available
+                                    #[cfg(feature = "mobile-llm")]
+                                    {
+                                        if let Some(model_path) = crate::mobile_llm::find_model() {
+                                            let system = self.system_prompt.clone();
+                                            let user_msg = msg.clone();
+                                            let (tx, rx) = mpsc::channel();
+                                            self.remote_chat_receiver = Some(rx);
+                                            std::thread::spawn(move || {
+                                                match crate::mobile_llm::generate(&model_path, &system, &user_msg) {
+                                                    Ok(resp) => { let _ = tx.send(resp); }
+                                                    Err(e) => { let _ = tx.send(format!("Error: {}", e)); }
+                                                }
+                                            });
+                                            self.messages.push(crate::Message {
+                                                role: "assistant".into(),
+                                                content: "Thinking (local)...".into(),
+                                            });
+                                        } else {
+                                            self.messages.push(crate::Message {
+                                                role: "assistant".into(),
+                                                content: "Offline. No bundled model found in ~/.kova/models/".into(),
+                                            });
+                                        }
+                                    }
+                                    #[cfg(not(feature = "mobile-llm"))]
+                                    {
+                                        #[cfg(feature = "inference")]
+                                        let fallback = "No local model. Run: kova model install";
+                                        #[cfg(not(feature = "inference"))]
+                                        let fallback = "Cluster offline. No inference available.";
+                                        self.messages.push(crate::Message {
+                                            role: "assistant".into(),
+                                            content: fallback.into(),
+                                        });
+                                        self.persist("assistant", fallback);
+                                    }
                                 }
                             }
                             }
@@ -1074,104 +1107,6 @@ impl eframe::App for KovaApp {
                         }
                         }
                     }
-                }
-            });
-            });
-            ui.add_space(layout::GAP);
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for (i, m) in self.messages.iter().enumerate() {
-                    let (prefix, color) = if m.role == "user" {
-                        ("You", colors::PRIMARY)
-                    } else {
-                        ("Assistant", colors::SECONDARY)
-                    };
-                    theme::f321().show(ui, |ui| {
-                    ui.label(egui::RichText::new(prefix).color(color).strong());
-                    let content = {
-                        #[cfg(feature = "inference")]
-                        let (llm_waiting, router_waiting) =
-                            (self.llm_receiver.is_some(), self.router_receiver.is_some());
-                        #[cfg(not(feature = "inference"))]
-                        let (llm_waiting, router_waiting) = (false, false);
-                        if m.role == "assistant" && i == self.messages.len() - 1 {
-                            #[cfg(feature = "inference")]
-                            let pipeline_waiting = self.pipeline_receiver.is_some();
-                            #[cfg(not(feature = "inference"))]
-                            let pipeline_waiting = false;
-                            if router_waiting {
-                                "Classifying…"
-                            } else if pipeline_waiting {
-                                "Generating…"
-                            } else if m.content.is_empty() && llm_waiting {
-                                "Thinking…"
-                            } else {
-                                &m.content
-                            }
-                        } else {
-                            &m.content
-                        }
-                    };
-                    ui.add_space(layout::PADDING_SM);
-                    ui.label(egui::RichText::new(content).color(colors::TEXT).monospace());
-
-                    #[cfg(feature = "inference")]
-                    if m.role == "assistant"
-                        && let Some(code) = crate::pipeline::extract_rust_block(&m.content)
-                    {
-                            ui.add_space(layout::PADDING_SM);
-                            let user_msg = self
-                                .messages
-                                .iter()
-                                .enumerate()
-                                .rev()
-                                .find(|(j, x)| *j < i && x.role == "user")
-                                .map(|(_, x)| x.content.as_str())
-                                .unwrap_or("");
-                            let hint = crate::context_loader::f83(user_msg);
-                            let project = &self.current_project;
-                            let target = crate::output::f85(project, hint.as_deref());
-                            let current = std::fs::read_to_string(&target).unwrap_or_default();
-
-                            ui.horizontal(|ui| {
-                                if ui.button("Copy").clicked() {
-                                    ui.ctx().output_mut(|o| o.commands.push(egui::OutputCommand::CopyText(code.clone())));
-                                }
-                                if ui.button("Apply").clicked() {
-                                    let parent = target.parent().unwrap_or(project);
-                                    if let Err(e) = std::fs::create_dir_all(parent) {
-                                        self.last_applied =
-                                            Some(format!("Apply failed: {}", e));
-                                    } else if let Err(e) = std::fs::write(&target, &code) {
-                                        self.last_applied =
-                                            Some(format!("Apply failed: {}", e));
-                                    } else {
-                                        self.last_applied =
-                                            Some(format!("Applied to {}", target.display()));
-                                    }
-                                }
-                                if let Some(ref msg) = self.last_applied {
-                                    let c = if msg.starts_with("Applied") {
-                                        colors::TERTIARY
-                                    } else {
-                                        colors::SECONDARY
-                                    };
-                                    ui.label(egui::RichText::new(msg).color(c));
-                                }
-                            });
-
-                            egui::CollapsingHeader::new(format!("Show diff ({})", i))
-                                .default_open(false)
-                                .show(ui, |ui| {
-                                    let diff = crate::output::f84(&current, &code);
-                                    egui::ScrollArea::vertical()
-                                        .max_height(200.0)
-                                        .show(ui, |ui| {
-                                            ui.label(egui::RichText::new(diff).color(colors::TEXT).monospace());
-                                        });
-                                });
-                    }
-                    });
-                    ui.add_space(layout::GAP);
                 }
             });
         });
