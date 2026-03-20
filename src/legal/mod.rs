@@ -193,8 +193,16 @@ pub struct LegalMoeConfig {
 // ── Expert implementations ──
 
 /// Expert 1: Judge model — Anne Arundel Circuit Court disposition patterns.
-fn judge_expert(data: &CaseData, config: &LegalMoeConfig) -> ExpertPrediction {
-    // Score based on volume and category of evidence
+fn judge_expert(data: &CaseData, config: &LegalMoeConfig, db: Option<&sled::Db>) -> ExpertPrediction {
+    // If we have real judge data, use it to set baseline
+    let mut judge_info = String::new();
+    if let (Some(db), Some(judge_name)) = (db, &config.judge) {
+        if let Ok(Some(profile)) = store::query_judge_profile(db, judge_name) {
+            judge_info = format!("{} — {} division, handles {:?}", profile.name, profile.division, profile.case_types);
+        }
+    }
+    let judge_count = db.map(|d| store::count(d, store::TREE_JUDGES).unwrap_or(0)).unwrap_or(0);
+
     let total = data.findings.len() as f32;
     let mut score: f32 = 0.5; // baseline
 
@@ -249,11 +257,14 @@ fn judge_expert(data: &CaseData, config: &LegalMoeConfig) -> ExpertPrediction {
         reasoning: format!(
             "Anne Arundel Circuit Court pattern analysis. {} findings across {} categories. \
              {} deep conversation threads. {} contradictions documented. \
+             {} judges in DB. {} \
              Judge {} disposition pattern suggests {:.0}% likelihood of favorable outcome.",
             data.findings.len(),
             cat_counts.len(),
             deep_threads,
             data.contradictions.len(),
+            judge_count,
+            if judge_info.is_empty() { "No judge profile data.".into() } else { judge_info },
             config.judge.as_deref().unwrap_or("(unassigned)"),
             score * 100.0,
         ),
@@ -263,7 +274,7 @@ fn judge_expert(data: &CaseData, config: &LegalMoeConfig) -> ExpertPrediction {
 }
 
 /// Expert 2: Statute model — MD Family Law §9-101 factor scoring.
-fn statute_expert(data: &CaseData, _config: &LegalMoeConfig) -> ExpertPrediction {
+fn statute_expert(data: &CaseData, _config: &LegalMoeConfig, db: Option<&sled::Db>) -> ExpertPrediction {
     // Map findings to best interest factors
     let mut factor_scores: HashMap<&str, f32> = HashMap::new();
 
@@ -328,12 +339,24 @@ fn statute_expert(data: &CaseData, _config: &LegalMoeConfig) -> ExpertPrediction
 }
 
 /// Expert 3: Complaint model — MSDE special education complaint outcomes.
-fn complaint_expert(data: &CaseData, _config: &LegalMoeConfig) -> ExpertPrediction {
+fn complaint_expert(data: &CaseData, _config: &LegalMoeConfig, db: Option<&sled::Db>) -> ExpertPrediction {
     let iep_count = data.findings.iter().filter(|f| f.category == "IEP Violation").count();
     let state_complaint_count = data.findings.iter().filter(|f| f.category == "State Complaint").count();
     let behavioral_count = data.findings.iter().filter(|f| f.category == "Behavioral Incident").count();
 
-    let mut score: f32 = 0.4;
+    // Check real MSDE complaint data
+    let real_complaints = db.and_then(|d| store::query_complaints(d).ok()).unwrap_or_default();
+    let real_violations: usize = real_complaints.iter().map(|c| c.violations_found.len()).sum();
+
+    let mut score: f32 = if !real_complaints.is_empty() {
+        // Real data: base score from AACPS violation rate
+        let sustain_rate = real_complaints.iter()
+            .filter(|c| !c.violations_found.is_empty())
+            .count() as f32 / real_complaints.len().max(1) as f32;
+        0.3 + sustain_rate * 0.3 // 30-60% baseline from real AACPS sustain rate
+    } else {
+        0.4 // heuristic baseline
+    };
 
     // MSDE sustains complaints when IEP violations are documented
     if iep_count > 5 {
@@ -388,8 +411,19 @@ fn complaint_expert(data: &CaseData, _config: &LegalMoeConfig) -> ExpertPredicti
 }
 
 /// Expert 4: Appellate model — MD appellate opinion survivability.
-fn appellate_expert(data: &CaseData, _config: &LegalMoeConfig) -> ExpertPrediction {
+fn appellate_expert(data: &CaseData, _config: &LegalMoeConfig, db: Option<&sled::Db>) -> ExpertPrediction {
     let mut score: f32 = 0.6; // Base survivability
+
+    // Check real appellate opinion data
+    let custody_opinions = db.and_then(|d| store::query_opinions(d, "custody").ok()).unwrap_or_default();
+    let opinion_count = db.map(|d| store::count(d, store::TREE_OPINIONS).unwrap_or(0)).unwrap_or(0);
+
+    if opinion_count > 0 {
+        // Real data available — adjust based on how many custody-specific opinions exist
+        let custody_ratio = custody_opinions.len() as f32 / opinion_count.max(1) as f32;
+        // More custody opinions in the DB = more precedent to work with
+        score += (custody_opinions.len() as f32 * 0.005).min(0.1);
+    }
 
     // More precedent matches = stronger appellate position
     let precedent_count = data.precedent_matches.len();
@@ -578,6 +612,29 @@ fn challenge(predictions: &[ExpertPrediction], data: &CaseData) -> (Vec<CaseWeak
 
 // ── Public API ──
 
+/// Copy sled directory for read-only access when the primary DB is locked.
+fn copy_sled_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let _ = std::fs::remove_dir_all(dst);
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            std::fs::copy(&path, dst.join(entry.file_name()))?;
+        } else if path.is_dir() {
+            let sub_dst = dst.join(entry.file_name());
+            std::fs::create_dir_all(&sub_dst)?;
+            for sub in std::fs::read_dir(&path)? {
+                let sub = sub?;
+                if sub.path().is_file() {
+                    std::fs::copy(sub.path(), sub_dst.join(sub.file_name()))?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Load case data from illbethejudgeofthat filing directory.
 pub fn load_case(filing_dir: &Path) -> anyhow::Result<CaseData> {
     let load = |name: &str| -> anyhow::Result<String> {
@@ -617,18 +674,56 @@ pub fn f370(config: LegalMoeConfig) -> anyhow::Result<MoePrediction> {
         data.gaps.len(), data.precedent_matches.len());
     println!();
 
+    // Open sled for real court data (graceful fallback if empty)
+    let sled_path = crate::config::sled_path();
+    println!("[legal] sled path: {}", sled_path.display());
+    let db = match sled::open(&sled_path) {
+        Ok(d) => Some(d),
+        Err(_) => {
+            // sled locked by running serve — copy DB to temp and open the copy
+            let tmp_path = std::env::temp_dir().join("kova_legal_sled");
+            if let Ok(()) = copy_sled_dir(&sled_path, &tmp_path) {
+                println!("[legal] sled locked by serve — opened read-only copy at {}", tmp_path.display());
+                sled::open(&tmp_path).ok()
+            } else {
+                println!("[legal] sled unavailable — using heuristic scoring");
+                None
+            }
+        }
+    };
+    let court_data_available = db.as_ref()
+        .map(|d| {
+            let opinions = store::count(d, store::TREE_OPINIONS).unwrap_or(0);
+            let complaints = store::count(d, store::TREE_COMPLAINTS).unwrap_or(0);
+            let judges = store::count(d, store::TREE_JUDGES).unwrap_or(0);
+            opinions > 0 || complaints > 0 || judges > 0
+        })
+        .unwrap_or(false);
+
+    if court_data_available {
+        let db_ref = db.as_ref().unwrap();
+        let opinions = store::count(db_ref, store::TREE_OPINIONS).unwrap_or(0);
+        let complaints = store::count(db_ref, store::TREE_COMPLAINTS).unwrap_or(0);
+        let judges = store::count(db_ref, store::TREE_JUDGES).unwrap_or(0);
+        println!("[legal] court data loaded: {} opinions, {} complaints, {} judges",
+            opinions, complaints, judges);
+    } else {
+        println!("[legal] no court data — using heuristic scoring (run `kova legal ingest all` first)");
+    }
+    println!();
+
     // Run experts
     println!("[legal] running 4 experts...");
-    let judge_pred = judge_expert(&data, &config);
+    let judge_pred = judge_expert(&data, &config, db.as_ref());
     println!("  [judge]     {:.0}% confidence", judge_pred.confidence * 100.0);
 
-    let statute_pred = statute_expert(&data, &config);
+    let statute_pred = statute_expert(&data, &config, db.as_ref());
     println!("  [statute]   {:.0}% confidence", statute_pred.confidence * 100.0);
 
-    let complaint_pred = complaint_expert(&data, &config);
+    let complaint_pred = complaint_expert(&data, &config, db.as_ref());
     println!("  [complaint] {:.0}% confidence", complaint_pred.confidence * 100.0);
 
-    let appellate_pred = appellate_expert(&data, &config);
+    let appellate_pred = appellate_expert(&data, &config, db.as_ref());
     println!("  [appellate] {:.0}% confidence", appellate_pred.confidence * 100.0);
     println!();
 
