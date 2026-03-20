@@ -3,7 +3,7 @@
 
 [package]
 name = "kova"
-version = "0.4.0"
+version = "0.7.0"
 edition = "2024"
 description = "Kova — augment engine. Web GUI (Rust/WASM) + serve API. No JavaScript."
 
