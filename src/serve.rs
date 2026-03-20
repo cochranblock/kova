@@ -1348,3 +1348,4 @@ pub async fn run_with_open(addr: SocketAddr, url: &str) -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
     Ok(())
 }
+
