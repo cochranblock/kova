@@ -14,6 +14,17 @@ const INDEX_PATTERN: &str = "/programs/Pages/Special-Education/FSDR/ComplaintLet
 // Fiscal years to scrape
 const FISCAL_YEARS: &[&str] = &["2022", "2023", "2024", "2025"];
 
+// Known AACPS complaint PDF URLs (discovered from web search, verified accessible)
+const KNOWN_AACPS_PDFS: &[(&str, &str)] = &[
+    ("25-105AACPS-A", "/programs/Documents/Special-Ed/FSDR/ComplaintLetters/2025/2/25-105AACPS-A.pdf"),
+    ("24-247AACPS-A", "/programs/Documents/Special-Ed/FSDR/ComplaintLetters/2024/4/24-247AACPS-A.pdf"),
+    ("24-210AACPS-A", "/programs/Documents/Special-Ed/FSDR/ComplaintLetters/2024/4/24-210AACPS-A.pdf"),
+    ("23-267AACPS", "/programs/Documents/Special-Ed/FSDR/ComplaintLetters/2023/4/23-267AACPS.pdf"),
+    ("23-253AACPS", "/programs/Documents/Special-Ed/FSDR/ComplaintLetters/2023/4/23-253AACPS.pdf"),
+    ("13-100AACPS2", "/msde/divisions/earlyinterv/complaint_investigation/complaint_letters/2013/docs_4/13-100%20AACPS2.pdf"),
+    ("12-033AACPS", "/msde/divisions/earlyinterv/complaint_investigation/complaint_letters/2012/docs/12033AACPS.pdf"),
+];
+
 /// Ingest MSDE complaint letters for AACPS.
 pub fn ingest(db: &sled::Db) -> anyhow::Result<u64> {
     let client = reqwest::blocking::Client::builder()
@@ -95,6 +106,50 @@ pub fn ingest(db: &sled::Db) -> anyhow::Result<u64> {
                 corrective_actions,
                 full_text,
                 pdf_url: pdf_url.clone(),
+            };
+
+            store::put(db, store::TREE_COMPLAINTS, &key, &letter)?;
+            total += 1;
+            println!("  [complaints] ingested {}", complaint_id);
+        }
+    }
+
+    // Fallback: download known AACPS complaint PDFs directly
+    if total == 0 {
+        println!("  [complaints] index scrape found 0 — using {} known AACPS PDFs", KNOWN_AACPS_PDFS.len());
+        for (complaint_id, path) in KNOWN_AACPS_PDFS {
+            let key = format!("AACPS:{}", complaint_id);
+            if store::get::<ComplaintLetter>(db, store::TREE_COMPLAINTS, &key)?.is_some() {
+                continue;
+            }
+
+            let url = if path.starts_with("/msde/") {
+                format!("https://archives.marylandpublicschools.org{}", path)
+            } else {
+                format!("{}{}", BASE_URL, path)
+            };
+
+            let pdf_bytes = match client.get(&url).send() {
+                Ok(resp) if resp.status().is_success() => resp.bytes()?.to_vec(),
+                _ => {
+                    println!("  [complaints] failed: {}", complaint_id);
+                    continue;
+                }
+            };
+
+            let full_text = extract_pdf_text(&pdf_bytes);
+            let violations = extract_violations(&full_text);
+            let corrective_actions = extract_corrective_actions(&full_text);
+
+            let letter = ComplaintLetter {
+                complaint_id: complaint_id.to_string(),
+                fiscal_year: format!("20{}", &complaint_id[..2]),
+                school_system: "AACPS".into(),
+                filing_date: String::new(),
+                violations_found: violations,
+                corrective_actions,
+                full_text,
+                pdf_url: url,
             };
 
             store::put(db, store::TREE_COMPLAINTS, &key, &letter)?;
