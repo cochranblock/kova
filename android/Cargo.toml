@@ -16,7 +16,7 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-kova = { path = "..", features = ["gui"], default-features = false }
+kova = { path = "..", features = ["gui", "mobile-llm"], default-features = false }
 log = "0.4"
 android_logger = "0.14"
 android-activity = { version = "0.6", features = ["native-activity"] }
