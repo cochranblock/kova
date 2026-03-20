@@ -202,6 +202,26 @@ pub struct KovaApp {
     remote_chat_receiver: Option<std::sync::mpsc::Receiver<String>>,
     /// Startup cluster check receiver (non-blocking).
     cluster_check_rx: Option<std::sync::mpsc::Receiver<bool>>,
+    // ── Onboarding ──
+    /// First-run: show setup flow instead of main UI.
+    onboarding: OnboardingState,
+    /// Editable cluster URL during onboarding.
+    onboarding_url: String,
+    /// Onboarding cluster test result.
+    onboarding_test_rx: Option<std::sync::mpsc::Receiver<bool>>,
+    onboarding_test_result: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OnboardingState {
+    /// First-run: show welcome.
+    Welcome,
+    /// User chose "Connect" — entering URL.
+    ConnectSetup,
+    /// Testing connection.
+    ConnectTesting,
+    /// Setup complete — show main UI.
+    Done,
 }
 
 impl DemoRecording {
@@ -312,6 +332,7 @@ impl KovaApp {
         } else {
             None
         };
+        let has_history = !messages.is_empty();
         Self {
             input: String::new(),
             messages,
@@ -361,6 +382,18 @@ impl KovaApp {
                 });
                 Some(rx)
             },
+            onboarding: {
+                let url = load_cluster_url();
+                let has_custom_url = !url.contains("127.0.0.1:3002") && !url.is_empty();
+                if has_history || has_custom_url {
+                    OnboardingState::Done
+                } else {
+                    OnboardingState::Welcome
+                }
+            },
+            onboarding_url: load_cluster_url(),
+            onboarding_test_rx: None,
+            onboarding_test_result: None,
         }
     }
 
@@ -629,6 +662,125 @@ impl eframe::App for KovaApp {
             };
         }
 
+        // ── Onboarding test result polling ──
+        if let Some(rx) = &self.onboarding_test_rx {
+            if let Ok(result) = rx.try_recv() {
+                self.onboarding_test_result = Some(result);
+                self.cluster_online = result;
+                if result {
+                    self.cluster_url = self.onboarding_url.clone();
+                }
+                self.onboarding_test_rx = None;
+                if result {
+                    self.onboarding = OnboardingState::Done;
+                    self.messages.push(crate::Message {
+                        role: "assistant".into(),
+                        content: format!("Connected to cluster at {}. MoE, chat, and code generation ready. What do you want to build?", self.onboarding_url),
+                    });
+                } else {
+                    self.onboarding = OnboardingState::ConnectSetup;
+                }
+                ctx.request_repaint();
+            }
+        }
+        if self.onboarding_test_rx.is_some() {
+            ctx.request_repaint();
+        }
+
+        // ── Onboarding screens (shown instead of main UI) ──
+        if self.onboarding != OnboardingState::Done {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::default().fill(colors::BG).inner_margin(egui::Margin::same(layout::MARGIN_I8)))
+                .show(ctx, |ui| {
+                ui.add_space(60.0);
+                ui.vertical_centered(|ui| {
+                    match self.onboarding {
+                        OnboardingState::Welcome => {
+                            ui.label(egui::RichText::new("Kova").color(colors::PRIMARY).size(36.0).strong());
+                            ui.add_space(8.0);
+                            ui.label(egui::RichText::new("augment engine").color(colors::MUTED).size(16.0));
+                            ui.add_space(32.0);
+                            ui.label(egui::RichText::new("Human direction. AI execution.").color(colors::TEXT).size(14.0));
+                            ui.add_space(40.0);
+
+                            if ui.add(egui::Button::new(
+                                egui::RichText::new("Connect to Cluster").color(colors::BG).size(16.0),
+                            ).fill(colors::PRIMARY).min_size(egui::vec2(220.0, 44.0))).clicked() {
+                                self.onboarding = OnboardingState::ConnectSetup;
+                            }
+
+                            ui.add_space(16.0);
+
+                            if ui.add(egui::Button::new(
+                                egui::RichText::new("Use Offline").color(colors::TEXT).size(14.0),
+                            ).fill(colors::BG).min_size(egui::vec2(220.0, 36.0))).clicked() {
+                                self.onboarding = OnboardingState::Done;
+                                self.messages.push(crate::Message {
+                                    role: "assistant".into(),
+                                    content: "Offline mode. Drop a Qwen2.5 model (safetensors) in ~/.kova/models/ for local inference, or connect to a cluster later via config.".into(),
+                                });
+                            }
+
+                            ui.add_space(40.0);
+                            ui.label(egui::RichText::new("Kova connects to your IRONHIVE cluster for MoE code generation, or runs on-device with a bundled model.").color(colors::MUTED).size(11.0));
+                        }
+                        OnboardingState::ConnectSetup => {
+                            ui.label(egui::RichText::new("Connect to Cluster").color(colors::PRIMARY).size(24.0).strong());
+                            ui.add_space(24.0);
+                            ui.label(egui::RichText::new("Enter your kova serve URL:").color(colors::TEXT).size(14.0));
+                            ui.add_space(12.0);
+
+                            let te = egui::TextEdit::singleline(&mut self.onboarding_url)
+                                .desired_width(280.0)
+                                .hint_text("http://192.168.1.44:3002");
+                            ui.add(te);
+
+                            ui.add_space(20.0);
+
+                            if let Some(false) = self.onboarding_test_result {
+                                ui.label(egui::RichText::new("Connection failed. Check URL and try again.").color(colors::SECONDARY));
+                                ui.add_space(8.0);
+                            }
+
+                            ui.horizontal(|ui| {
+                                if ui.add(egui::Button::new(
+                                    egui::RichText::new("Test Connection").color(colors::BG).size(14.0),
+                                ).fill(colors::PRIMARY).min_size(egui::vec2(160.0, 40.0))).clicked()
+                                    && self.onboarding_test_rx.is_none()
+                                {
+                                    let url = self.onboarding_url.clone();
+                                    let (tx, rx) = mpsc::channel();
+                                    self.onboarding_test_rx = Some(rx);
+                                    self.onboarding_test_result = None;
+                                    self.onboarding = OnboardingState::ConnectTesting;
+                                    std::thread::spawn(move || {
+                                        let _ = tx.send(check_cluster(&url));
+                                    });
+                                }
+
+                                ui.add_space(12.0);
+
+                                if ui.add(egui::Button::new(
+                                    egui::RichText::new("Skip").color(colors::MUTED).size(12.0),
+                                ).fill(colors::BG)).clicked() {
+                                    self.onboarding = OnboardingState::Done;
+                                }
+                            });
+                        }
+                        OnboardingState::ConnectTesting => {
+                            ui.label(egui::RichText::new("Testing connection...").color(colors::PRIMARY).size(18.0));
+                            ui.add_space(16.0);
+                            ui.label(egui::RichText::new(&self.onboarding_url).color(colors::MUTED));
+                            ui.add_space(8.0);
+                            ui.spinner();
+                        }
+                        OnboardingState::Done => {} // unreachable
+                    }
+                });
+            });
+            return;
+        }
+
         egui::CentralPanel::default()
             .frame(egui::Frame::default().fill(colors::BG).inner_margin(egui::Margin::same(layout::MARGIN_I8)))
             .show(ctx, |ui| {
@@ -724,6 +876,31 @@ impl eframe::App for KovaApp {
                 .max_height(available.max(80.0))
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
+                // Empty state: show quick-start suggestions
+                if self.messages.is_empty() {
+                    ui.add_space(20.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new("At your service.").color(colors::PRIMARY).size(18.0));
+                        ui.add_space(12.0);
+                        ui.label(egui::RichText::new("Try:").color(colors::MUTED).size(13.0));
+                        ui.add_space(8.0);
+                        let suggestions = [
+                            "build cochranblock",
+                            "deploy to gd",
+                            "generate with moe",
+                            "train specialists",
+                            "check cluster status",
+                        ];
+                        for s in &suggestions {
+                            if ui.add(egui::Button::new(
+                                egui::RichText::new(*s).color(colors::TEXT).size(13.0),
+                            ).fill(egui::Color32::from_rgb(40, 40, 50)).min_size(egui::vec2(200.0, 32.0))).clicked() {
+                                self.input = s.to_string();
+                            }
+                        }
+                    });
+                    ui.add_space(20.0);
+                }
                 for (i, m) in self.messages.iter().enumerate() {
                     let (prefix, color) = if m.role == "user" {
                         ("You", colors::PRIMARY)
