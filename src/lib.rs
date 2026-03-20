@@ -90,6 +90,7 @@ pub mod factory;
 pub mod gauntlet;
 pub mod git_cmd;
 pub mod inspect;
+pub mod legal;
 #[cfg(feature = "inference")]
 pub mod micro;
 #[cfg(feature = "inference")]

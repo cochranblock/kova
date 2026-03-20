@@ -69,6 +69,9 @@ enum Cmd {
     #[cfg(feature = "inference")]
     #[command(name = "micro")]
     Micro(MicroArgs),
+    /// Legal MoE. Pro se case analysis — 4 experts challenge expected outcome.
+    #[command(name = "legal")]
+    Legal(LegalArgs),
     /// RAG: index code, search semantically, retrieve context for LLM.
     #[command(name = "rag")]
     Rag(RagArgs),
@@ -441,6 +444,25 @@ struct MoeArgs {
     /// Save winning expert to ~/.kova/experts/.
     #[arg(long)]
     save: bool,
+}
+
+#[derive(clap::Args)]
+struct LegalArgs {
+    /// Filing directory from illbethejudgeofthat (default: ./filing).
+    #[arg(short, long, default_value = "./filing")]
+    filing: std::path::PathBuf,
+    /// Expected outcome to challenge (e.g., "custody modification granted").
+    #[arg(short, long, default_value = "custody modification granted")]
+    expected: String,
+    /// County jurisdiction.
+    #[arg(long, default_value = "Anne Arundel")]
+    county: String,
+    /// State jurisdiction.
+    #[arg(long, default_value = "MD")]
+    state: String,
+    /// Assigned judge name (if known).
+    #[arg(long)]
+    judge: Option<String>,
 }
 
 #[cfg(feature = "inference")]
@@ -1395,6 +1417,22 @@ fn main() -> anyhow::Result<()> {
 
     // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
     match &args.cmd {
+        Some(Cmd::Legal(_)) => {
+            return match args.cmd.unwrap() {
+                Cmd::Legal(a) => {
+                    let config = kova::legal::LegalMoeConfig {
+                        filing_dir: a.filing,
+                        expected_outcome: a.expected,
+                        county: a.county,
+                        state: a.state,
+                        judge: a.judge,
+                    };
+                    kova::legal::f370(config)?;
+                    Ok(())
+                }
+                _ => unreachable!(),
+            };
+        }
         #[cfg(feature = "inference")]
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
@@ -1632,6 +1670,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Some(Cmd::Legal(_)) => unreachable!("handled before tokio"),
         #[cfg(feature = "inference")]
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
