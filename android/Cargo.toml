@@ -16,9 +16,8 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-# mobile-llm temporarily disabled: llama.cpp needs Android API 30+ for POSIX madvise.
-# Re-enable once min_sdk_version bumped to 30 or llama-cpp-sys patches bionic compat.
-kova = { path = "..", features = ["gui"], default-features = false }
+# mobile-llm: candle + safetensors. Pure Rust, no C deps, cross-compiles to Android.
+kova = { path = "..", features = ["gui", "mobile-llm"], default-features = false }
 log = "0.4"
 android_logger = "0.14"
 android-activity = { version = "0.6", features = ["native-activity"] }
