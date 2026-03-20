@@ -10,7 +10,7 @@ description = "Kova — augment engine. Web GUI (Rust/WASM) + serve API. No Java
 [features]
 default = ["serve", "inference", "rag", "tui"]
 serve = ["dep:axum", "dep:futures-util", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:similar"]
-gui = ["dep:eframe", "dep:egui", "dep:similar", "dep:image"]
+gui = ["dep:eframe", "dep:egui", "dep:similar", "dep:image", "dep:base64"]
 tui = ["dep:ratatui", "dep:crossterm"]
 inference = ["dep:kalosm", "dep:kalosm-sample", "dep:lru"]
 autopilot = ["dep:enigo"]
@@ -39,6 +39,7 @@ crossterm = { version = "0.28", optional = true }
 eframe = { version = "0.33", optional = true }
 egui = { version = "0.33", optional = true }
 image = { version = "0.25", optional = true }
+base64 = { version = "0.22", optional = true }
 axum = { version = "0.7", features = ["json", "macros", "ws"], optional = true }
 futures-util = { version = "0.3", optional = true }
 tower = { version = "0.4", features = ["util"], optional = true }

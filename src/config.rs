@@ -30,7 +30,33 @@ struct ConfigFile {
     inference: InferenceSection,
     #[serde(default)]
     hive: HiveSection,
+    #[serde(default)]
+    offload: OffloadSection,
 }
+
+#[derive(serde::Deserialize)]
+struct OffloadSection {
+    #[serde(default = "default_offload_threshold")]
+    threshold_percent: u8,
+    #[serde(default = "default_offload_node")]
+    target_node: String,
+    #[serde(default = "default_offload_archive")]
+    archive_base: String,
+}
+
+impl Default for OffloadSection {
+    fn default() -> Self {
+        Self {
+            threshold_percent: default_offload_threshold(),
+            target_node: default_offload_node(),
+            archive_base: default_offload_archive(),
+        }
+    }
+}
+
+fn default_offload_threshold() -> u8 { 90 }
+fn default_offload_node() -> String { "bt".to_string() }
+fn default_offload_archive() -> String { "/mnt/hive/archive".to_string() }
 
 #[derive(serde::Deserialize, Default)]
 struct HiveSection {
@@ -311,6 +337,11 @@ pub fn f219() -> String {
         .hive
         .shared_base
         .unwrap_or_else(|| "/mnt/hive".to_string())
+}
+
+/// Offload disk threshold percentage.
+pub fn offload_threshold() -> u8 {
+    load_config().offload.threshold_percent
 }
 
 /// f99=prompts_dir. ~/.kova/prompts.
@@ -665,6 +696,20 @@ You are a Senior Systems Architect. Execute my intent. Direct, precise, efficien
 pub fn f110(name: &str) -> String {
     let path = f99().join(format!("{}.md", name));
     std::fs::read_to_string(&path).unwrap_or_default()
+}
+
+/// Offload target node. Env KOVA_OFFLOAD_NODE > config > default (bt).
+pub fn offload_target_node() -> String {
+    std::env::var("KOVA_OFFLOAD_NODE")
+        .ok()
+        .unwrap_or_else(|| load_config().offload.target_node)
+}
+
+/// Offload archive base path. Env KOVA_OFFLOAD_BASE > config > default.
+pub fn offload_archive_base() -> String {
+    std::env::var("KOVA_OFFLOAD_BASE")
+        .ok()
+        .unwrap_or_else(|| load_config().offload.archive_base)
 }
 
 #[cfg(test)]

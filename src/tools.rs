@@ -266,6 +266,36 @@ pub static TOOLS: &[t101] = &[
             },
         ],
     },
+    t101 {
+        name: "pixel_forge",
+        description: "Generate pixel art sprites via Pixel Forge. Auto-detects GPU, picks best model. Returns JSON with base64 PNGs.",
+        params: &[
+            t102 {
+                name: "class",
+                param_type: "string",
+                required: false,
+                description: "Sprite class: character, weapon, potion, terrain, enemy, tree, building, animal, effect, food, armor, tool, vehicle, ui, misc. Default: character.",
+            },
+            t102 {
+                name: "count",
+                param_type: "number",
+                required: false,
+                description: "Number of sprites to generate. Default: 4.",
+            },
+            t102 {
+                name: "palette",
+                param_type: "string",
+                required: false,
+                description: "Color palette: stardew, starbound, snes, nes, gameboy, pico8, endesga. Default: stardew.",
+            },
+            t102 {
+                name: "cmd",
+                param_type: "string",
+                required: false,
+                description: "Plugin command: generate, probe, models, classes, palettes, version. Default: generate.",
+            },
+        ],
+    },
 ];
 
 // ── Tool Call Parsing (f140) ─────────────────────────────
@@ -430,6 +460,7 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
         },
         #[cfg(feature = "rag")]
         "rag_search" => f166(call),
+        "pixel_forge" => f220(call),
         _ => t104 {
             tool: call.tool.clone(),
             success: false,
@@ -1002,6 +1033,134 @@ pub fn f149() -> String {
         out.push('\n');
     }
     out
+}
+
+// ── f220: pixel_forge ──────────────────────────────────
+
+/// f220=pixel_forge tool. Discovers pixel-forge binary, sends plugin request.
+fn f220(call: &t103) -> t104 {
+    let cmd = call.args.get("cmd").map(|s| s.as_str()).unwrap_or("generate");
+
+    // Discover binary
+    let bin = find_pixel_forge();
+    let bin = match bin {
+        Some(b) => b,
+        None => return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: "pixel-forge binary not found. Build with: cargo build -p pixel-forge --release".into(),
+        },
+    };
+
+    // Build request
+    let args = match cmd {
+        "generate" => {
+            let class = call.args.get("class").map(|s| s.as_str()).unwrap_or("character");
+            let count = call.args.get("count")
+                .and_then(|s| s.parse::<u32>().ok()).unwrap_or(4);
+            let palette = call.args.get("palette").map(|s| s.as_str()).unwrap_or("stardew");
+            serde_json::json!({
+                "class": class,
+                "count": count,
+                "steps": 40,
+                "palette": palette,
+            })
+        }
+        _ => serde_json::Value::Null,
+    };
+
+    let request = serde_json::json!({
+        "cmd": cmd,
+        "args": args,
+    });
+
+    // Spawn plugin process
+    let mut child = match Command::new(&bin)
+        .args(["plugin"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("spawn failed: {e}"),
+        },
+    };
+
+    // Send request
+    if let Some(ref mut stdin) = child.stdin {
+        use std::io::Write;
+        let _ = writeln!(stdin, "{}", serde_json::to_string(&request).unwrap());
+    }
+    drop(child.stdin.take());
+
+    // Read response
+    let output = match child.wait_with_output() {
+        Ok(o) => o,
+        Err(e) => return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("wait failed: {e}"),
+        },
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let resp: serde_json::Value = match serde_json::from_str(stdout.trim()) {
+        Ok(v) => v,
+        Err(e) => return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("parse error: {e}\nraw: {}", stdout.trim()),
+        },
+    };
+
+    let ok = resp.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    if ok {
+        t104 {
+            tool: call.tool.clone(),
+            success: true,
+            output: serde_json::to_string_pretty(&resp.get("data").unwrap_or(&serde_json::Value::Null))
+                .unwrap_or_default(),
+        }
+    } else {
+        let err = resp.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
+        t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: err.to_string(),
+        }
+    }
+}
+
+/// Discover pixel-forge binary on disk.
+fn find_pixel_forge() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let candidates = [
+        home.join("target/release/pixel-forge"),
+        home.join("target/debug/pixel-forge"),
+        home.join("bin/pixel-forge"),
+        home.join(".cargo/bin/pixel-forge"),
+        home.join("pixel-forge/target/release/pixel-forge"),
+        home.join("pixel-forge/target/debug/pixel-forge"),
+    ];
+    for c in &candidates {
+        if c.exists() {
+            return Some(c.clone());
+        }
+    }
+    // Try which
+    if let Ok(output) = Command::new("which").arg("pixel-forge").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

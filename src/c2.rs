@@ -751,3 +751,168 @@ pub fn f358(
     eprintln!("[sync] Done.");
     Ok(())
 }
+
+// ── Offload: archive build artifacts to worker node, free local disk ──
+
+/// Disk usage as percentage (0-100). Uses statvfs.
+fn disk_usage_percent() -> u8 {
+    // Parse df output to get usage percentage
+    if let Ok(output) = std::process::Command::new("df").arg("-k").arg("/").output() {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if let Some(line) = text.lines().nth(1) {
+            // df -k output: Filesystem 1K-blocks Used Available Use% Mounted
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 5 {
+                if let Some(pct) = parts[4].strip_suffix('%') {
+                    if let Ok(n) = pct.parse::<u8>() {
+                        return n;
+                    }
+                }
+            }
+        }
+    }
+    50 // fallback: assume 50% if stat fails
+}
+
+/// Find all target/ dirs under workspace root.
+fn find_target_dirs() -> Vec<(String, PathBuf)> {
+    let root = kova_root();
+    let mut targets = Vec::new();
+
+    for crate_name in WORKSPACE_CRATES {
+        let target = root.join(crate_name).join("target");
+        if target.is_dir() {
+            targets.push((crate_name.to_string(), target));
+        }
+    }
+
+    // Also check android/target inside kova
+    let android_target = root.join("kova").join("android").join("target");
+    if android_target.is_dir() {
+        targets.push(("kova-android".to_string(), android_target));
+    }
+
+    // Root workspace target
+    let root_target = root.join("target");
+    if root_target.is_dir() {
+        targets.push(("workspace".to_string(), root_target));
+    }
+
+    targets
+}
+
+/// Get dir size in bytes (recursive).
+fn dir_size(path: &Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                total += dir_size(&p);
+            } else if let Ok(meta) = p.metadata() {
+                total += meta.len();
+            }
+        }
+    }
+    total
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.1}G", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.0}M", bytes as f64 / 1_048_576.0)
+    } else {
+        format!("{}K", bytes / 1024)
+    }
+}
+
+/// f360=offload. Archive build artifacts to worker node, clean local.
+pub fn f360(
+    dry_run: bool,
+    threshold: u8,
+    target_node: Option<String>,
+) -> anyhow::Result<()> {
+    let usage = disk_usage_percent();
+    eprintln!("[offload] disk usage: {}%", usage);
+
+    if usage < threshold && !dry_run {
+        eprintln!("[offload] below threshold ({}%), nothing to do", threshold);
+        return Ok(());
+    }
+
+    let targets = find_target_dirs();
+    if targets.is_empty() {
+        eprintln!("[offload] no target/ dirs found");
+        return Ok(());
+    }
+
+    let node = target_node.unwrap_or_else(|| {
+        crate::config::offload_target_node()
+    });
+    let archive_base = crate::config::offload_archive_base();
+
+    let mut total_size = 0u64;
+    eprintln!("\n{:<20} {:<10} Path", "Crate", "Size");
+    eprintln!("{}", "─".repeat(60));
+    for (name, path) in &targets {
+        let size = dir_size(path);
+        total_size += size;
+        eprintln!("{:<20} {:<10} {}", name, format_size(size), path.display());
+    }
+    eprintln!("{}", "─".repeat(60));
+    eprintln!("{:<20} {}", "Total", format_size(total_size));
+
+    if dry_run {
+        eprintln!("\n[offload] --dry-run: would sync to {} and clean {} of artifacts", node, format_size(total_size));
+        return Ok(());
+    }
+
+    // Sync each target dir to archive on worker node
+    eprintln!("\n[offload] syncing to {}:{}/ ...", node, archive_base);
+
+    for (name, path) in &targets {
+        let remote_dir = format!("{}:{}/{}/", node, archive_base, name);
+        eprintln!("[offload] {} → {}", name, remote_dir);
+
+        // Ensure remote dir exists
+        let mkdir = Command::new("ssh")
+            .args(["-o", "ConnectTimeout=5", &node])
+            .arg(format!("mkdir -p {}/{}", archive_base, name))
+            .status();
+        if let Ok(s) = mkdir {
+            if !s.success() {
+                eprintln!("[offload] WARNING: cannot create dir on {}", node);
+                continue;
+            }
+        } else {
+            eprintln!("[offload] WARNING: cannot reach {}", node);
+            continue;
+        }
+
+        // Rsync
+        let status = Command::new("rsync")
+            .args(["-az", "--delete", "--exclude", ".git"])
+            .arg(format!("{}/", path.display()))
+            .arg(&remote_dir)
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {
+                // Clean local
+                eprintln!("[offload] cleaning {}", path.display());
+                let _ = std::fs::remove_dir_all(path);
+            }
+            Ok(_) => {
+                eprintln!("[offload] WARNING: rsync failed for {}, keeping local", name);
+            }
+            Err(e) => {
+                eprintln!("[offload] WARNING: rsync error for {}: {}", name, e);
+            }
+        }
+    }
+
+    let new_usage = disk_usage_percent();
+    eprintln!("\n[offload] done. disk: {}% → {}%", usage, new_usage);
+    Ok(())
+}
