@@ -610,6 +610,22 @@ enum MicroCmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Pure Rust training via candle. No Python, no MLX. Produces safetensors specialists.
+    #[cfg(feature = "mobile-llm")]
+    Forge {
+        /// Specialist name (kova-rustfix, kova-tokenizer, kova-architect, kova-reviewer, or "all").
+        #[arg(default_value = "all")]
+        name: String,
+        /// Base model directory (safetensors + tokenizer.json). Default: ~/.kova/models/ first subdir.
+        #[arg(long)]
+        base_model: Option<std::path::PathBuf>,
+        /// Training epochs.
+        #[arg(long, default_value = "3")]
+        epochs: u32,
+        /// Learning rate.
+        #[arg(long, default_value = "0.00001")]
+        lr: f64,
+    },
 }
 
 #[cfg(feature = "inference")]
@@ -1202,6 +1218,50 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 _ => anyhow::bail!("format must be sft or dpo"),
             };
             f262(fmt, iters, dry_run).map_err(anyhow::Error::msg)
+        }
+        #[cfg(feature = "mobile-llm")]
+        MicroCmd::Forge { name, base_model, epochs, lr } => {
+            use kova::micro::candle_train::{TrainConfig, train_sft, train_all_specialists};
+
+            let training_dir = kova::kova_dir().join("micro").join("training");
+            let output_dir = kova::models_dir();
+
+            // Find base model
+            let base = base_model.unwrap_or_else(|| {
+                kova::mobile_llm::find_model().unwrap_or_else(|| {
+                    eprintln!("No base model found. Provide --base-model or put safetensors in ~/.kova/models/");
+                    std::process::exit(1);
+                })
+            });
+
+            if name == "all" {
+                let results = train_all_specialists(&base, &training_dir, &output_dir)
+                    .map_err(anyhow::Error::msg)?;
+                eprintln!("[forge] trained {} specialists", results.len());
+                for r in &results {
+                    eprintln!("  {}", r.display());
+                }
+            } else {
+                // Single specialist
+                let data_file = if name.contains("fix") || name.contains("review") {
+                    "dpo_chatml.jsonl"
+                } else {
+                    "sft_chatml.jsonl"
+                };
+                let config = TrainConfig {
+                    base_model: base,
+                    data_path: training_dir.join(data_file),
+                    output_dir,
+                    name,
+                    epochs,
+                    lr,
+                    max_seq_len: 512,
+                    batch_size: 1,
+                };
+                let path = train_sft(&config).map_err(anyhow::Error::msg)?;
+                eprintln!("[forge] done: {}", path.display());
+            }
+            Ok(())
         }
     }
 }

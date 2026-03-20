@@ -29,3 +29,5 @@ pub mod tournament;
 pub mod train;
 pub mod train_harness;
 pub mod validate;
+#[cfg(feature = "mobile-llm")]
+pub mod candle_train;

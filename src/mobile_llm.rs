@@ -65,7 +65,7 @@ fn load_model(model_dir: &Path) -> Result<LoadedModel, String> {
 }
 
 /// Default config for Qwen2.5-Coder-0.5B-Instruct.
-fn qwen_05b_config() -> QwenConfig {
+pub fn qwen_05b_config() -> QwenConfig {
     QwenConfig {
         vocab_size: 151936,
         hidden_size: 896,
