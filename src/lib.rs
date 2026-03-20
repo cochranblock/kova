@@ -92,6 +92,7 @@ pub mod factory;
 #[cfg(feature = "inference")]
 pub mod gauntlet;
 pub mod git_cmd;
+pub mod gpu_sched;
 pub mod inspect;
 #[cfg(feature = "inference")]
 pub mod micro;

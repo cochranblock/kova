@@ -346,6 +346,11 @@ enum C2Cmd {
         #[arg(long)]
         target: Option<String>,
     },
+    /// GPU scheduling — lock, queue, release, drain, vram.
+    Gpu {
+        #[command(subcommand)]
+        action: GpuAction,
+    },
     /// Wake-on-LAN: power on a worker node (lf, gd, bt). st has no WoL.
     Wake {
         /// Node to wake: lf, gd, or bt.
@@ -391,6 +396,45 @@ enum SshCaCmd {
     },
     /// Init + sign all workers (lf gd bt st).
     Setup,
+}
+
+#[derive(clap::Subcommand)]
+enum GpuAction {
+    /// Acquire GPU lock on a node.
+    Lock {
+        node: String,
+        job: String,
+    },
+    /// Release GPU lock.
+    Release { node: String },
+    /// Show GPU lock/queue status.
+    Status {
+        /// Filter to specific node.
+        node: Option<String>,
+    },
+    /// Queue a job for later execution.
+    Queue {
+        node: String,
+        job: String,
+        /// Command to run when dequeued.
+        #[arg(short, long)]
+        command: String,
+        /// Priority (0=highest, default 5).
+        #[arg(short, long, default_value_t = 5)]
+        priority: u8,
+    },
+    /// Pop next queued job. --run to execute via SSH.
+    Drain {
+        node: String,
+        /// Execute the job via SSH immediately.
+        #[arg(long)]
+        run: bool,
+    },
+    /// Query live GPU VRAM usage.
+    Vram {
+        /// Specific node (default: all GPU nodes).
+        node: Option<String>,
+    },
 }
 
 #[cfg(feature = "inference")]
@@ -846,6 +890,27 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
         C2Cmd::Offload { dry_run, threshold, target } => {
             let thresh = threshold.unwrap_or_else(|| kova::config::offload_threshold());
             kova::c2::f360(dry_run, thresh, target)
+        }
+        C2Cmd::Gpu { action } => {
+            match action {
+                GpuAction::Lock { node, job } => kova::gpu_sched::acquire(&node, &job),
+                GpuAction::Release { node } => kova::gpu_sched::release(&node),
+                GpuAction::Status { node } => kova::gpu_sched::status(node.as_deref()),
+                GpuAction::Queue { node, job, command, priority } => {
+                    kova::gpu_sched::enqueue(&node, &job, &command, priority)
+                }
+                GpuAction::Drain { node, run } => {
+                    kova::gpu_sched::drain(&node, run)?;
+                    Ok(())
+                }
+                GpuAction::Vram { node } => {
+                    if let Some(n) = node {
+                        kova::gpu_sched::vram(&n)
+                    } else {
+                        kova::gpu_sched::vram_all()
+                    }
+                }
+            }
         }
         C2Cmd::Wake { node } => {
             match kova::c2::f352(&node) {
