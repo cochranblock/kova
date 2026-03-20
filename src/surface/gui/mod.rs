@@ -5,6 +5,7 @@
 
 mod gui_impl;
 pub mod pixel_forge;
+pub mod products;
 pub mod sprite_qc;
 pub mod theme;
 

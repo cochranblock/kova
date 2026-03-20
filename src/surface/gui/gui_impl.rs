@@ -67,6 +67,8 @@ struct KovaApp {
     sprite_qc_path: String,
     /// Pixel Forge panel state.
     pixel_forge: Option<super::pixel_forge::T220>,
+    /// Dynamic product hub.
+    product_hub: Option<super::products::T221>,
 }
 
 impl DemoRecording {
@@ -209,6 +211,7 @@ impl KovaApp {
             sprite_qc: None,
             sprite_qc_path: String::new(),
             pixel_forge: None,
+            product_hub: None,
         }
     }
 
@@ -473,6 +476,13 @@ impl eframe::App for KovaApp {
                         self.pixel_forge = Some(super::pixel_forge::T220::new());
                     }
                 }
+                if ui.button("Products").clicked() {
+                    if self.product_hub.is_some() {
+                        self.product_hub = None;
+                    } else {
+                        self.product_hub = Some(super::products::T221::new());
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new("~/.kova/prompts/").color(colors::MUTED).small());
                 });
@@ -544,6 +554,16 @@ impl eframe::App for KovaApp {
                     });
                 });
                 ui.add_space(layout::GAP);
+            }
+            // Product hub — takes over the main area when active
+            if self.product_hub.is_some() {
+                theme::f323().show(ui, |ui| {
+                    let close = self.product_hub.as_mut().unwrap().show(ui, ctx);
+                    if close {
+                        self.product_hub = None;
+                    }
+                });
+                return;
             }
             // Pixel Forge panel — takes over the main area when active
             if self.pixel_forge.is_some() {
