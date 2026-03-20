@@ -6,11 +6,103 @@
 
 use eframe::egui;
 #[cfg(feature = "inference")]
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
+use std::sync::mpsc;
 #[cfg(feature = "inference")]
 use tokio::sync::broadcast;
 
 use crate::theme::{self, colors, layout};
+
+// ── Remote MoE types ──────────────────────────────────────────
+
+/// MoE variant from remote /api/moe/run response.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct MoeVariant {
+    pub node_id: String,
+    pub code: String,
+    pub gen_ms: u64,
+    pub compile_ok: bool,
+    pub clippy_ok: bool,
+    pub tests_ok: bool,
+    pub total_score: u32,
+}
+
+/// MoE result from remote /api/moe/run response.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct MoeResult {
+    pub variants: Vec<MoeVariant>,
+    pub winner: Option<MoeVariant>,
+    pub prompt: String,
+}
+
+/// Load cluster URL from config or env.
+fn load_cluster_url() -> String {
+    std::env::var("KOVA_CLUSTER_URL").unwrap_or_else(|_| {
+        let bind = crate::bind_addr();
+        format!("http://{}", bind)
+    })
+}
+
+/// Check if cluster is reachable (non-blocking, quick timeout).
+fn check_cluster(url: &str) -> bool {
+    let endpoint = format!("{}/api/status", url);
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok()
+        .and_then(|c| c.get(&endpoint).send().ok())
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
+}
+
+/// Send MoE request to remote cluster. Blocks.
+fn remote_moe(url: &str, prompt: &str) -> Result<MoeResult, String> {
+    let endpoint = format!("{}/api/moe/run", url);
+    let body = serde_json::json!({
+        "prompt": prompt,
+        "num_experts": 3,
+        "run_review": true,
+    });
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client.post(&endpoint).json(&body).send().map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("MoE failed: {}", resp.status()));
+    }
+    resp.json::<MoeResult>().map_err(|e| e.to_string())
+}
+
+/// Send chat to remote cluster via OpenAI-compat endpoint.
+#[allow(dead_code)]
+fn remote_chat(url: &str, system: &str, prompt: &str) -> Result<String, String> {
+    let endpoint = format!("{}/v1/chat/completions", url);
+    let body = serde_json::json!({
+        "model": "default",
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2,
+    });
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client.post(&endpoint).json(&body).send().map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("chat failed: {}", resp.status()));
+    }
+    #[derive(serde::Deserialize)]
+    struct OaiResp { choices: Vec<OaiChoice> }
+    #[derive(serde::Deserialize)]
+    struct OaiChoice { message: OaiMsg }
+    #[derive(serde::Deserialize)]
+    struct OaiMsg { content: String }
+    let oai: OaiResp = resp.json().map_err(|e| e.to_string())?;
+    Ok(oai.choices.into_iter().next().map(|c| c.message.content).unwrap_or_default())
+}
 
 /// f113=gui_run. Run native egui GUI. Demo mode records to ~/.kova/demos/.
 pub fn run(demo: bool) -> anyhow::Result<()> {
@@ -65,6 +157,19 @@ pub struct KovaApp {
     sprite_qc: Option<crate::sprite_qc::T213>,
     /// Path input for sprite QC directory.
     sprite_qc_path: String,
+    // ── Remote MoE (works without inference feature) ──
+    /// Cluster URL for remote inference (e.g. "http://192.168.1.44:3002").
+    cluster_url: String,
+    /// Whether remote cluster is reachable.
+    cluster_online: bool,
+    /// Show cluster config panel.
+    show_cluster_config: bool,
+    /// MoE result receiver (from background thread).
+    moe_receiver: Option<std::sync::mpsc::Receiver<MoeResult>>,
+    /// Last MoE result for display.
+    moe_result: Option<MoeResult>,
+    /// Remote chat receiver (from background thread).
+    remote_chat_receiver: Option<std::sync::mpsc::Receiver<String>>,
 }
 
 impl DemoRecording {
@@ -206,6 +311,12 @@ impl KovaApp {
             demo_recording,
             sprite_qc: None,
             sprite_qc_path: String::new(),
+            cluster_url: load_cluster_url(),
+            cluster_online: false,
+            show_cluster_config: false,
+            moe_receiver: None,
+            moe_result: None,
+            remote_chat_receiver: None,
         }
     }
 
@@ -413,6 +524,44 @@ impl eframe::App for KovaApp {
             }
         }
 
+        // ── Poll MoE receiver ──
+        if let Some(rx) = &self.moe_receiver {
+            if let Ok(result) = rx.try_recv() {
+                let summary = if let Some(ref w) = result.winner {
+                    format!("[MoE] Winner: {} (score {})", w.node_id, w.total_score)
+                } else {
+                    "[MoE] No winner".into()
+                };
+                self.messages.push(crate::Message {
+                    role: "assistant".into(),
+                    content: summary.clone(),
+                });
+                self.persist("assistant", &summary);
+                self.moe_result = Some(result);
+                self.moe_receiver = None;
+                ctx.request_repaint();
+            }
+        }
+        if self.moe_receiver.is_some() {
+            ctx.request_repaint();
+        }
+
+        // ── Poll remote chat receiver ──
+        if let Some(rx) = &self.remote_chat_receiver {
+            if let Ok(response) = rx.try_recv() {
+                self.messages.push(crate::Message {
+                    role: "assistant".into(),
+                    content: response.clone(),
+                });
+                self.persist("assistant", &response);
+                self.remote_chat_receiver = None;
+                ctx.request_repaint();
+            }
+        }
+        if self.remote_chat_receiver.is_some() {
+            ctx.request_repaint();
+        }
+
         egui::CentralPanel::default()
             .frame(egui::Frame::default().fill(colors::BG).inner_margin(egui::Margin::same(layout::MARGIN_I8)))
             .show(ctx, |ui| {
@@ -479,7 +628,22 @@ impl eframe::App for KovaApp {
                         }
                     }
                 }
+                if ui.button("Cluster").clicked() {
+                    self.show_cluster_config = !self.show_cluster_config;
+                    if self.show_cluster_config {
+                        let url = self.cluster_url.clone();
+                        self.cluster_online = check_cluster(&url);
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let (dot, tip) = if self.cluster_online {
+                        ("\u{25CF}", "Cluster online")
+                    } else {
+                        ("\u{25CB}", "Cluster offline")
+                    };
+                    let color = if self.cluster_online { colors::TERTIARY } else { colors::MUTED };
+                    ui.label(egui::RichText::new(dot).color(color).size(14.0))
+                        .on_hover_text(tip);
                     ui.label(egui::RichText::new("~/.kova/prompts/").color(colors::MUTED).small());
                 });
             });
@@ -551,6 +715,113 @@ impl eframe::App for KovaApp {
                 });
                 ui.add_space(layout::GAP);
             }
+            // ── Cluster config panel ──
+            if self.show_cluster_config {
+                theme::f323().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Cluster").color(colors::PRIMARY).strong());
+                        let status = if self.cluster_online { "Online" } else { "Offline" };
+                        let sc = if self.cluster_online { colors::TERTIARY } else { colors::SECONDARY };
+                        ui.label(egui::RichText::new(status).color(sc));
+                    });
+                    ui.add_space(layout::PADDING_SM);
+                    ui.horizontal(|ui| {
+                        ui.label("URL:");
+                        ui.text_edit_singleline(&mut self.cluster_url);
+                        if ui.button("Test").clicked() {
+                            self.cluster_online = check_cluster(&self.cluster_url);
+                        }
+                    });
+                    if self.cluster_online {
+                        ui.add_space(layout::PADDING_SM);
+                        ui.horizontal(|ui| {
+                            if ui.button("MoE Generate").clicked() && self.moe_receiver.is_none() {
+                                let url = self.cluster_url.clone();
+                                let prompt = if self.input.is_empty() {
+                                    "write a function that checks if a number is prime".to_string()
+                                } else {
+                                    self.input.clone()
+                                };
+                                let (tx, rx) = mpsc::channel();
+                                self.moe_receiver = Some(rx);
+                                let prompt_display = prompt.clone();
+                                std::thread::spawn(move || {
+                                    let result = remote_moe(&url, &prompt);
+                                    match result {
+                                        Ok(r) => { let _ = tx.send(r); }
+                                        Err(e) => {
+                                            let _ = tx.send(MoeResult {
+                                                variants: vec![],
+                                                winner: None,
+                                                prompt: format!("Error: {}", e),
+                                            });
+                                        }
+                                    }
+                                });
+                                self.messages.push(crate::Message {
+                                    role: "user".into(),
+                                    content: format!("[MoE] {}", prompt_display),
+                                });
+                                self.persist("user", &format!("[MoE] {}", prompt_display));
+                            }
+                            if self.moe_receiver.is_some() {
+                                ui.label(egui::RichText::new("Running MoE...").color(colors::MUTED));
+                            }
+                        });
+                    }
+                });
+                ui.add_space(layout::GAP);
+            }
+
+            // ── MoE results panel ──
+            let mut dismiss_moe = false;
+            if let Some(result) = self.moe_result.clone() {
+                theme::f323().show(ui, |ui| {
+                    ui.label(egui::RichText::new("MoE Results").color(colors::PRIMARY).strong());
+                    ui.add_space(layout::PADDING_SM);
+                    egui::Grid::new("moe_grid").striped(true).show(ui, |ui| {
+                        ui.label(egui::RichText::new("Node").color(colors::MUTED).strong());
+                        ui.label(egui::RichText::new("Compile").color(colors::MUTED).strong());
+                        ui.label(egui::RichText::new("Clippy").color(colors::MUTED).strong());
+                        ui.label(egui::RichText::new("Tests").color(colors::MUTED).strong());
+                        ui.label(egui::RichText::new("Score").color(colors::MUTED).strong());
+                        ui.end_row();
+                        for v in &result.variants {
+                            let is_winner = result.winner.as_ref().map(|w| w.node_id == v.node_id).unwrap_or(false);
+                            let nc = if is_winner { colors::TERTIARY } else { colors::TEXT };
+                            ui.label(egui::RichText::new(&v.node_id).color(nc));
+                            ui.label(if v.compile_ok { "ok" } else { "FAIL" });
+                            ui.label(if v.clippy_ok { "ok" } else { "FAIL" });
+                            ui.label(if v.tests_ok { "ok" } else { "FAIL" });
+                            ui.label(egui::RichText::new(format!("{}", v.total_score)).color(nc));
+                            ui.end_row();
+                        }
+                    });
+                    if let Some(ref w) = result.winner {
+                        ui.add_space(layout::PADDING_SM);
+                        ui.label(egui::RichText::new(format!("Winner: {} (score {})", w.node_id, w.total_score)).color(colors::TERTIARY));
+                        ui.add_space(layout::PADDING_SM);
+                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                            ui.label(egui::RichText::new(&w.code).color(colors::TEXT).monospace());
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("Copy").clicked() {
+                                ui.ctx().output_mut(|o| o.commands.push(egui::OutputCommand::CopyText(w.code.clone())));
+                            }
+                        });
+                    } else if !result.variants.is_empty() {
+                        ui.label(egui::RichText::new("No winner — all variants failed").color(colors::SECONDARY));
+                    }
+                    if ui.button("Dismiss").clicked() {
+                        dismiss_moe = true;
+                    }
+                });
+                ui.add_space(layout::GAP);
+            }
+            if dismiss_moe {
+                self.moe_result = None;
+            }
+
             // Sprite QC panel — takes over the main area when active
             if self.sprite_qc.is_some() {
                 theme::f323().show(ui, |ui| {
@@ -769,15 +1040,34 @@ impl eframe::App for KovaApp {
                                     self.llm_receiver = Some(rx);
                                 }
                             } else {
-                                #[cfg(feature = "inference")]
-                                let fallback = "No local model. Run: kova model install";
-                                #[cfg(not(feature = "inference"))]
-                                let fallback = "Build with --features inference for local LLM.";
-                                self.messages.push(crate::Message {
-                                    role: "assistant".into(),
-                                    content: fallback.into(),
-                                });
-                                self.persist("assistant", fallback);
+                                // Try remote chat if cluster is online
+                                if self.cluster_online && self.remote_chat_receiver.is_none() {
+                                    let url = self.cluster_url.clone();
+                                    let system = self.system_prompt.clone();
+                                    let user_msg = msg.clone();
+                                    let (tx, rx) = mpsc::channel();
+                                    self.remote_chat_receiver = Some(rx);
+                                    std::thread::spawn(move || {
+                                        match remote_chat(&url, &system, &user_msg) {
+                                            Ok(resp) => { let _ = tx.send(resp); }
+                                            Err(e) => { let _ = tx.send(format!("Error: {}", e)); }
+                                        }
+                                    });
+                                    self.messages.push(crate::Message {
+                                        role: "assistant".into(),
+                                        content: "Thinking...".into(),
+                                    });
+                                } else if !self.cluster_online {
+                                    #[cfg(feature = "inference")]
+                                    let fallback = "No local model. Run: kova model install";
+                                    #[cfg(not(feature = "inference"))]
+                                    let fallback = "Cluster offline. Set URL in Cluster panel.";
+                                    self.messages.push(crate::Message {
+                                        role: "assistant".into(),
+                                        content: fallback.into(),
+                                    });
+                                    self.persist("assistant", fallback);
+                                }
                             }
                             }
                             // else: cancelled - already pushed message above
