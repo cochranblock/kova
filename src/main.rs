@@ -334,6 +334,18 @@ enum C2Cmd {
         #[command(subcommand)]
         cmd: SshCaCmd,
     },
+    /// Offload build artifacts to worker node, free local disk.
+    Offload {
+        /// Show what would be moved without doing it.
+        #[arg(long)]
+        dry_run: bool,
+        /// Disk usage threshold to trigger offload (default: from config or 90%).
+        #[arg(long)]
+        threshold: Option<u8>,
+        /// Target worker node for archive (default: bt).
+        #[arg(long)]
+        target: Option<String>,
+    },
     /// Wake-on-LAN: power on a worker node (lf, gd, bt). st has no WoL.
     Wake {
         /// Node to wake: lf, gd, or bt.
@@ -815,6 +827,10 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             all,
             full,
         } => kova::c2::f358(dry_run, &target, local, all, full),
+        C2Cmd::Offload { dry_run, threshold, target } => {
+            let thresh = threshold.unwrap_or_else(|| kova::config::offload_threshold());
+            kova::c2::f360(dry_run, thresh, target)
+        }
         C2Cmd::Wake { node } => {
             match kova::c2::f352(&node) {
                 Ok(()) => {
