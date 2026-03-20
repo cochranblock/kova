@@ -954,6 +954,114 @@ async fn api_explain_run(State(state): State<T92>) -> impl IntoResponse {
     }
 }
 
+// ── MoE endpoint ────────────────────────────────────────────────
+
+#[cfg(feature = "inference")]
+#[derive(Deserialize)]
+struct MoeRunRequest {
+    prompt: String,
+    #[serde(default = "default_num_experts")]
+    num_experts: usize,
+    #[serde(default = "default_true")]
+    run_clippy: bool,
+    #[serde(default = "default_true")]
+    run_tests: bool,
+    #[serde(default = "default_true")]
+    run_review: bool,
+    #[serde(default)]
+    save_winner: bool,
+}
+
+#[cfg(feature = "inference")]
+fn default_num_experts() -> usize { 3 }
+fn default_true() -> bool { true }
+
+#[cfg(feature = "inference")]
+#[derive(Serialize)]
+struct MoeVariantResponse {
+    node_id: String,
+    code: String,
+    gen_ms: u64,
+    compile_ok: bool,
+    clippy_ok: bool,
+    tests_ok: bool,
+    compile_ms: u64,
+    review_score: Option<u8>,
+    total_score: u32,
+}
+
+#[cfg(feature = "inference")]
+#[derive(Serialize)]
+struct MoeRunResponse {
+    variants: Vec<MoeVariantResponse>,
+    winner: Option<MoeVariantResponse>,
+    prompt: String,
+}
+
+#[cfg(feature = "inference")]
+async fn api_moe_run(Json(req): Json<MoeRunRequest>) -> impl IntoResponse {
+    let config = crate::moe::T196 {
+        num_experts: req.num_experts,
+        run_clippy: req.run_clippy,
+        run_tests: req.run_tests,
+        run_review: req.run_review,
+        num_ctx: 8192,
+        save_winner: req.save_winner,
+    };
+
+    // Run MoE on a blocking thread (it does SSH + cargo).
+    let prompt = req.prompt.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        crate::moe::f341(&prompt, config)
+    })
+    .await;
+
+    match result {
+        Ok(report) => {
+            let variants: Vec<MoeVariantResponse> = report
+                .variants
+                .iter()
+                .map(|v| MoeVariantResponse {
+                    node_id: v.node_id.clone(),
+                    code: v.code.clone(),
+                    gen_ms: v.gen_ms,
+                    compile_ok: v.compile_ok,
+                    clippy_ok: v.clippy_ok,
+                    tests_ok: v.tests_ok,
+                    compile_ms: v.compile_ms,
+                    review_score: v.review_score,
+                    total_score: v.total_score,
+                })
+                .collect();
+
+            let winner = report.winner.map(|i| {
+                let v = &report.variants[i];
+                MoeVariantResponse {
+                    node_id: v.node_id.clone(),
+                    code: v.code.clone(),
+                    gen_ms: v.gen_ms,
+                    compile_ok: v.compile_ok,
+                    clippy_ok: v.clippy_ok,
+                    tests_ok: v.tests_ok,
+                    compile_ms: v.compile_ms,
+                    review_score: v.review_score,
+                    total_score: v.total_score,
+                }
+            });
+
+            (StatusCode::OK, Json(MoeRunResponse {
+                variants,
+                winner,
+                prompt: report.prompt,
+            })).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("moe: {}", e)})),
+        ).into_response(),
+    }
+}
+
 async fn api_demo_record(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
     let name = payload
         .get("name")
@@ -1038,7 +1146,8 @@ fn app_router() -> Router<T92> {
     let r = r
         .route("/api/route", post(api_route))
         .route("/api/explain", get(api_explain))
-        .route("/api/explain/run", post(api_explain_run));
+        .route("/api/explain/run", post(api_explain_run))
+        .route("/api/moe/run", post(api_moe_run));
     r
 }
 
