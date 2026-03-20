@@ -185,8 +185,10 @@ pub fn train_sft(config: &TrainConfig) -> Result<PathBuf, String> {
     }
 
     // Load pre-trained weights into varmap
-    varmap.load_multi(&st_files)
-        .map_err(|e| format!("load weights: {}", e))?;
+    for st_file in &st_files {
+        varmap.load(st_file)
+            .map_err(|e| format!("load weights from {}: {}", st_file.display(), e))?;
+    }
 
     eprintln!("[train] loaded {} weight files", st_files.len());
 
