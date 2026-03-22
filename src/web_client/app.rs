@@ -29,6 +29,31 @@ struct IntentPayload {
     project: Option<String>,
 }
 
+#[derive(Serialize)]
+struct RoutePayload {
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prior_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Default)]
+struct RouteResult {
+    #[serde(default)]
+    classification: String,
+    #[serde(default)]
+    needs_clarification: Option<bool>,
+    #[serde(default)]
+    suggested_question: Option<String>,
+    #[serde(default)]
+    choices: Option<Vec<String>>,
+    #[serde(default)]
+    enriched_message: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
 #[derive(Clone)]
 #[allow(dead_code)] // Code + Stream used when pipeline connected
 enum Msg {
@@ -36,6 +61,8 @@ enum Msg {
     System(String),
     Code(String),
     Stream(String),
+    Clarification { question: String, choices: Vec<String> },
+    Restatement(String),
 }
 
 /// t135=KovaWebApp
@@ -60,6 +87,17 @@ pub struct t135 {
     projects_pending: Option<Rc<RefCell<Vec<String>>>>,
     prompts_pending: Option<Rc<RefCell<Option<(String, String)>>>>,
     backlog_pending: Option<Rc<RefCell<Vec<BacklogItem>>>>,
+    /// Clarification flow state.
+    clarification_pending: bool,
+    clarification_prior: String,
+    clarification_choices: Vec<String>,
+    /// Restatement flow state.
+    restatement_pending: bool,
+    restatement_msg: String,
+    /// Route result from async call.
+    route_pending: Option<Rc<RefCell<Option<RouteResult>>>>,
+    /// Deferred route result (processed in update where ctx is available).
+    deferred_route: Option<RouteResult>,
 }
 
 impl t135 {
@@ -85,6 +123,13 @@ impl t135 {
             projects_pending: None,
             prompts_pending: None,
             backlog_pending: None,
+            clarification_pending: false,
+            clarification_prior: String::new(),
+            clarification_choices: Vec::new(),
+            restatement_pending: false,
+            restatement_msg: String::new(),
+            route_pending: None,
+            deferred_route: None,
         }
     }
 
@@ -145,13 +190,123 @@ impl t135 {
         self.backlog_pending = Some(bl);
     }
 
-    fn send_intent(&mut self, ctx: &egui::Context) {
-        let prompt = std::mem::take(&mut self.input);
-        if prompt.is_empty() {
+    fn handle_input(&mut self, ctx: &egui::Context) {
+        let input = std::mem::take(&mut self.input);
+        if input.is_empty() {
             return;
         }
-        self.messages.push(Msg::User(prompt.clone()));
-        self.set_status("Sending...", None);
+        self.messages.push(Msg::User(input.clone()));
+
+        // Restatement confirm/cancel
+        if self.restatement_pending {
+            self.restatement_pending = false;
+            let s = input.trim().to_lowercase();
+            if matches!(s.as_str(), "y" | "yes") {
+                self.fire_pipeline(ctx, &self.restatement_msg.clone());
+            } else {
+                self.messages.push(Msg::System("Cancelled.".into()));
+            }
+            self.restatement_msg.clear();
+            return;
+        }
+
+        // Clarification reply
+        if self.clarification_pending {
+            self.clarification_pending = false;
+            let s = input.trim().to_lowercase();
+            if matches!(s.as_str(), "cancel" | "stop" | "abort") {
+                self.messages.push(Msg::System("Cancelled.".into()));
+                self.clarification_prior.clear();
+                self.clarification_choices.clear();
+                return;
+            }
+            // Re-route with prior context
+            let prior = std::mem::take(&mut self.clarification_prior);
+            self.clarification_choices.clear();
+            self.route_message(ctx, &input, Some(prior));
+            return;
+        }
+
+        // Normal: route the message
+        self.route_message(ctx, &input, None);
+    }
+
+    fn route_message(&mut self, ctx: &egui::Context, message: &str, prior: Option<String>) {
+        self.set_status("Routing...", None);
+        let result_rc = Rc::new(RefCell::new(None::<RouteResult>));
+        let result_rc2 = result_rc.clone();
+        let ctx2 = ctx.clone();
+        let project = if self.current_project.is_empty() {
+            None
+        } else {
+            Some(self.current_project.clone())
+        };
+        let payload = RoutePayload {
+            message: message.to_string(),
+            prior_message: prior,
+            project,
+        };
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(req) = gloo_net::http::Request::post("/api/route").json(&payload) {
+                if let Ok(resp) = req.send().await {
+                    if let Ok(r) = resp.json::<RouteResult>().await {
+                        *result_rc2.borrow_mut() = Some(r);
+                        ctx2.request_repaint();
+                    }
+                }
+            }
+        });
+        self.route_pending = Some(result_rc);
+    }
+
+    fn process_route_result(&mut self, ctx: &egui::Context, result: RouteResult) {
+        if let Some(err) = &result.error {
+            // No router model — fall back to direct pipeline
+            if err.contains("No router model") {
+                let last_user = self.messages.iter().rev().find_map(|m| {
+                    if let Msg::User(t) = m { Some(t.clone()) } else { None }
+                }).unwrap_or_default();
+                self.fire_pipeline(ctx, &last_user);
+                return;
+            }
+            self.messages.push(Msg::System(format!("Error: {}", err)));
+            self.set_status("", None);
+            return;
+        }
+
+        if result.needs_clarification == Some(true) {
+            let question = result.suggested_question.unwrap_or_else(|| "Could you clarify?".into());
+            let choices = result.choices.unwrap_or_default();
+            self.clarification_pending = true;
+            let last_user = self.messages.iter().rev().find_map(|m| {
+                if let Msg::User(t) = m { Some(t.clone()) } else { None }
+            }).unwrap_or_default();
+            self.clarification_prior = last_user;
+            self.clarification_choices = choices.clone();
+            self.messages.push(Msg::Clarification { question, choices });
+            self.set_status("Waiting for clarification...", None);
+            return;
+        }
+
+        // Actionable classification — show restatement
+        let msg = result.enriched_message.unwrap_or_else(|| {
+            self.messages.iter().rev().find_map(|m| {
+                if let Msg::User(t) = m { Some(t.clone()) } else { None }
+            }).unwrap_or_default()
+        });
+        let target = self.current_project.rsplit('/').next().unwrap_or("").to_string();
+        let restatement = format!(
+            "I'll {} in {}. Proceed? (y/n)",
+            msg, if target.is_empty() { "current project" } else { &target }
+        );
+        self.restatement_pending = true;
+        self.restatement_msg = msg;
+        self.messages.push(Msg::Restatement(restatement));
+        self.set_status("Confirm to proceed...", None);
+    }
+
+    fn fire_pipeline(&mut self, ctx: &egui::Context, prompt: &str) {
+        self.set_status("Generating...", None);
         self.streaming = true;
 
         let buf = self.stream_buf.clone();
@@ -162,6 +317,7 @@ impl t135 {
         } else {
             Some(self.current_project.clone())
         };
+        let prompt = prompt.to_string();
 
         wasm_bindgen_futures::spawn_local(async move {
             use futures::StreamExt;
@@ -177,7 +333,6 @@ impl t135 {
                 .unwrap_or("ws");
             let ws_url = format!("{}://{}/ws/stream", proto, host);
 
-            // Fire intent POST
             let payload = IntentPayload {
                 s0: "FullPipeline".into(),
                 s1: prompt,
@@ -189,7 +344,6 @@ impl t135 {
                 });
             }
 
-            // Connect WebSocket for streaming
             if let Ok(ws) = WebSocket::open(&ws_url) {
                 let (_write, mut read) = ws.split();
                 while let Some(Ok(msg)) = read.next().await {
@@ -238,12 +392,13 @@ impl t135 {
                 self.backlog_pending = None;
             }
         }
-        // Check if stream finished
-        if self.streaming {
-            let buf = self.stream_buf.borrow().clone();
-            if !buf.is_empty() && buf.ends_with('\n') {
-                // Heuristic: stream done when no new data arrives
-                // In practice the WS close event handles this
+        // Route result
+        if let Some(ref rc) = self.route_pending.clone() {
+            let val = rc.borrow_mut().take();
+            if let Some(result) = val {
+                self.route_pending = None;
+                // Need to clone ctx from the update loop — handled via deferred processing
+                self.deferred_route = Some(result);
             }
         }
     }
@@ -440,6 +595,30 @@ impl t135 {
                                 ui.monospace(text);
                             });
                         }
+                        Msg::Clarification { question, choices } => {
+                            theme::f223().show(ui, |ui| {
+                                ui.colored_label(theme::colors::SECONDARY, question);
+                                if !choices.is_empty() {
+                                    ui.add_space(4.0);
+                                    let letters = ['a', 'b', 'c', 'd', 'e'];
+                                    for (i, choice) in choices.iter().enumerate() {
+                                        let letter = letters.get(i).copied().unwrap_or('?');
+                                        ui.horizontal(|ui| {
+                                            ui.colored_label(
+                                                theme::colors::PRIMARY,
+                                                format!("({})", letter),
+                                            );
+                                            ui.label(choice.as_str());
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                        Msg::Restatement(text) => {
+                            theme::f223().show(ui, |ui| {
+                                ui.colored_label(theme::colors::TERTIARY, text);
+                            });
+                        }
                     }
                     ui.add_space(6.0);
                 }
@@ -494,7 +673,7 @@ impl t135 {
                     ))
                     .clicked();
                 if enter || send {
-                    self.send_intent(ctx);
+                    self.handle_input(ctx);
                 }
             });
         });
@@ -513,6 +692,11 @@ impl eframe::App for t135 {
 
         // Poll async results
         self.poll_pending();
+
+        // Process deferred route result (needs ctx)
+        if let Some(result) = self.deferred_route.take() {
+            self.process_route_result(ctx, result);
+        }
 
         // Layout
         self.draw_header(ctx);
