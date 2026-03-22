@@ -61,16 +61,39 @@ struct ChatMsg {
     content: String,
 }
 
-/// Load SFT examples from ChatML JSONL file.
+/// DPO example (prompt + chosen/rejected message lists).
+#[derive(serde::Deserialize)]
+struct DpoExample {
+    prompt: Vec<ChatMsg>,
+    chosen: Vec<ChatMsg>,
+    #[allow(dead_code)]
+    rejected: Vec<ChatMsg>,
+}
+
+/// Load training examples from ChatML JSONL file.
+/// Handles both SFT format ({"messages": [...]}) and
+/// DPO format ({"prompt": [...], "chosen": [...], "rejected": [...]}).
+/// For DPO, we use prompt + chosen as the SFT example (positive signal).
 fn load_sft_data(path: &Path) -> Result<Vec<SftExample>, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("read training data: {}", e))?;
     let mut examples = Vec::new();
     for line in content.lines() {
         if line.trim().is_empty() { continue; }
-        let ex: SftExample = serde_json::from_str(line)
-            .map_err(|e| format!("parse JSONL line: {}", e))?;
-        examples.push(ex);
+        // Try SFT format first
+        if let Ok(ex) = serde_json::from_str::<SftExample>(line) {
+            examples.push(ex);
+            continue;
+        }
+        // Try DPO format — extract prompt + chosen as SFT
+        if let Ok(dpo) = serde_json::from_str::<DpoExample>(line) {
+            let mut messages = dpo.prompt;
+            messages.extend(dpo.chosen);
+            examples.push(SftExample { messages });
+            continue;
+        }
+        // Skip unparseable lines
+        eprintln!("[train] skipping unparseable line");
     }
     Ok(examples)
 }
@@ -125,13 +148,30 @@ fn tokenize_batch(
 }
 
 /// Cross-entropy loss for language modeling.
+/// Handles both full-sequence logits [batch, seq, vocab] and
+/// single-position logits [batch, 1, vocab] from causal LM forward.
 fn cross_entropy_loss(logits: &Tensor, labels: &Tensor) -> Result<Tensor, String> {
-    let (batch, seq_len, vocab) = logits.dims3()
-        .map_err(|e| format!("logits dims: {}", e))?;
+    let dims = logits.dims();
+    if dims.len() != 3 {
+        return Err(format!("expected 3D logits, got {}D: {:?}", dims.len(), dims));
+    }
+    let (batch, seq_len, vocab) = (dims[0], dims[1], dims[2]);
+
     let logits_flat = logits.reshape((batch * seq_len, vocab))
         .map_err(|e| format!("reshape logits: {}", e))?;
-    let labels_flat = labels.reshape(batch * seq_len)
+
+    // Match labels to logits sequence length
+    let labels_matched = if labels.dim(1).unwrap_or(0) != seq_len {
+        // Logits might be shorter (e.g. last token only) — slice labels to match
+        labels.narrow(1, 0, seq_len)
+            .map_err(|e| format!("narrow labels: {}", e))?
+    } else {
+        labels.clone()
+    };
+
+    let labels_flat = labels_matched.reshape(batch * seq_len)
         .map_err(|e| format!("reshape labels: {}", e))?;
+
     candle_nn::loss::cross_entropy(&logits_flat, &labels_flat)
         .map_err(|e| format!("cross_entropy: {}", e))
 }
