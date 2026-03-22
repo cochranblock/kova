@@ -67,6 +67,9 @@ struct KovaApp {
     sprite_qc_path: String,
     /// Pixel Forge panel state.
     pixel_forge: Option<super::pixel_forge::T220>,
+    /// Micro Train panel state.
+    #[cfg(feature = "mobile-llm")]
+    micro_train: Option<super::micro_train::T222>,
     /// Dynamic product hub.
     product_hub: Option<super::products::T221>,
 }
@@ -211,6 +214,8 @@ impl KovaApp {
             sprite_qc: None,
             sprite_qc_path: String::new(),
             pixel_forge: None,
+            #[cfg(feature = "mobile-llm")]
+            micro_train: None,
             product_hub: None,
         }
     }
@@ -476,6 +481,14 @@ impl eframe::App for KovaApp {
                         self.pixel_forge = Some(super::pixel_forge::T220::new());
                     }
                 }
+                #[cfg(feature = "mobile-llm")]
+                if ui.button("Train").clicked() {
+                    if self.micro_train.is_some() {
+                        self.micro_train = None;
+                    } else {
+                        self.micro_train = Some(super::micro_train::T222::new());
+                    }
+                }
                 if ui.button("Products").clicked() {
                     if self.product_hub.is_some() {
                         self.product_hub = None;
@@ -561,6 +574,17 @@ impl eframe::App for KovaApp {
                     let close = self.product_hub.as_mut().unwrap().show(ui, ctx);
                     if close {
                         self.product_hub = None;
+                    }
+                });
+                return;
+            }
+            // Micro Train panel — takes over the main area when active
+            #[cfg(feature = "mobile-llm")]
+            if self.micro_train.is_some() {
+                theme::f323().show(ui, |ui| {
+                    let close = self.micro_train.as_mut().unwrap().show(ui, ctx);
+                    if close {
+                        self.micro_train = None;
                     }
                 });
                 return;
