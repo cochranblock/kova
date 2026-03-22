@@ -351,6 +351,11 @@ enum C2Cmd {
         #[command(subcommand)]
         action: GpuAction,
     },
+    /// Job queue — submit, dispatch, drain across nodes. Circuit breaker + dedup.
+    Queue {
+        #[command(subcommand)]
+        action: QueueAction,
+    },
     /// Wake-on-LAN: power on a worker node (lf, gd, bt). st has no WoL.
     Wake {
         /// Node to wake: lf, gd, or bt.
@@ -435,6 +440,54 @@ enum GpuAction {
         /// Specific node (default: all GPU nodes).
         node: Option<String>,
     },
+}
+
+#[derive(clap::Subcommand)]
+enum QueueAction {
+    /// Submit a job to the distributed queue.
+    Submit {
+        /// Command to run on the node.
+        command: String,
+        /// Pin to a specific node (default: auto least-loaded).
+        #[arg(long)]
+        node: Option<String>,
+        /// Job tag for identification.
+        #[arg(long, default_value = "job")]
+        tag: String,
+        /// Priority (0=highest, default 5).
+        #[arg(short, long, default_value_t = 5)]
+        priority: u8,
+        /// Project directory on node (default: pixel-forge).
+        #[arg(long, default_value = "pixel-forge")]
+        project: String,
+        /// Max retry attempts (default 2).
+        #[arg(long, default_value_t = 2)]
+        retries: u32,
+    },
+    /// Dispatch next queued job to best available node.
+    Drain {
+        /// Drain all queued jobs sequentially.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Show queue status + node health.
+    Status,
+    /// Show completed job history.
+    History {
+        /// Max jobs to show (default 20).
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Cancel a queued job by ID.
+    Cancel { id: String },
+    /// Purge completed/dead jobs older than N hours.
+    Purge {
+        /// Hours threshold (default 24).
+        #[arg(short, long, default_value_t = 24)]
+        hours: u64,
+    },
+    /// Reset circuit breaker for a node.
+    Reset { node: String },
 }
 
 #[cfg(feature = "inference")]
@@ -910,6 +963,27 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
                         kova::gpu_sched::vram_all()
                     }
                 }
+            }
+        }
+        C2Cmd::Queue { action } => {
+            match action {
+                QueueAction::Submit { command, node, tag, priority, project, retries } => {
+                    kova::job_queue::submit(&command, node.as_deref(), &tag, priority, &project, retries)?;
+                    Ok(())
+                }
+                QueueAction::Drain { all } => {
+                    if all {
+                        kova::job_queue::drain_all()
+                    } else {
+                        kova::job_queue::drain_next()?;
+                        Ok(())
+                    }
+                }
+                QueueAction::Status => kova::job_queue::status(),
+                QueueAction::History { limit } => kova::job_queue::history(limit),
+                QueueAction::Cancel { id } => kova::job_queue::cancel(&id),
+                QueueAction::Purge { hours } => kova::job_queue::purge(hours),
+                QueueAction::Reset { node } => kova::job_queue::reset_circuit(&node),
             }
         }
         C2Cmd::Wake { node } => {
