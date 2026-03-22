@@ -175,6 +175,14 @@ alias p9c='cd "${_KH}/wowasticker" && cargo check'
 alias p9t='cd "${_KH}/wowasticker" && cargo test'
 alias p9r='cd "${_KH}/wowasticker" && cargo run'
 
+# p10=pixel-forge
+alias p10='cd "${_KH}/pixel-forge"'
+alias p10b='cd "${_KH}/pixel-forge" && cargo build --release'
+alias p10c='cd "${_KH}/pixel-forge" && cargo check'
+alias p10t='cd "${_KH}/pixel-forge" && cargo test'
+alias p10r='cd "${_KH}/pixel-forge" && cargo run --release'
+alias p10x='cd "${_KH}/pixel-forge" && cargo clippy'
+
 # dN = deploy tokens: sync source → build on bt → copy binary → restart on gd
 # Pattern: d<project>s = sync, d<project>b = build, d<project>d = deploy (full), d<project>r = restart
 
@@ -205,6 +213,13 @@ d2d() { echo "d2: sync→build→copy→restart"; d2s && d2b && d2c && d2r && ec
 d2dp() { (cd "${_KH}/cochranblock" && git push) && d2d; }
 alias redeploy='d2d'   # cochranblock: rebuild via ssh (bt) + redeploy to gd
 
+# d10 = pixel-forge deploy pipeline (sync→build on bt→copy to all nodes)
+d10s() { rsync -avz --exclude target --exclude .git --exclude data "${_KH}/pixel-forge/" bt:/home/mcochran/pixel-forge/; }
+d10b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran/pixel-forge && cargo build --release'; }
+d10c() { for h in lf gd bt st; do scp bt:/home/mcochran/pixel-forge/target/release/pixel-forge "$h":/home/mcochran/bin/pixel-forge 2>/dev/null && echo "$h: copied" || echo "$h: FAILED"; done; }
+d10d() { echo "d10: sync→build→copy"; d10s && d10b && d10c && echo "d10: pixel-forge deployed to all nodes"; }
+d10dp() { (cd "${_KH}/pixel-forge" && git push) && d10d; }
+
 # dw = sync workspace (Cargo.toml, lock, vendor) to bt
 dws() { rsync -avz "${_KH}/Cargo.toml" "${_KH}/Cargo.lock" bt:/home/mcochran/ && rsync -avz "${_KH}/vendor/" bt:/home/mcochran/vendor/; }
 
@@ -220,6 +235,9 @@ alias kmed='kova micro export --format dpo'
 alias kmes='kova micro export --format sft'
 alias kmts='kova micro train-stats'
 alias kmtn='kova micro train'
+alias kmtns='kova micro train --format sft'
+alias kmtnd='kova micro train --format dpo'
+alias kmtna='kova micro train-all'
 alias kma='kova micro academy'
 alias kmm='kova micro mine'
 alias kmme='kova micro mine-export'
