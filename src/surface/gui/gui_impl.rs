@@ -38,6 +38,7 @@ struct KovaApp {
     persona: String,
     show_prompts: bool,
     show_backlog: bool,
+    show_help: bool,
     pending_intent: Option<crate::t0>,
     /// Current project for code gen. Discovered from projects_root; user selects from dropdown.
     current_project: std::path::PathBuf,
@@ -157,10 +158,25 @@ impl KovaApp {
         let system_prompt = crate::load_prompt("system");
         let persona = crate::load_prompt("persona");
         let store = crate::storage::t12::f39(crate::sled_path()).ok();
-        let messages = store
+        let mut messages = store
             .as_ref()
             .and_then(|s| crate::f74(s).ok())
             .unwrap_or_default();
+        if messages.is_empty() {
+            messages.push(crate::Message {
+                role: "assistant".into(),
+                content: concat!(
+                    "Kova — augment engine. At your service.\n\n",
+                    "Quick start:\n",
+                    "  Type a request to generate or fix code\n",
+                    "  \"fix the borrow error in compute.rs\"\n",
+                    "  \"add retry logic to the pipeline\"\n\n",
+                    "Panels: Prompts, Backlog, Pixel Forge, Train\n",
+                    "Models: run `kova model install` if not set up\n",
+                    "Config: ~/.kova/config.toml"
+                ).into(),
+            });
+        }
         let demo_recording = if demo {
             Some(DemoRecording {
                 name: format!(
@@ -190,6 +206,7 @@ impl KovaApp {
             persona,
             show_prompts: false,
             show_backlog: false,
+            show_help: false,
             pending_intent: None,
             current_project: crate::default_project(),
             #[cfg(feature = "inference")]
@@ -497,10 +514,52 @@ impl eframe::App for KovaApp {
                     }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(egui::RichText::new("?").color(if self.show_help { colors::PRIMARY } else { colors::MUTED })).clicked() {
+                        self.show_help = !self.show_help;
+                    }
                     ui.label(egui::RichText::new("~/.kova/prompts/").color(colors::MUTED).small());
                 });
             });
             ui.add_space(layout::GAP);
+            // Help panel
+            if self.show_help {
+                theme::f323().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Kova Help").color(colors::PRIMARY).strong());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("Close").clicked() {
+                                self.show_help = false;
+                            }
+                        });
+                    });
+                    ui.separator();
+                    ui.add_space(layout::PADDING_SM);
+                    ui.label(egui::RichText::new("Commands").color(colors::TERTIARY).strong());
+                    ui.label("Type natural language in the chat to generate or fix code.");
+                    ui.label("Keywords: \"fix\", \"add\", \"test\", \"compile\", \"pipeline\"");
+                    ui.add_space(layout::PADDING_SM);
+                    ui.label(egui::RichText::new("Panels").color(colors::TERTIARY).strong());
+                    ui.label("Prompts — view/edit system + persona prompts");
+                    ui.label("Backlog — queued intents from ~/.kova/backlog.json");
+                    ui.label("Pixel Forge — sprite generation (needs pixel-forge binary)");
+                    #[cfg(feature = "mobile-llm")]
+                    ui.label("Train — fine-tune specialist models via candle");
+                    ui.label("Products — auto-discover plugin-protocol binaries");
+                    ui.add_space(layout::PADDING_SM);
+                    ui.label(egui::RichText::new("Setup").color(colors::TERTIARY).strong());
+                    ui.label("kova bootstrap — create ~/.kova/ config + prompts");
+                    ui.label("kova model install — download Qwen 0.5B for local inference");
+                    ui.label("kova model list — show configured model paths");
+                    ui.add_space(layout::PADDING_SM);
+                    ui.label(egui::RichText::new("CLI").color(colors::TERTIARY).strong());
+                    ui.label("kova — GUI (default)");
+                    ui.label("kova serve — HTTP API + web client");
+                    ui.label("kova c2 nodes — cluster node status");
+                    ui.label("kova micro tournament — run Micro Olympics");
+                    ui.label("kova recent — show recently changed files");
+                });
+                return;
+            }
             if self.show_backlog {
                 let backlog_path = crate::backlog_path();
                 let backlog = std::fs::read_to_string(&backlog_path)
