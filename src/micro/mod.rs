@@ -33,3 +33,5 @@ pub mod validate;
 pub mod candle_train;
 #[cfg(feature = "mobile-llm")]
 pub mod kova_model;
+#[cfg(feature = "mobile-llm")]
+pub mod moe_tournament;

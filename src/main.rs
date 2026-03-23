@@ -637,6 +637,16 @@ enum MicroCmd {
     Tournament,
     /// Clear a stale tournament checkpoint (start fresh next run).
     TournamentClear,
+    /// Run MoE tournament: Spark routes challenges, cascade on failure. Competes as "KovaMoE".
+    #[cfg(feature = "mobile-llm")]
+    TournamentMoe {
+        /// Max cascade attempts per challenge.
+        #[arg(long, default_value = "3")]
+        max_cascade: usize,
+        /// Spark model dir. Default: ~/.kova/models/kova-spark/
+        #[arg(long)]
+        spark_dir: Option<std::path::PathBuf>,
+    },
     /// Export training data from tournament results.
     Export {
         /// Format: dpo, sft, or all.
@@ -1256,6 +1266,55 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 println!("Checkpoint cleared. Next tournament starts fresh.");
             } else {
                 println!("No checkpoint found.");
+            }
+            Ok(())
+        }
+        #[cfg(feature = "mobile-llm")]
+        MicroCmd::TournamentMoe { max_cascade, spark_dir } => {
+            use kova::micro::{tournament, moe_tournament};
+
+            let cluster = kova::cluster::T193::default_hive();
+            let challenges = tournament::f248(&registry);
+
+            // Load historical results for node preference
+            let history = tournament::f253();
+            let hist = if history.exists() {
+                let json = std::fs::read_to_string(&history)?;
+                serde_json::from_str::<tournament::T165>(&json).ok()
+            } else {
+                None
+            };
+
+            let spark = spark_dir.unwrap_or_else(|| kova::models_dir().join("kova-spark"));
+            let config = moe_tournament::MoeConfig {
+                max_cascade,
+                spark_dir: spark,
+            };
+
+            let moe_results = moe_tournament::run_moe_tournament(
+                &config, &registry, &cluster, &challenges, hist.as_ref(),
+            );
+
+            // Save as tournament result
+            if !moe_results.is_empty() {
+                let result = tournament::T165 {
+                    timestamp: format!("{}", std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()),
+                    competitors: vec![moe_results[0].competitor.clone()],
+                    scores: Vec::new(),
+                    category_winners: Vec::new(),
+                    weight_class_winners: Vec::new(),
+                    exhibition_results: Vec::new(),
+                    easy_challenges: Vec::new(),
+                    impossible_challenges: Vec::new(),
+                    matches: moe_results,
+                };
+                let path = kova::kova_dir().join("micro").join("moe_tournament_result.json");
+                let json = serde_json::to_string_pretty(&result)?;
+                std::fs::write(&path, json)?;
+                eprintln!("[moe] saved to {}", path.display());
             }
             Ok(())
         }
