@@ -261,10 +261,10 @@ pub fn f248(registry: &T149) -> Vec<T166> {
 /// "wasn't supposed to make it to the event."
 fn prequal_cutoff_ms(weight_class: T160) -> u64 {
     match weight_class {
-        T160::Atomweight   => 30_000,   // 30s — tiny models should be fast
-        T160::Flyweight    => 60_000,   // 60s
-        T160::Bantamweight => 120_000,  // 2min
-        T160::Middleweight => 180_000,  // 3min
+        T160::Atomweight   => 120_000,  // 2min — CPU inference via kova serve
+        T160::Flyweight    => 180_000,  // 3min
+        T160::Bantamweight => 300_000,  // 5min
+        T160::Middleweight => 600_000,  // 10min
     }
 }
 
