@@ -147,57 +147,49 @@ impl T193 {
         }
     }
 
-    /// Original hardcoded IRONHIVE cluster (LAN IPs).
+    /// IRONHIVE cluster — via SSH tunnels on localhost (VPN blocks direct LAN).
+    /// Tunnel ports: lf=3006, gd=3003, bt=3004, st=3005.
+    /// Start tunnels: `ktun` alias or `kova c2 tunnel`.
     fn hardcoded_defaults() -> Self {
         T193 {
             nodes: vec![
                 T192 {
                     id: "n0".into(),
-                    host: "192.168.1.47".into(),
-                    port: 3002,
-                    model: "qwen2.5-coder:14b".into(),
-                    general_model: Some("qwen2.5:7b".into()),
+                    host: "127.0.0.1".into(),
+                    port: 3006, // lf tunnel
+                    model: "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M".into(),
+                    general_model: None,
                     role: T190::PrimaryGen,
-                    tier: T189::Mid,
+                    tier: T189::Light,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
                 T192 {
                     id: "n1".into(),
-                    host: "192.168.1.44".into(),
-                    port: 3002,
-                    model: "qwen2.5-coder:14b".into(),
-                    general_model: Some("qwen2.5:7b".into()),
+                    host: "127.0.0.1".into(),
+                    port: 3003, // gd tunnel
+                    model: "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M".into(),
+                    general_model: None,
                     role: T190::Reviewer,
-                    tier: T189::Mid,
+                    tier: T189::Light,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
                 T192 {
                     id: "n2".into(),
-                    host: "192.168.1.45".into(),
-                    port: 3002,
-                    model: "qwen2.5-coder:32b".into(),
-                    general_model: Some("starcoder2:15b".into()),
+                    host: "127.0.0.1".into(),
+                    port: 3004, // bt tunnel
+                    model: "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M".into(),
+                    general_model: None,
                     role: T190::SecondaryGen,
-                    tier: T189::Heavy,
+                    tier: T189::Light,
                     busy: Arc::new(AtomicBool::new(false)),
                 },
                 T192 {
                     id: "n3".into(),
-                    host: "192.168.1.43".into(),
-                    port: 3002,
-                    model: "qwen2.5-coder:14b".into(),
-                    general_model: Some("qwen2.5:14b".into()),
+                    host: "127.0.0.1".into(),
+                    port: 3005, // st tunnel
+                    model: "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M".into(),
+                    general_model: None,
                     role: T190::Batch,
-                    tier: T189::Mid,
-                    busy: Arc::new(AtomicBool::new(false)),
-                },
-                T192 {
-                    id: "c2".into(),
-                    host: "localhost".into(),
-                    port: 3002,
-                    model: "qwen2.5-coder:7b".into(),
-                    general_model: Some("qwen2.5:3b".into()),
-                    role: T190::Coordinator,
                     tier: T189::Light,
                     busy: Arc::new(AtomicBool::new(false)),
                 },

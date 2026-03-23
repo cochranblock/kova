@@ -183,14 +183,40 @@ pub fn f334(provider: &T129) -> bool {
                 .map(|r| r.status().is_success())
                 .unwrap_or(false)
         }
-        T129::OpenAiCompat { url, api_key, .. } => {
-            let endpoint = format!("{}/v1/models", url.trim_end_matches('/'));
-            reqwest::blocking::Client::new()
-                .get(&endpoint)
-                .header("Authorization", format!("Bearer {}", api_key))
-                .send()
-                .map(|r| r.status().is_success())
-                .unwrap_or(false)
+        T129::OpenAiCompat { url, .. } => {
+            // Use std::net TCP + raw HTTP to avoid reqwest/tokio runtime issues
+            use std::io::{Read, Write};
+            let url = url.trim_end_matches('/');
+            let host_port = url.trim_start_matches("http://").trim_start_matches("https://");
+            let addr = if host_port.contains(':') {
+                host_port.to_string()
+            } else {
+                format!("{}:80", host_port)
+            };
+            let host = host_port.split(':').next().unwrap_or("localhost");
+            // Resolve hostname → IP via std::net
+            match std::net::ToSocketAddrs::to_socket_addrs(&addr) {
+                Ok(mut addrs) => {
+                    if let Some(sock_addr) = addrs.next() {
+                        match std::net::TcpStream::connect_timeout(&sock_addr, std::time::Duration::from_secs(3)) {
+                            Ok(mut stream) => {
+                                let req = format!("GET /v1/models HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n", host);
+                                let _ = stream.write_all(req.as_bytes());
+                                let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(3)));
+                                let mut buf = [0u8; 32];
+                                stream.read(&mut buf).ok()
+                                    .map(|n| {
+                                        let resp = String::from_utf8_lossy(&buf[..n]);
+                                        resp.contains("200")
+                                    })
+                                    .unwrap_or(false)
+                            }
+                            Err(_) => false,
+                        }
+                    } else { false }
+                }
+                Err(_) => false,
+            }
         }
         T129::Anthropic { .. } => {
             // Anthropic is always "online" if we have a key. Real check would burn tokens.

@@ -277,10 +277,20 @@ const EXCLUDED_MODELS: &[&str] = &["32b", "70b", "72b"];
 /// Discover all competitors with weight classification and arena filtering.
 pub fn f249(cluster: &T193) -> Vec<T161> {
     let mut competitors = Vec::new();
+    eprintln!("[discovery] {} nodes in cluster", cluster.nodes.len());
     let online = cluster.online_nodes();
+    eprintln!("[discovery] {} online", online.len());
+    for node in &online {
+        eprintln!("  {} ({}:{})", node.id, node.host, node.port);
+    }
 
     for node in online {
         let url = node.base_url();
+        eprintln!("[discovery] {} ({}) — listing models...", node.id, url);
+        match providers::f336(&node.provider()) {
+            Ok(ref models) => eprintln!("[discovery]   {} models found", models.len()),
+            Err(ref e) => eprintln!("[discovery]   error: {}", e),
+        }
         if let Ok(models) = providers::f336(&node.provider()) {
             for m in models {
                 if EXCLUDED_MODELS.iter().any(|ex| m.name.contains(ex)) {
