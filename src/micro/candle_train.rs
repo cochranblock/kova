@@ -1,50 +1,45 @@
-//! candle_train — Pure Rust fine-tuning via candle. No Python, no MLX.
-//! Trains kova specialist models from tournament DPO/SFT data.
-//! Output: safetensors models loadable by mobile_llm and MoE pipeline.
-//!
-//! Training happens on IRONHIVE nodes (bt/st) or Mac Mini.
-//! Models deploy to ~/.kova/models/{specialist_name}/ as safetensors.
-
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+//! candle_train — Train kova's own models from scratch. Pure Rust, candle.
+//! No pretrained weights. No Python. No HuggingFace dependency.
+//!
+//! Pixel forge pattern: define architecture, train on our data, deploy safetensors.
+//! Models: Spark (50K), Flame (500K), Blaze (2M).
+//!
+//! Training data: tournament SFT/DPO exports from ~/.kova/micro/training/
+//! Output: ~/.kova/models/kova-{tier}/ as safetensors.
 
 use candle_core::{DType, Device, Tensor};
 use candle_nn::{Optimizer, VarBuilder, VarMap};
-use candle_transformers::models::qwen2::{Config as QwenConfig, ModelForCausalLM};
 use std::path::{Path, PathBuf};
-use tokenizers::Tokenizer;
+
+use super::kova_model::{self, KovaClassifier, ModelConfig, SimpleTokenizer, Tier, CLASS_LABELS, NUM_CLASSES};
 
 /// Training configuration.
 pub struct TrainConfig {
-    /// Base model directory (safetensors + tokenizer.json + config.json).
-    pub base_model: PathBuf,
-    /// Training data (JSONL — SFT or DPO ChatML format).
+    /// Model tier (Spark, Flame, Blaze).
+    pub tier: Tier,
+    /// Training data (JSONL — SFT ChatML format).
     pub data_path: PathBuf,
-    /// Output directory for fine-tuned model.
+    /// Output directory for trained model.
     pub output_dir: PathBuf,
-    /// Specialist name (e.g. "kova-rustfix", "kova-tokenizer").
-    pub name: String,
     /// Number of training epochs.
     pub epochs: u32,
     /// Learning rate.
     pub lr: f64,
-    /// Max sequence length for training.
-    pub max_seq_len: usize,
-    /// Batch size (1 for small models on limited RAM).
+    /// Batch size.
     pub batch_size: usize,
 }
 
 impl Default for TrainConfig {
     fn default() -> Self {
         Self {
-            base_model: PathBuf::new(),
+            tier: Tier::Spark,
             data_path: PathBuf::new(),
             output_dir: PathBuf::new(),
-            name: "kova-specialist".into(),
-            epochs: 3,
-            lr: 1e-5,
-            max_seq_len: 512,
-            batch_size: 1,
+            epochs: 10,
+            lr: 3e-4,
+            batch_size: 16,
         }
     }
 }
@@ -70,176 +65,96 @@ struct DpoExample {
     rejected: Vec<ChatMsg>,
 }
 
-/// Load training examples from ChatML JSONL file.
-/// Handles both SFT format ({"messages": [...]}) and
-/// DPO format ({"prompt": [...], "chosen": [...], "rejected": [...]}).
-/// For DPO, we use prompt + chosen as the SFT example (positive signal).
-fn load_sft_data(path: &Path) -> Result<Vec<SftExample>, String> {
+/// Parsed training sample: input text + class label.
+struct Sample {
+    text: String,
+    label: usize,
+}
+
+/// Load and parse training data into (text, label) pairs.
+fn load_samples(path: &Path) -> Result<Vec<Sample>, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("read training data: {}", e))?;
-    let mut examples = Vec::new();
+    let mut samples = Vec::new();
+
     for line in content.lines() {
         if line.trim().is_empty() { continue; }
-        // Try SFT format first
+
+        // Try SFT format
         if let Ok(ex) = serde_json::from_str::<SftExample>(line) {
-            examples.push(ex);
-            continue;
+            if let Some(sample) = extract_sample_sft(&ex) {
+                samples.push(sample);
+                continue;
+            }
         }
-        // Try DPO format — extract prompt + chosen as SFT
+        // Try DPO format — use prompt + chosen
         if let Ok(dpo) = serde_json::from_str::<DpoExample>(line) {
             let mut messages = dpo.prompt;
             messages.extend(dpo.chosen);
-            examples.push(SftExample { messages });
-            continue;
+            let ex = SftExample { messages };
+            if let Some(sample) = extract_sample_sft(&ex) {
+                samples.push(sample);
+                continue;
+            }
         }
-        // Skip unparseable lines
-        eprintln!("[train] skipping unparseable line");
     }
-    Ok(examples)
+    Ok(samples)
 }
 
-/// Format SFT example as ChatML string for tokenization.
-fn format_chatml(ex: &SftExample) -> String {
-    let mut out = String::new();
-    for msg in &ex.messages {
-        out.push_str(&format!("<|im_start|>{}\n{}<|im_end|>\n", msg.role, msg.content));
-    }
-    out
+/// Extract (input_text, class_label) from an SFT example.
+/// The user message is the input, the assistant message is the class label.
+fn extract_sample_sft(ex: &SftExample) -> Option<Sample> {
+    let user_msg = ex.messages.iter().find(|m| m.role == "user")?;
+    let asst_msg = ex.messages.iter().find(|m| m.role == "assistant")?;
+
+    let label_str = asst_msg.content.trim().to_lowercase();
+    let label = CLASS_LABELS.iter().position(|&l| label_str == l || label_str.starts_with(l))?;
+
+    Some(Sample {
+        text: user_msg.content.clone(),
+        label,
+    })
 }
 
-/// Tokenize a batch of strings, pad to max_len.
-fn tokenize_batch(
-    tokenizer: &Tokenizer,
-    texts: &[String],
-    max_len: usize,
-    device: &Device,
-) -> Result<(Tensor, Tensor), String> {
-    let pad_id = tokenizer.token_to_id("<|endoftext|>").unwrap_or(0);
-    let mut all_ids = Vec::new();
-    let mut all_labels = Vec::new();
+/// Train a kova model from scratch.
+pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
+    let tier = config.tier;
+    let model_cfg = tier.config();
+    let params = kova_model::count_params(&model_cfg);
 
-    for text in texts {
-        let encoding = tokenizer.encode(text.as_str(), true)
-            .map_err(|e| format!("tokenize: {}", e))?;
-        let mut ids: Vec<u32> = encoding.get_ids().to_vec();
-        ids.truncate(max_len);
-
-        // Labels = shifted input (next-token prediction)
-        let mut labels = ids[1..].to_vec();
-        labels.push(pad_id);
-
-        // Pad
-        while ids.len() < max_len {
-            ids.push(pad_id);
-            labels.push(pad_id); // pad labels too
-        }
-
-        all_ids.extend_from_slice(&ids);
-        all_labels.extend_from_slice(&labels);
-    }
-
-    let batch_size = texts.len();
-    let input = Tensor::from_vec(all_ids, (batch_size, max_len), device)
-        .map_err(|e| format!("input tensor: {}", e))?;
-    let labels = Tensor::from_vec(all_labels, (batch_size, max_len), device)
-        .map_err(|e| format!("labels tensor: {}", e))?;
-
-    Ok((input, labels))
-}
-
-/// Cross-entropy loss for language modeling.
-/// Handles both full-sequence logits [batch, seq, vocab] and
-/// single-position logits [batch, 1, vocab] from causal LM forward.
-fn cross_entropy_loss(logits: &Tensor, labels: &Tensor) -> Result<Tensor, String> {
-    let dims = logits.dims();
-    if dims.len() != 3 {
-        return Err(format!("expected 3D logits, got {}D: {:?}", dims.len(), dims));
-    }
-    let (batch, seq_len, vocab) = (dims[0], dims[1], dims[2]);
-
-    let logits_flat = logits.reshape((batch * seq_len, vocab))
-        .map_err(|e| format!("reshape logits: {}", e))?;
-
-    // Match labels to logits sequence length
-    let labels_matched = if labels.dim(1).unwrap_or(0) != seq_len {
-        // Logits might be shorter (e.g. last token only) — slice labels to match
-        labels.narrow(1, 0, seq_len)
-            .map_err(|e| format!("narrow labels: {}", e))?
-    } else {
-        labels.clone()
-    };
-
-    let labels_flat = labels_matched.reshape(batch * seq_len)
-        .map_err(|e| format!("reshape labels: {}", e))?;
-
-    candle_nn::loss::cross_entropy(&logits_flat, &labels_flat)
-        .map_err(|e| format!("cross_entropy: {}", e))
-}
-
-/// Train a specialist model from SFT data.
-/// Loads base model weights, fine-tunes on training data, saves as safetensors.
-pub fn train_sft(config: &TrainConfig) -> Result<PathBuf, String> {
-    eprintln!("[train] specialist: {}", config.name);
-    eprintln!("[train] base model: {}", config.base_model.display());
+    eprintln!("[train] tier: {} ({} params)", tier.name(), params);
     eprintln!("[train] data: {}", config.data_path.display());
-    eprintln!("[train] epochs: {}, lr: {}, max_seq: {}", config.epochs, config.lr, config.max_seq_len);
+    eprintln!("[train] epochs: {}, lr: {}, batch: {}", config.epochs, config.lr, config.batch_size);
 
     let device = Device::Cpu;
+    let tokenizer = SimpleTokenizer::new(model_cfg.vocab_size);
 
     // Load training data
-    let examples = load_sft_data(&config.data_path)?;
-    if examples.is_empty() {
-        return Err("no training examples found".into());
+    let samples = load_samples(&config.data_path)?;
+    if samples.is_empty() {
+        return Err("no training samples found".into());
     }
-    eprintln!("[train] loaded {} examples", examples.len());
+    eprintln!("[train] {} samples, {} classes", samples.len(), NUM_CLASSES);
 
-    // Load model config
-    let config_path = config.base_model.join("config.json");
-    let model_config: QwenConfig = if config_path.exists() {
-        let json = std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("read config: {}", e))?;
-        serde_json::from_str(&json).map_err(|e| format!("parse config: {}", e))?
-    } else {
-        crate::mobile_llm::qwen_05b_config()
-    };
+    // Print class distribution
+    let mut dist = vec![0usize; NUM_CLASSES];
+    for s in &samples { dist[s.label] += 1; }
+    for (i, count) in dist.iter().enumerate() {
+        if *count > 0 {
+            eprintln!("  {}: {}", CLASS_LABELS[i], count);
+        }
+    }
 
-    // Load tokenizer
-    let tok_path = config.base_model.join("tokenizer.json");
-    let tokenizer = Tokenizer::from_file(&tok_path)
-        .map_err(|e| format!("load tokenizer: {}", e))?;
-
-    // Load weights into VarMap (trainable)
-    let mut varmap = VarMap::new();
+    // Build model (random init)
+    let varmap = VarMap::new();
     let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
-
-    // Find safetensors files
-    let st_files: Vec<PathBuf> = std::fs::read_dir(&config.base_model)
-        .map_err(|e| format!("read model dir: {}", e))?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("safetensors"))
-        .collect();
-
-    if st_files.is_empty() {
-        return Err("no safetensors files in base model dir".into());
-    }
-
-    // Load pre-trained weights into varmap
-    for st_file in &st_files {
-        varmap.load(st_file)
-            .map_err(|e| format!("load weights from {}: {}", st_file.display(), e))?;
-    }
-
-    eprintln!("[train] loaded {} weight files", st_files.len());
-
-    // Build model from varmap
-    let mut model = ModelForCausalLM::new(&model_config, vb)
+    let model = KovaClassifier::new(&model_cfg, vb)
         .map_err(|e| format!("build model: {}", e))?;
 
-    // Setup optimizer (AdamW)
-    let params = varmap.all_vars();
+    // Optimizer
+    let all_vars = varmap.all_vars();
     let mut optimizer = candle_nn::AdamW::new(
-        params,
+        all_vars,
         candle_nn::ParamsAdamW {
             lr: config.lr,
             weight_decay: 0.01,
@@ -247,107 +162,144 @@ pub fn train_sft(config: &TrainConfig) -> Result<PathBuf, String> {
         },
     ).map_err(|e| format!("optimizer: {}", e))?;
 
-    // Format all examples
-    let formatted: Vec<String> = examples.iter().map(|ex| format_chatml(ex)).collect();
+    // Tokenize all samples
+    let max_len = model_cfg.max_seq_len;
+    let all_ids: Vec<Vec<u32>> = samples.iter()
+        .map(|s| tokenizer.encode(&s.text, max_len))
+        .collect();
+    let all_labels: Vec<u32> = samples.iter().map(|s| s.label as u32).collect();
 
     // Training loop
     for epoch in 0..config.epochs {
         let mut total_loss = 0.0f64;
-        let mut n_batches = 0;
+        let mut correct = 0usize;
+        let mut total = 0usize;
 
-        for batch_start in (0..formatted.len()).step_by(config.batch_size) {
-            let batch_end = (batch_start + config.batch_size).min(formatted.len());
-            let batch_texts: Vec<String> = formatted[batch_start..batch_end].to_vec();
+        for batch_start in (0..samples.len()).step_by(config.batch_size) {
+            let batch_end = (batch_start + config.batch_size).min(samples.len());
+            let bs = batch_end - batch_start;
 
-            let (input_ids, labels) = tokenize_batch(
-                &tokenizer,
-                &batch_texts,
-                config.max_seq_len,
+            // Build input tensor [batch, seq_len]
+            let mut flat_ids = Vec::with_capacity(bs * max_len);
+            for i in batch_start..batch_end {
+                flat_ids.extend_from_slice(&all_ids[i]);
+            }
+            let input = Tensor::from_vec(flat_ids, (bs, max_len), &device)
+                .map_err(|e| format!("input tensor: {}", e))?;
+
+            // Build label tensor [batch]
+            let labels = Tensor::from_vec(
+                all_labels[batch_start..batch_end].to_vec(),
+                (bs,),
                 &device,
-            )?;
+            ).map_err(|e| format!("label tensor: {}", e))?;
 
-            // Forward pass
-            let logits = model.forward(&input_ids, 0)
+            // Forward
+            let logits = model.forward(&input)
                 .map_err(|e| format!("forward: {}", e))?;
 
-            // Loss
-            let loss = cross_entropy_loss(&logits, &labels)?;
-            let loss_val: f64 = loss.to_scalar()
+            // Cross-entropy loss
+            let loss = candle_nn::loss::cross_entropy(&logits, &labels)
+                .map_err(|e| format!("loss: {}", e))?;
+            let loss_val: f64 = loss.to_dtype(DType::F64)
+                .and_then(|t| t.to_scalar())
                 .map_err(|e| format!("loss scalar: {}", e))?;
+
+            // Accuracy
+            let preds: Vec<u32> = logits.argmax(1)
+                .map_err(|e| format!("argmax: {}", e))?
+                .to_vec1()
+                .map_err(|e| format!("to_vec: {}", e))?;
+            for (i, &pred) in preds.iter().enumerate() {
+                if pred == all_labels[batch_start + i] {
+                    correct += 1;
+                }
+                total += 1;
+            }
 
             // Backward + step
             optimizer.backward_step(&loss)
                 .map_err(|e| format!("backward: {}", e))?;
 
-            total_loss += loss_val;
-            n_batches += 1;
+            total_loss += loss_val * bs as f64;
         }
 
-        let avg_loss = if n_batches > 0 { total_loss / n_batches as f64 } else { 0.0 };
-        eprintln!("[train] epoch {}/{}: loss={:.4}", epoch + 1, config.epochs, avg_loss);
+        let avg_loss = total_loss / samples.len() as f64;
+        let acc = if total > 0 { correct as f64 / total as f64 * 100.0 } else { 0.0 };
+        eprintln!("[train] epoch {}/{}: loss={:.4} acc={:.1}%", epoch + 1, config.epochs, avg_loss, acc);
     }
 
-    // Save fine-tuned model
-    let out_dir = config.output_dir.join(&config.name);
+    // Save model
+    let out_dir = config.output_dir.join(format!("kova-{}", tier.name()));
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("create output: {}", e))?;
 
-    let out_path = out_dir.join("model.safetensors");
-    varmap.save(&out_path).map_err(|e| format!("save model: {}", e))?;
+    let model_path = out_dir.join("model.safetensors");
+    varmap.save(&model_path).map_err(|e| format!("save: {}", e))?;
 
-    // Copy tokenizer + config to output
-    let _ = std::fs::copy(
-        config.base_model.join("tokenizer.json"),
-        out_dir.join("tokenizer.json"),
-    );
-    let _ = std::fs::copy(
-        config.base_model.join("config.json"),
+    // Save config
+    let config_json = serde_json::json!({
+        "tier": tier.name(),
+        "params": params,
+        "vocab_size": model_cfg.vocab_size,
+        "embed_dim": model_cfg.embed_dim,
+        "num_heads": model_cfg.num_heads,
+        "num_layers": model_cfg.num_layers,
+        "ff_dim": model_cfg.ff_dim,
+        "max_seq_len": model_cfg.max_seq_len,
+        "classes": CLASS_LABELS,
+    });
+    std::fs::write(
         out_dir.join("config.json"),
-    );
+        serde_json::to_string_pretty(&config_json).unwrap(),
+    ).map_err(|e| format!("save config: {}", e))?;
 
-    eprintln!("[train] saved to {}", out_dir.display());
-    eprintln!("[train] model: {}", out_path.display());
+    eprintln!("[train] saved {} to {}", tier.name(), out_dir.display());
+    eprintln!("[train] {} params, {:.1} KB", params, model_path.metadata().map(|m| m.len()).unwrap_or(0) as f64 / 1024.0);
 
     Ok(out_dir)
 }
 
-/// Train all four kova specialists from exported tournament data.
-pub fn train_all_specialists(
-    base_model: &Path,
+/// Train all three tiers.
+pub fn train_all_tiers(
     training_dir: &Path,
     output_dir: &Path,
 ) -> Result<Vec<PathBuf>, String> {
-    let specialists = [
-        ("kova-rustfix", "dpo_chatml.jsonl"),
-        ("kova-tokenizer", "sft_chatml.jsonl"),
-        ("kova-architect", "sft_chatml.jsonl"),
-        ("kova-reviewer", "dpo_chatml.jsonl"),
-    ];
+    let data_path = training_dir.join("sft_chatml.jsonl");
+    if !data_path.exists() {
+        return Err(format!("no SFT data at {}", data_path.display()));
+    }
 
     let mut outputs = Vec::new();
 
-    for (name, data_file) in &specialists {
-        let data_path = training_dir.join(data_file);
-        if !data_path.exists() {
-            eprintln!("[train] skipping {} — no data at {}", name, data_path.display());
-            continue;
-        }
-
+    for tier in [Tier::Spark, Tier::Flame, Tier::Blaze] {
         let config = TrainConfig {
-            base_model: base_model.to_path_buf(),
-            data_path,
+            tier,
+            data_path: data_path.clone(),
             output_dir: output_dir.to_path_buf(),
-            name: name.to_string(),
-            epochs: 3,
-            lr: 1e-5,
-            max_seq_len: 512,
-            batch_size: 1,
+            epochs: match tier {
+                Tier::Spark => 20,
+                Tier::Flame => 15,
+                Tier::Blaze => 10,
+            },
+            lr: 3e-4,
+            batch_size: match tier {
+                Tier::Spark => 32,
+                Tier::Flame => 16,
+                Tier::Blaze => 8,
+            },
         };
 
-        match train_sft(&config) {
+        match train(&config) {
             Ok(path) => outputs.push(path),
-            Err(e) => eprintln!("[train] {} failed: {}", name, e),
+            Err(e) => eprintln!("[train] {} failed: {}", tier.name(), e),
         }
     }
 
     Ok(outputs)
+}
+
+/// Training data directory.
+pub fn training_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    PathBuf::from(home).join(".kova").join("micro").join("training")
 }

@@ -651,21 +651,21 @@ enum MicroCmd {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Pure Rust training via candle. No Python, no MLX. Produces safetensors specialists.
+    /// Train kova's own models from scratch. Pure Rust, candle. No pretrained weights.
     #[cfg(feature = "mobile-llm")]
     Forge {
-        /// Specialist name (kova-rustfix, kova-tokenizer, kova-architect, kova-reviewer, or "all").
+        /// Model tier: spark (50K), flame (500K), blaze (2M), or "all".
         #[arg(default_value = "all")]
-        name: String,
-        /// Base model directory (safetensors + tokenizer.json). Default: ~/.kova/models/ first subdir.
-        #[arg(long)]
-        base_model: Option<std::path::PathBuf>,
+        tier: String,
         /// Training epochs.
-        #[arg(long, default_value = "3")]
+        #[arg(long, default_value = "10")]
         epochs: u32,
         /// Learning rate.
-        #[arg(long, default_value = "0.00001")]
+        #[arg(long, default_value = "0.0003")]
         lr: f64,
+        /// Batch size.
+        #[arg(long, default_value = "16")]
+        batch_size: usize,
     },
 }
 
@@ -1303,45 +1303,40 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             f262(fmt, iters, dry_run).map_err(anyhow::Error::msg)
         }
         #[cfg(feature = "mobile-llm")]
-        MicroCmd::Forge { name, base_model, epochs, lr } => {
-            use kova::micro::candle_train::{TrainConfig, train_sft, train_all_specialists};
+        MicroCmd::Forge { tier, epochs, lr, batch_size } => {
+            use kova::micro::candle_train::{self, TrainConfig};
+            use kova::micro::kova_model::Tier;
 
-            let training_dir = kova::kova_dir().join("micro").join("training");
+            let training_dir = candle_train::training_dir();
             let output_dir = kova::models_dir();
 
-            // Find base model
-            let base = base_model.unwrap_or_else(|| {
-                kova::mobile_llm::find_model().unwrap_or_else(|| {
-                    eprintln!("No base model found. Provide --base-model or put safetensors in ~/.kova/models/");
-                    std::process::exit(1);
-                })
-            });
-
-            if name == "all" {
-                let results = train_all_specialists(&base, &training_dir, &output_dir)
+            if tier == "all" {
+                let results = candle_train::train_all_tiers(&training_dir, &output_dir)
                     .map_err(anyhow::Error::msg)?;
-                eprintln!("[forge] trained {} specialists", results.len());
+                eprintln!("[forge] trained {} tiers", results.len());
                 for r in &results {
                     eprintln!("  {}", r.display());
                 }
             } else {
-                // Single specialist
-                let data_file = if name.contains("fix") || name.contains("review") {
-                    "dpo_chatml.jsonl"
-                } else {
-                    "sft_chatml.jsonl"
+                let t = match tier.as_str() {
+                    "spark" => Tier::Spark,
+                    "flame" => Tier::Flame,
+                    "blaze" => Tier::Blaze,
+                    _ => {
+                        eprintln!("Unknown tier: {}. Use spark, flame, blaze, or all.", tier);
+                        std::process::exit(1);
+                    }
                 };
+                let data_path = training_dir.join("sft_chatml.jsonl");
                 let config = TrainConfig {
-                    base_model: base,
-                    data_path: training_dir.join(data_file),
+                    tier: t,
+                    data_path,
                     output_dir,
-                    name,
                     epochs,
                     lr,
-                    max_seq_len: 512,
-                    batch_size: 1,
+                    batch_size,
                 };
-                let path = train_sft(&config).map_err(anyhow::Error::msg)?;
+                let path = candle_train::train(&config).map_err(anyhow::Error::msg)?;
                 eprintln!("[forge] done: {}", path.display());
             }
             Ok(())

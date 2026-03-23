@@ -31,3 +31,5 @@ pub mod train_harness;
 pub mod validate;
 #[cfg(feature = "mobile-llm")]
 pub mod candle_train;
+#[cfg(feature = "mobile-llm")]
+pub mod kova_model;
