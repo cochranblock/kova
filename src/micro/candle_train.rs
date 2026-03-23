@@ -13,7 +13,7 @@ use candle_core::{DType, Device, Tensor};
 use candle_nn::{Optimizer, VarBuilder, VarMap};
 use std::path::{Path, PathBuf};
 
-use super::kova_model::{self, KovaClassifier, ModelConfig, SimpleTokenizer, Tier, CLASS_LABELS, NUM_CLASSES};
+use super::kova_model::{self, KovaClassifier, KovaTokenizer, Tier, CLASS_LABELS, NUM_CLASSES};
 
 /// Training configuration.
 pub struct TrainConfig {
@@ -127,7 +127,6 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
     eprintln!("[train] epochs: {}, lr: {}, batch: {}", config.epochs, config.lr, config.batch_size);
 
     let device = Device::Cpu;
-    let tokenizer = SimpleTokenizer::new(model_cfg.vocab_size);
 
     // Load training data
     let samples = load_samples(&config.data_path)?;
@@ -144,6 +143,17 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
             eprintln!("  {}: {}", CLASS_LABELS[i], count);
         }
     }
+
+    // Train BPE tokenizer on the training data
+    let texts: Vec<String> = samples.iter().map(|s| s.text.clone()).collect();
+    let max_merges = model_cfg.vocab_size.saturating_sub(257);
+    eprintln!("[train] training BPE tokenizer ({} merges from {} texts)...", max_merges, texts.len());
+    let tokenizer = KovaTokenizer::train(&texts, max_merges);
+    eprintln!("[train] tokenizer vocab: {}", tokenizer.vocab_size());
+
+    // Update model config to match actual vocab
+    let mut model_cfg = model_cfg;
+    model_cfg.vocab_size = tokenizer.vocab_size();
 
     // Build model (random init)
     let varmap = VarMap::new();
@@ -235,6 +245,10 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
 
     let model_path = out_dir.join("model.safetensors");
     varmap.save(&model_path).map_err(|e| format!("save: {}", e))?;
+
+    // Save tokenizer
+    tokenizer.save(&out_dir.join("tokenizer.json"))
+        .map_err(|e| format!("save tokenizer: {}", e))?;
 
     // Save config
     let config_json = serde_json::json!({

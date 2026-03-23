@@ -916,3 +916,186 @@ pub fn f360(
     eprintln!("\n[offload] done. disk: {}% → {}%", usage, new_usage);
     Ok(())
 }
+
+/// f370=deploy. Deploy kova binary + models to all nodes, restart kova-serve.
+/// Pattern: local build → scp binary → scp models → restart systemd.
+pub fn f370(
+    nodes: Option<Vec<String>>,
+    skip_build: bool,
+    skip_models: bool,
+) -> Result<(), String> {
+    let targets: Vec<String> = nodes
+        .unwrap_or_else(|| f350().iter().map(|s| s.to_string()).collect());
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/mcochran".into());
+    let local_binary = format!("{}/target/aarch64-apple-darwin/release/kova", home);
+    // Fallback: check if bt has a fresh build
+    let bt_binary = "/home/mcochran/target/release/kova";
+
+    // Step 1: Find binary
+    let (binary_source, via_node) = if std::path::Path::new(&local_binary).exists() && !skip_build {
+        eprintln!("[deploy] using local binary: {}", local_binary);
+        (local_binary.clone(), None)
+    } else {
+        eprintln!("[deploy] using bt binary: {}", bt_binary);
+        (bt_binary.to_string(), Some("bt"))
+    };
+
+    // Step 2: Copy binary to all nodes
+    eprintln!("[deploy] copying binary to {} nodes...", targets.len());
+    let (tx, rx) = mpsc::channel();
+    let mut handles = Vec::new();
+    for node in &targets {
+        let node = node.clone();
+        let src = binary_source.clone();
+        let via = via_node.map(|s| s.to_string());
+        let tx = tx.clone();
+        handles.push(thread::spawn(move || {
+            let result = if let Some(via_node) = via {
+                // Copy from bt to target node
+                if node == via_node {
+                    // bt → bt: just copy locally
+                    let status = Command::new("ssh")
+                        .args([&node, &format!("cp {} /home/mcochran/bin/kova", src)])
+                        .status();
+                    status.map(|s| s.success()).unwrap_or(false)
+                } else {
+                    let status = Command::new("scp")
+                        .args([&format!("{}:{}", via_node, src), &format!("{}:/home/mcochran/bin/kova", node)])
+                        .status();
+                    status.map(|s| s.success()).unwrap_or(false)
+                }
+            } else {
+                // Copy local binary to node
+                let status = Command::new("scp")
+                    .args([&src, &format!("{}:/home/mcochran/bin/kova", node)])
+                    .status();
+                status.map(|s| s.success()).unwrap_or(false)
+            };
+            tx.send((node, "binary", result)).ok();
+        }));
+    }
+    drop(tx);
+    for (node, what, ok) in rx.iter() {
+        if ok {
+            eprintln!("  {}: {} deployed", node, what);
+        } else {
+            eprintln!("  {}: {} FAILED", node, what);
+        }
+    }
+    for h in handles { let _ = h.join(); }
+
+    // Step 3: Copy trained models (safetensors)
+    if !skip_models {
+        let models_dir = crate::config::models_dir();
+        let kova_models: Vec<_> = std::fs::read_dir(&models_dir)
+            .ok()
+            .map(|entries| {
+                entries.flatten()
+                    .filter(|e| e.path().is_dir())
+                    .filter(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        name.starts_with("kova-") && e.path().join("model.safetensors").exists()
+                    })
+                    .map(|e| e.path())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if !kova_models.is_empty() {
+            eprintln!("[deploy] syncing {} trained models...", kova_models.len());
+            for model_dir in &kova_models {
+                let name = model_dir.file_name().unwrap().to_string_lossy();
+                let (tx, rx) = mpsc::channel();
+                let mut handles = Vec::new();
+                for node in &targets {
+                    let node = node.clone();
+                    let src = model_dir.display().to_string();
+                    let name = name.to_string();
+                    let tx = tx.clone();
+                    handles.push(thread::spawn(move || {
+                        let dest = format!("{}:/home/mcochran/.kova/models/{}/", node, name);
+                        // Ensure dir exists
+                        let _ = Command::new("ssh")
+                            .args([&node, &format!("mkdir -p /home/mcochran/.kova/models/{}", name)])
+                            .status();
+                        let ok = Command::new("rsync")
+                            .args(["-avz", &format!("{}/", src), &dest])
+                            .stdout(Stdio::null())
+                            .status()
+                            .map(|s| s.success())
+                            .unwrap_or(false);
+                        tx.send((node, ok)).ok();
+                    }));
+                }
+                drop(tx);
+                for (node, ok) in rx.iter() {
+                    if ok {
+                        eprintln!("  {}: {} synced", node, name);
+                    } else {
+                        eprintln!("  {}: {} FAILED", node, name);
+                    }
+                }
+                for h in handles { let _ = h.join(); }
+            }
+        } else {
+            eprintln!("[deploy] no trained kova models to sync");
+        }
+    }
+
+    // Step 4: Symlink + restart kova-serve
+    eprintln!("[deploy] restarting kova-serve on all nodes...");
+    let (tx, rx) = mpsc::channel();
+    let mut handles = Vec::new();
+    for node in &targets {
+        let node = node.clone();
+        let tx = tx.clone();
+        handles.push(thread::spawn(move || {
+            let ok = Command::new("ssh")
+                .args([
+                    &node,
+                    "ln -sf /home/mcochran/bin/kova /home/mcochran/kova-bin && systemctl --user restart kova-serve",
+                ])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            tx.send((node, ok)).ok();
+        }));
+    }
+    drop(tx);
+    for (node, ok) in rx.iter() {
+        if ok {
+            eprintln!("  {}: restarted", node);
+        } else {
+            eprintln!("  {}: restart FAILED", node);
+        }
+    }
+    for h in handles { let _ = h.join(); }
+
+    // Step 5: Verify
+    eprintln!("[deploy] verifying...");
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let (tx, rx) = mpsc::channel();
+    let mut handles = Vec::new();
+    for node in &targets {
+        let node = node.clone();
+        let tx = tx.clone();
+        handles.push(thread::spawn(move || {
+            let output = Command::new("ssh")
+                .args([&node, "/home/mcochran/bin/kova --version"])
+                .output();
+            let version = output.ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_else(|| "?".into());
+            tx.send((node, version)).ok();
+        }));
+    }
+    drop(tx);
+    for (node, version) in rx.iter() {
+        eprintln!("  {}: {}", node, version);
+    }
+    for h in handles { let _ = h.join(); }
+
+    eprintln!("[deploy] done");
+    Ok(())
+}

@@ -236,32 +236,116 @@ impl KovaClassifier {
     }
 }
 
-/// Simple byte-pair-ish tokenizer. Maps bytes to vocab IDs.
-/// Vocab 0-255 = raw bytes, 256+ = common bigrams learned from data.
-pub struct SimpleTokenizer {
-    max_vocab: usize,
+/// BPE tokenizer. Trained on kova data. Pure Rust.
+/// Vocab 0 = pad, 1-256 = raw bytes, 257+ = learned merges.
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct KovaTokenizer {
+    /// Merge rules: (pair_a, pair_b) → merged_id. Applied in order.
+    merges: Vec<(u32, u32)>,
+    /// Total vocab size (257 + merges.len()).
+    vocab_size: usize,
 }
 
-impl SimpleTokenizer {
-    pub fn new(vocab_size: usize) -> Self {
-        Self { max_vocab: vocab_size }
+impl KovaTokenizer {
+    /// Create a byte-only tokenizer (no merges). Baseline.
+    pub fn byte_level() -> Self {
+        Self { merges: Vec::new(), vocab_size: 257 }
     }
 
-    /// Tokenize a string to u32 IDs. Simple byte-level encoding.
-    pub fn encode(&self, text: &str, max_len: usize) -> Vec<u32> {
-        let mut ids: Vec<u32> = text.bytes()
-            .map(|b| b as u32)
-            .take(max_len)
+    /// Train BPE merges from a corpus of texts.
+    /// Learns up to `max_merges` merge rules from the most frequent byte pairs.
+    pub fn train(texts: &[String], max_merges: usize) -> Self {
+        // Encode all texts as byte sequences (offset by 1 for pad=0)
+        let mut sequences: Vec<Vec<u32>> = texts.iter()
+            .map(|t| t.bytes().map(|b| b as u32 + 1).collect())
             .collect();
-        // Pad
+
+        let mut merges = Vec::new();
+        let mut next_id = 257u32;
+
+        for _ in 0..max_merges {
+            // Count all adjacent pairs
+            let mut pair_counts: std::collections::HashMap<(u32, u32), usize> = std::collections::HashMap::new();
+            for seq in &sequences {
+                for w in seq.windows(2) {
+                    *pair_counts.entry((w[0], w[1])).or_insert(0) += 1;
+                }
+            }
+
+            // Find most frequent pair
+            let best = pair_counts.into_iter().max_by_key(|&(_, count)| count);
+            let Some((pair, count)) = best else { break };
+            if count < 2 { break; } // No pair appears more than once
+
+            // Merge this pair everywhere
+            let new_id = next_id;
+            next_id += 1;
+            merges.push(pair);
+
+            for seq in &mut sequences {
+                let mut i = 0;
+                let mut new_seq = Vec::with_capacity(seq.len());
+                while i < seq.len() {
+                    if i + 1 < seq.len() && seq[i] == pair.0 && seq[i + 1] == pair.1 {
+                        new_seq.push(new_id);
+                        i += 2;
+                    } else {
+                        new_seq.push(seq[i]);
+                        i += 1;
+                    }
+                }
+                *seq = new_seq;
+            }
+        }
+
+        Self {
+            vocab_size: 257 + merges.len(),
+            merges,
+        }
+    }
+
+    /// Encode text to token IDs. Apply learned merges.
+    pub fn encode(&self, text: &str, max_len: usize) -> Vec<u32> {
+        let mut ids: Vec<u32> = text.bytes().map(|b| b as u32 + 1).collect();
+
+        // Apply merges in order
+        for (merge_idx, &(a, b)) in self.merges.iter().enumerate() {
+            let new_id = 257 + merge_idx as u32;
+            let mut i = 0;
+            let mut merged = Vec::with_capacity(ids.len());
+            while i < ids.len() {
+                if i + 1 < ids.len() && ids[i] == a && ids[i + 1] == b {
+                    merged.push(new_id);
+                    i += 2;
+                } else {
+                    merged.push(ids[i]);
+                    i += 1;
+                }
+            }
+            ids = merged;
+        }
+
+        ids.truncate(max_len);
         while ids.len() < max_len {
-            ids.push(0);
+            ids.push(0); // pad
         }
         ids
     }
 
     pub fn vocab_size(&self) -> usize {
-        self.max_vocab
+        self.vocab_size
+    }
+
+    /// Save tokenizer to JSON.
+    pub fn save(&self, path: &std::path::Path) -> std::result::Result<(), String> {
+        let json = serde_json::to_string_pretty(self).map_err(|e| format!("serialize: {}", e))?;
+        std::fs::write(path, json).map_err(|e| format!("write: {}", e))
+    }
+
+    /// Load tokenizer from JSON.
+    pub fn load(path: &std::path::Path) -> std::result::Result<Self, String> {
+        let json = std::fs::read_to_string(path).map_err(|e| format!("read: {}", e))?;
+        serde_json::from_str(&json).map_err(|e| format!("parse: {}", e))
     }
 }
 
