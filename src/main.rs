@@ -689,6 +689,15 @@ enum MicroCmd {
         #[arg(long, default_value = "16")]
         batch_size: usize,
     },
+    /// Generate synthetic classifier training data for all 8 categories.
+    Synth,
+    /// Synth + retrain Spark in one shot. The evolve loop.
+    #[cfg(feature = "mobile-llm")]
+    Evolve {
+        /// Training epochs.
+        #[arg(long, default_value = "200")]
+        epochs: u32,
+    },
 }
 
 #[cfg(feature = "inference")]
@@ -1414,6 +1423,42 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 let path = candle_train::train(&config).map_err(anyhow::Error::msg)?;
                 eprintln!("[forge] done: {}", path.display());
             }
+            Ok(())
+        }
+        MicroCmd::Synth => {
+            use kova::micro::candle_train;
+            let training_dir = candle_train::training_dir();
+            std::fs::create_dir_all(&training_dir)
+                .map_err(|e| anyhow::anyhow!("create training dir: {}", e))?;
+            candle_train::generate_synthetic_data(&training_dir)
+                .map_err(anyhow::Error::msg)?;
+            Ok(())
+        }
+        #[cfg(feature = "mobile-llm")]
+        MicroCmd::Evolve { epochs } => {
+            use kova::micro::candle_train::{self, TrainConfig};
+            use kova::micro::kova_model::Tier;
+
+            // Step 1: Generate synthetic data
+            let training_dir = candle_train::training_dir();
+            std::fs::create_dir_all(&training_dir)
+                .map_err(|e| anyhow::anyhow!("create training dir: {}", e))?;
+            candle_train::generate_synthetic_data(&training_dir)
+                .map_err(anyhow::Error::msg)?;
+
+            // Step 2: Retrain Spark
+            let data_path = training_dir.join("sft_chatml.jsonl");
+            let output_dir = kova::models_dir();
+            let config = TrainConfig {
+                tier: Tier::Spark,
+                data_path,
+                output_dir,
+                epochs,
+                lr: 3e-4,
+                batch_size: 32,
+            };
+            let path = candle_train::train(&config).map_err(anyhow::Error::msg)?;
+            eprintln!("[evolve] Spark retrained: {}", path.display());
             Ok(())
         }
     }
