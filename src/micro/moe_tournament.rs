@@ -30,6 +30,8 @@ pub struct MoeConfig {
     pub max_cascade: usize,
     /// Path to trained Spark model (model.safetensors + tokenizer.json + config.json).
     pub spark_dir: std::path::PathBuf,
+    /// Use ground-truth category instead of Spark prediction (diagnostic mode).
+    pub oracle: bool,
 }
 
 /// Loaded Spark router for MoE.
@@ -140,16 +142,20 @@ pub fn run_moe_tournament(
 ) -> Vec<T162> {
     let mut results = Vec::new();
 
-    // Load Spark router
-    let router = match SparkRouter::load(&config.spark_dir) {
-        Ok(r) => {
-            eprintln!("[moe] Spark router loaded from {}", config.spark_dir.display());
-            r
-        }
-        Err(e) => {
-            eprintln!("[moe] failed to load Spark: {} — using round-robin", e);
-            // Fall back to no routing
-            return results;
+    // Load Spark router (skip if oracle mode)
+    let router = if config.oracle {
+        eprintln!("[moe] ORACLE mode — using ground-truth categories, Spark bypassed");
+        None
+    } else {
+        match SparkRouter::load(&config.spark_dir) {
+            Ok(r) => {
+                eprintln!("[moe] Spark router loaded from {}", config.spark_dir.display());
+                Some(r)
+            }
+            Err(e) => {
+                eprintln!("[moe] failed to load Spark: {} — using round-robin", e);
+                return results;
+            }
         }
     };
 
@@ -177,14 +183,27 @@ pub fn run_moe_tournament(
         exhibition: false,
     };
 
-    eprintln!("[moe] running {} challenges with {} online nodes, max cascade {}",
-        challenges.len(), online.len(), config.max_cascade);
+    eprintln!("[moe] running {} challenges with {} online nodes, max cascade {}{}",
+        challenges.len(), online.len(), config.max_cascade,
+        if config.oracle { " [ORACLE]" } else { "" });
+
+    let mut spark_correct = 0usize;
+    let mut spark_total = 0usize;
 
     for ch in challenges {
         let start = Instant::now();
 
-        // Step 1: Spark classifies
-        let predicted_cat = router.classify(&ch.input).unwrap_or_else(|_| ch.category.clone());
+        // Step 1: Route — oracle uses ground truth, Spark uses prediction
+        let predicted_cat = if config.oracle {
+            ch.category.clone()
+        } else if let Some(ref r) = router {
+            let pred = r.classify(&ch.input).unwrap_or_else(|_| ch.category.clone());
+            spark_total += 1;
+            if pred == ch.category { spark_correct += 1; }
+            pred
+        } else {
+            ch.category.clone()
+        };
 
         // Step 2: Pick best node for this category
         let node_order: Vec<String> = if let Some(prefs) = node_prefs.get(&predicted_cat) {
@@ -262,6 +281,11 @@ pub fn run_moe_tournament(
     let total = results.len();
     let acc = if total > 0 { passed as f64 / total as f64 * 100.0 } else { 0.0 };
     eprintln!("\n[moe] KovaMoE: {}/{} ({:.1}%) in {} challenges", passed, total, acc, total);
+
+    if spark_total > 0 && !config.oracle {
+        let spark_acc = spark_correct as f64 / spark_total as f64 * 100.0;
+        eprintln!("[moe] Spark routing accuracy: {}/{} ({:.1}%)", spark_correct, spark_total, spark_acc);
+    }
 
     results
 }

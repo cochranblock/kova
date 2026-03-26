@@ -355,6 +355,67 @@ pub fn f260(result: &T165, registry: &T149) {
     }
 }
 
+/// f263=export_classifier_sft
+/// Export classifier-format training data from tournament results.
+/// Each match becomes {user: challenge_input, assistant: category_label}.
+/// This is what candle_train actually needs (bare class labels, not full responses).
+pub fn f263(result: &T165, registry: &T149) -> Result<PathBuf, String> {
+    let base = training_dir();
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+
+    let inputs = challenge_inputs(registry);
+    let sys = "Classify the input into exactly one category. Reply with only the category name.\nCategories: classify, clippy_fix, code_gen, code_review, explain, fix_compile, test_write, validate";
+
+    let mut lines = Vec::new();
+
+    // Export every match as a classifier example (category is the label)
+    for m in &result.matches {
+        if m.category.is_empty() { continue; }
+
+        let input_text = if let Some((input, _)) = inputs.get(&m.challenge) {
+            input.clone()
+        } else {
+            // Fall back to challenge description if input not found
+            m.challenge.clone()
+        };
+
+        if input_text.is_empty() { continue; }
+
+        let entry = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": sys},
+                {"role": "user", "content": input_text},
+                {"role": "assistant", "content": m.category}
+            ]
+        });
+        lines.push(serde_json::to_string(&entry).map_err(|e| e.to_string())?);
+    }
+
+    // Deduplicate (same input can appear multiple times across competitors)
+    let mut seen = std::collections::HashSet::new();
+    let unique: Vec<String> = lines.into_iter().filter(|l| seen.insert(l.clone())).collect();
+
+    let path = base.join("classifier_sft.jsonl");
+    std::fs::write(&path, unique.join("\n") + "\n").map_err(|e| e.to_string())?;
+
+    eprintln!("[classifier] {} examples exported to {}", unique.len(), path.display());
+
+    // Per-category counts
+    let mut cats: HashMap<String, usize> = HashMap::new();
+    for m in &result.matches {
+        if !m.category.is_empty() {
+            *cats.entry(m.category.clone()).or_default() += 1;
+        }
+    }
+    let mut cat_list: Vec<_> = cats.into_iter().collect();
+    cat_list.sort_by_key(|(k, _)| k.clone());
+    for (cat, count) in &cat_list {
+        eprintln!("  {}: {}", cat, count);
+    }
+
+    Ok(path)
+}
+
 fn training_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     PathBuf::from(home).join(".kova").join("micro").join("training")

@@ -646,6 +646,9 @@ enum MicroCmd {
         /// Spark model dir. Default: ~/.kova/models/kova-spark/
         #[arg(long)]
         spark_dir: Option<std::path::PathBuf>,
+        /// Oracle mode: use ground-truth categories instead of Spark (diagnostic).
+        #[arg(long, default_value_t = false)]
+        oracle: bool,
     },
     /// Export training data from tournament results.
     Export {
@@ -1279,7 +1282,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             Ok(())
         }
         #[cfg(feature = "mobile-llm")]
-        MicroCmd::TournamentMoe { max_cascade, spark_dir } => {
+        MicroCmd::TournamentMoe { max_cascade, spark_dir, oracle } => {
             use kova::micro::{tournament, moe_tournament};
 
             let cluster = kova::cluster::T193::default_hive();
@@ -1298,6 +1301,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             let config = moe_tournament::MoeConfig {
                 max_cascade,
                 spark_dir: spark,
+                oracle,
             };
 
             let moe_results = moe_tournament::run_moe_tournament(
@@ -1438,15 +1442,29 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
         MicroCmd::Evolve { epochs } => {
             use kova::micro::candle_train::{self, TrainConfig};
             use kova::micro::kova_model::Tier;
+            use kova::micro::{tournament, train};
 
-            // Step 1: Generate synthetic data
             let training_dir = candle_train::training_dir();
             std::fs::create_dir_all(&training_dir)
                 .map_err(|e| anyhow::anyhow!("create training dir: {}", e))?;
+
+            // Step 1: Export classifier SFT from tournament results (if available)
+            let tp = tournament::f253();
+            if tp.exists() {
+                let json = std::fs::read_to_string(&tp)?;
+                if let Ok(result) = serde_json::from_str::<tournament::T165>(&json) {
+                    train::f263(&result, &registry)
+                        .map_err(anyhow::Error::msg)?;
+                }
+            } else {
+                eprintln!("[evolve] no tournament results — skipping classifier export");
+            }
+
+            // Step 2: Generate synthetic data
             candle_train::generate_synthetic_data(&training_dir)
                 .map_err(anyhow::Error::msg)?;
 
-            // Step 2: Retrain Spark
+            // Step 3: Retrain Spark (loads both sft_chatml + classifier_sft)
             let data_path = training_dir.join("sft_chatml.jsonl");
             let output_dir = kova::models_dir();
             let config = TrainConfig {

@@ -116,6 +116,22 @@ fn extract_sample_sft(ex: &SftExample) -> Option<Sample> {
     })
 }
 
+/// Load samples from multiple JSONL files, deduplicating by text.
+fn load_all_samples(paths: &[&Path]) -> Result<Vec<Sample>, String> {
+    let mut all = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for path in paths {
+        if !path.exists() { continue; }
+        let samples = load_samples(path)?;
+        for s in samples {
+            if seen.insert(s.text.clone()) {
+                all.push(s);
+            }
+        }
+    }
+    Ok(all)
+}
+
 /// Train a kova model from scratch.
 pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
     let tier = config.tier;
@@ -128,12 +144,18 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
 
     let device = Device::Cpu;
 
-    // Load training data
-    let samples = load_samples(&config.data_path)?;
+    // Load training data from all sources (sft_chatml + classifier_sft)
+    let classifier_path = config.data_path.parent()
+        .map(|p| p.join("classifier_sft.jsonl"))
+        .unwrap_or_default();
+    let sources: Vec<&Path> = vec![config.data_path.as_path(), classifier_path.as_path()]
+        .into_iter()
+        .filter(|p| p.exists())
+        .collect();
+    let samples = load_all_samples(&sources)?;
     if samples.is_empty() {
         return Err("no training samples found".into());
     }
-    eprintln!("[train] {} samples, {} classes", samples.len(), NUM_CLASSES);
 
     // Print class distribution
     let mut dist = vec![0usize; NUM_CLASSES];
@@ -144,7 +166,38 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
         }
     }
 
-    // Train BPE tokenizer on the training data
+    // Train/val split: stratified 80/20
+    let mut rng_seed: u64 = 42;
+    let mut xorshift = |seed: &mut u64| -> u64 {
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 7;
+        *seed ^= *seed << 17;
+        *seed
+    };
+
+    let mut train_idx: Vec<usize> = Vec::new();
+    let mut val_idx: Vec<usize> = Vec::new();
+    // Group by class, split each
+    for class in 0..NUM_CLASSES {
+        let class_indices: Vec<usize> = samples.iter().enumerate()
+            .filter(|(_, s)| s.label == class)
+            .map(|(i, _)| i)
+            .collect();
+        let n_val = (class_indices.len() as f64 * 0.2).ceil() as usize;
+        let mut shuffled = class_indices.clone();
+        for i in (1..shuffled.len()).rev() {
+            let j = (xorshift(&mut rng_seed) as usize) % (i + 1);
+            shuffled.swap(i, j);
+        }
+        val_idx.extend_from_slice(&shuffled[..n_val.min(shuffled.len())]);
+        train_idx.extend_from_slice(&shuffled[n_val.min(shuffled.len())..]);
+    }
+
+    let n_train = train_idx.len();
+    let n_val = val_idx.len();
+    eprintln!("[train] {} total samples → {} train, {} val", samples.len(), n_train, n_val);
+
+    // Train BPE tokenizer on all data (train + val)
     let texts: Vec<String> = samples.iter().map(|s| s.text.clone()).collect();
     let max_merges = model_cfg.vocab_size.saturating_sub(257);
     eprintln!("[train] training BPE tokenizer ({} merges from {} texts)...", max_merges, texts.len());
@@ -179,86 +232,111 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
         .collect();
     let all_labels: Vec<u32> = samples.iter().map(|s| s.label as u32).collect();
 
-    // Build index array for shuffling
-    let n = samples.len();
-    let mut indices: Vec<usize> = (0..n).collect();
-    let mut rng_seed: u64 = 42;
+    // Track best val accuracy for checkpoint
+    let mut best_val_acc = 0.0f64;
+    let mut best_epoch = 0u32;
 
-    // Simple xorshift for shuffling (no extra deps)
-    let mut xorshift = |seed: &mut u64| -> u64 {
-        *seed ^= *seed << 13;
-        *seed ^= *seed >> 7;
-        *seed ^= *seed << 17;
-        *seed
+    // Cosine LR schedule
+    let lr_max = config.lr;
+    let lr_min = lr_max * 0.01;
+    let total_epochs = config.epochs as f64;
+
+    // Helper: evaluate accuracy on a set of indices
+    let eval_acc = |indices: &[usize]| -> (f64, usize, usize) {
+        let mut correct = 0usize;
+        let mut total = 0usize;
+        // Evaluate in batches of 64
+        for chunk in indices.chunks(64) {
+            let bs = chunk.len();
+            let mut flat = Vec::with_capacity(bs * max_len);
+            let mut labs = Vec::with_capacity(bs);
+            for &idx in chunk {
+                flat.extend_from_slice(&all_ids[idx]);
+                labs.push(all_labels[idx]);
+            }
+            let input = Tensor::from_vec(flat, (bs, max_len), &device).unwrap();
+            let logits = model.forward(&input).unwrap();
+            let preds: Vec<u32> = logits.argmax(1).unwrap().to_vec1().unwrap();
+            for (i, &pred) in preds.iter().enumerate() {
+                if pred == labs[i] { correct += 1; }
+                total += 1;
+            }
+        }
+        let acc = if total > 0 { correct as f64 / total as f64 * 100.0 } else { 0.0 };
+        (acc, correct, total)
     };
-
-    // Track best accuracy for early logging
-    let mut best_acc = 0.0f64;
 
     // Training loop
     for epoch in 0..config.epochs {
-        // Shuffle indices each epoch
-        for i in (1..n).rev() {
+        // Cosine LR decay
+        let lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + (std::f64::consts::PI * epoch as f64 / total_epochs).cos());
+        optimizer.set_learning_rate(lr);
+
+        // Shuffle training indices
+        for i in (1..n_train).rev() {
             let j = (xorshift(&mut rng_seed) as usize) % (i + 1);
-            indices.swap(i, j);
+            train_idx.swap(i, j);
         }
 
         let mut total_loss = 0.0f64;
         let mut correct = 0usize;
         let mut total = 0usize;
 
-        for batch_start in (0..n).step_by(config.batch_size) {
-            let batch_end = (batch_start + config.batch_size).min(n);
+        for batch_start in (0..n_train).step_by(config.batch_size) {
+            let batch_end = (batch_start + config.batch_size).min(n_train);
             let bs = batch_end - batch_start;
 
-            // Build input tensor from shuffled indices
             let mut flat_ids = Vec::with_capacity(bs * max_len);
             let mut batch_labels = Vec::with_capacity(bs);
-            for &idx in &indices[batch_start..batch_end] {
+            for &idx in &train_idx[batch_start..batch_end] {
                 flat_ids.extend_from_slice(&all_ids[idx]);
                 batch_labels.push(all_labels[idx]);
             }
             let input = Tensor::from_vec(flat_ids, (bs, max_len), &device)
                 .map_err(|e| format!("input tensor: {}", e))?;
-
             let labels = Tensor::from_vec(batch_labels.clone(), (bs,), &device)
                 .map_err(|e| format!("label tensor: {}", e))?;
 
-            // Forward
             let logits = model.forward(&input)
                 .map_err(|e| format!("forward: {}", e))?;
-
-            // Cross-entropy loss
             let loss = candle_nn::loss::cross_entropy(&logits, &labels)
                 .map_err(|e| format!("loss: {}", e))?;
             let loss_val: f64 = loss.to_dtype(DType::F64)
                 .and_then(|t| t.to_scalar())
                 .map_err(|e| format!("loss scalar: {}", e))?;
 
-            // Accuracy
             let preds: Vec<u32> = logits.argmax(1)
                 .map_err(|e| format!("argmax: {}", e))?
                 .to_vec1()
                 .map_err(|e| format!("to_vec: {}", e))?;
             for (i, &pred) in preds.iter().enumerate() {
-                if pred == batch_labels[i] {
-                    correct += 1;
-                }
+                if pred == batch_labels[i] { correct += 1; }
                 total += 1;
             }
 
-            // Backward + step
             optimizer.backward_step(&loss)
                 .map_err(|e| format!("backward: {}", e))?;
-
             total_loss += loss_val * bs as f64;
         }
 
-        let avg_loss = total_loss / n as f64;
-        let acc = if total > 0 { correct as f64 / total as f64 * 100.0 } else { 0.0 };
-        if acc > best_acc { best_acc = acc; }
-        eprintln!("[train] epoch {}/{}: loss={:.4} acc={:.1}%{}", epoch + 1, config.epochs, avg_loss, acc,
-            if acc >= best_acc && acc > 50.0 { " *" } else { "" });
+        let avg_loss = total_loss / n_train as f64;
+        let train_acc = if total > 0 { correct as f64 / total as f64 * 100.0 } else { 0.0 };
+
+        // Evaluate on validation set every 10 epochs (or last epoch)
+        let is_eval = epoch % 10 == 9 || epoch == config.epochs - 1;
+        if is_eval && n_val > 0 {
+            let (val_acc, _, _) = eval_acc(&val_idx);
+            let marker = if val_acc > best_val_acc { best_val_acc = val_acc; best_epoch = epoch + 1; " *best*" } else { "" };
+            eprintln!("[train] epoch {}/{}: loss={:.4} train={:.1}% val={:.1}% lr={:.6}{}",
+                epoch + 1, config.epochs, avg_loss, train_acc, val_acc, lr, marker);
+        } else {
+            eprintln!("[train] epoch {}/{}: loss={:.4} train={:.1}% lr={:.6}",
+                epoch + 1, config.epochs, avg_loss, train_acc, lr);
+        }
+    }
+
+    if n_val > 0 {
+        eprintln!("[train] best val acc: {:.1}% at epoch {}", best_val_acc, best_epoch);
     }
 
     // Save model
