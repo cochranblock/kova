@@ -32,6 +32,8 @@ pub struct MoeConfig {
     pub spark_dir: std::path::PathBuf,
     /// Use ground-truth category instead of Spark prediction (diagnostic mode).
     pub oracle: bool,
+    /// Confidence threshold (0.0-1.0). Below this → round-robin fallback instead of specialist.
+    pub confidence_threshold: f64,
 }
 
 /// Loaded Spark router for MoE.
@@ -87,14 +89,24 @@ impl SparkRouter {
         })
     }
 
-    /// Classify input text → category label.
-    fn classify(&self, text: &str) -> Result<String, String> {
+    /// Classify input text → (category label, confidence 0.0-1.0).
+    fn classify(&self, text: &str) -> Result<(String, f64), String> {
         let ids = self.tokenizer.encode(text, self.max_seq_len);
         let input = Tensor::from_vec(ids, (1, self.max_seq_len), &self.device)
             .map_err(|e| format!("tensor: {}", e))?;
-        let idx = self.model.predict(&input)
-            .map_err(|e| format!("predict: {}", e))?;
-        Ok(CLASS_LABELS.get(idx).unwrap_or(&"classify").to_string())
+        let logits = self.model.forward(&input)
+            .map_err(|e| format!("forward: {}", e))?;
+        let logits = logits.squeeze(0).map_err(|e| format!("squeeze: {}", e))?;
+        let probs = candle_nn::ops::softmax_last_dim(&logits.unsqueeze(0)
+            .map_err(|e| format!("unsqueeze: {}", e))?)
+            .map_err(|e| format!("softmax: {}", e))?
+            .squeeze(0).map_err(|e| format!("squeeze: {}", e))?;
+        let probs_vec: Vec<f32> = probs.to_vec1().map_err(|e| format!("to_vec: {}", e))?;
+        let (idx, &conf) = probs_vec.iter().enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap_or((0, &0.0));
+        let label = CLASS_LABELS.get(idx).unwrap_or(&"classify").to_string();
+        Ok((label, conf as f64))
     }
 }
 
@@ -194,22 +206,33 @@ pub fn run_moe_tournament(
         let start = Instant::now();
 
         // Step 1: Route — oracle uses ground truth, Spark uses prediction
-        let predicted_cat = if config.oracle {
-            ch.category.clone()
+        let (predicted_cat, confidence) = if config.oracle {
+            (ch.category.clone(), 1.0)
         } else if let Some(ref r) = router {
-            let pred = r.classify(&ch.input).unwrap_or_else(|_| ch.category.clone());
+            let (pred, conf) = r.classify(&ch.input).unwrap_or_else(|_| (ch.category.clone(), 0.0));
             spark_total += 1;
             if pred == ch.category { spark_correct += 1; }
-            pred
+            // Below threshold → fall back to round-robin (don't trust the specialist pick)
+            if conf < config.confidence_threshold {
+                eprintln!("    low confidence {:.2} for '{}' — round-robin fallback", conf, pred);
+                (pred, conf)
+            } else {
+                (pred, conf)
+            }
         } else {
-            ch.category.clone()
+            (ch.category.clone(), 0.0)
         };
 
-        // Step 2: Pick best node for this category
-        let node_order: Vec<String> = if let Some(prefs) = node_prefs.get(&predicted_cat) {
-            prefs.iter().map(|(n, _)| n.clone()).collect()
+        // Step 2: Pick best node for this category (round-robin if low confidence)
+        let use_specialist = confidence >= config.confidence_threshold;
+        let node_order: Vec<String> = if use_specialist {
+            if let Some(prefs) = node_prefs.get(&predicted_cat) {
+                prefs.iter().map(|(n, _)| n.clone()).collect()
+            } else {
+                online.iter().map(|n| n.id.clone()).collect()
+            }
         } else {
-            // Round-robin
+            // Low confidence — round-robin all nodes
             online.iter().map(|n| n.id.clone()).collect()
         };
 
@@ -258,7 +281,7 @@ pub fn run_moe_tournament(
             None => (false, "MoE: all nodes failed".into(), 0, 0, "none".into()),
         };
 
-        let route_info = format!("route={} via={} attempts={}", predicted_cat, via_node, attempts);
+        let route_info = format!("route={} conf={:.2} via={} attempts={}", predicted_cat, confidence, via_node, attempts);
         eprintln!(
             "  {} MoE {:<16} {:>5}ms  {} [{}]",
             if passed { "PASS" } else { "FAIL" },

@@ -11,7 +11,7 @@
 //! Trained from tournament SFT/DPO data. Deployed as safetensors.
 
 use candle_core::{DType, Device, IndexOp, Module, Result, Tensor, D};
-use candle_nn::{embedding, layer_norm, linear, Activation, Embedding, LayerNorm, Linear, VarBuilder};
+use candle_nn::{embedding, layer_norm, linear, Activation, Dropout, Embedding, LayerNorm, Linear, VarBuilder};
 
 /// Number of task categories kova classifies into.
 pub const NUM_CLASSES: usize = 8;
@@ -93,6 +93,8 @@ struct TransformerBlock {
     ff2: Linear,
     ln1: LayerNorm,
     ln2: LayerNorm,
+    attn_drop: Dropout,
+    ff_drop: Dropout,
     num_heads: usize,
     head_dim: usize,
 }
@@ -110,12 +112,14 @@ impl TransformerBlock {
             ff2: linear(cfg.ff_dim, d, vb.pp("ff2"))?,
             ln1: layer_norm(d, 1e-5, vb.pp("ln1"))?,
             ln2: layer_norm(d, 1e-5, vb.pp("ln2"))?,
+            attn_drop: Dropout::new(cfg.dropout as f32),
+            ff_drop: Dropout::new(cfg.dropout as f32),
             num_heads: cfg.num_heads,
             head_dim,
         })
     }
 
-    fn forward(&self, x: &Tensor) -> Result<Tensor> {
+    fn forward(&self, x: &Tensor, train: bool) -> Result<Tensor> {
         let (batch, seq, _dim) = x.dims3()?;
 
         // Self-attention with causal mask
@@ -154,6 +158,7 @@ impl TransformerBlock {
             .transpose(1, 2)?.contiguous()?
             .reshape((batch, seq, self.num_heads * self.head_dim))?;
         let out = self.attn_out.forward(&out)?;
+        let out = self.attn_drop.forward(&out, train)?;
         let x = (residual + out)?;
 
         // FFN
@@ -162,6 +167,7 @@ impl TransformerBlock {
         let h = self.ff1.forward(&h)?;
         let h = h.apply(&Activation::Gelu)?;
         let h = self.ff2.forward(&h)?;
+        let h = self.ff_drop.forward(&h, train)?;
         (residual + h)
     }
 }
@@ -199,9 +205,10 @@ impl KovaClassifier {
         })
     }
 
-    /// Forward pass. Returns [batch, num_classes] logits.
-    pub fn forward(&self, input_ids: &Tensor) -> Result<Tensor> {
-        let (_batch, seq) = input_ids.dims2()?;
+    /// Forward pass with training flag (enables dropout).
+    /// Returns [batch, num_classes] logits.
+    pub fn forward_t(&self, input_ids: &Tensor, train: bool) -> Result<Tensor> {
+        let (batch, seq) = input_ids.dims2()?;
         let seq = seq.min(self.max_seq_len);
 
         // Truncate if needed
@@ -217,14 +224,26 @@ impl KovaClassifier {
         let mut x = tok.broadcast_add(&pos)?;
 
         for layer in &self.layers {
-            x = layer.forward(&x)?;
+            x = layer.forward(&x, train)?;
         }
 
         let x = self.ln_final.forward(&x)?;
 
-        // Pool: mean over sequence
-        let pooled = x.mean(1)?; // [batch, embed_dim]
+        // Masked mean pool: ignore padding positions (token id 0)
+        // mask: [batch, seq] — 1.0 for real tokens, 0.0 for padding
+        let mask = input_ids.ne(0u32)?.to_dtype(DType::F32)?; // [batch, seq]
+        let mask_sum = mask.sum(1)?.clamp(1.0f64, seq as f64)?; // [batch] — at least 1 to avoid div-by-zero
+        let mask_3d = mask.unsqueeze(2)?; // [batch, seq, 1]
+        let masked = x.broadcast_mul(&mask_3d)?; // zero out padding embeddings
+        let pooled = masked.sum(1)?; // [batch, embed_dim]
+        let pooled = pooled.broadcast_div(&mask_sum.unsqueeze(1)?)?; // mean over non-pad
+
         self.head.forward(&pooled) // [batch, num_classes]
+    }
+
+    /// Inference forward (no dropout).
+    pub fn forward(&self, input_ids: &Tensor) -> Result<Tensor> {
+        self.forward_t(input_ids, false)
     }
 
     /// Predict class index for a single input.

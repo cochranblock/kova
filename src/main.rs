@@ -666,6 +666,8 @@ enum MicroCmd {
     Mine,
     /// Mine and export conversation logs as training JSONL.
     MineExport,
+    /// Mine conversation logs and keyword-match to classifier categories.
+    MineClassifier,
     /// Run LoRA fine-tuning via mlx_lm (Apple Silicon).
     Train {
         /// Format: sft or dpo (default: sft).
@@ -702,6 +704,26 @@ enum MicroCmd {
         /// Training epochs.
         #[arg(long, default_value = "200")]
         epochs: u32,
+    },
+    /// Quantize a trained model. Mixed-precision + QJL residual compression.
+    #[cfg(feature = "mobile-llm")]
+    Quantize {
+        /// Model tier: spark, flame, blaze.
+        #[arg(default_value = "spark")]
+        tier: String,
+        /// Outlier fraction (0.0-1.0). Higher = more rows get high-precision.
+        #[arg(long, default_value = "0.25")]
+        outlier_frac: f32,
+    },
+    /// Full evolution: tournament → export → synth → retrain → MoE validation. One command.
+    #[cfg(feature = "mobile-llm")]
+    EvolveFull {
+        /// Training epochs for Spark retrain.
+        #[arg(long, default_value = "200")]
+        epochs: u32,
+        /// Max cascade attempts in MoE validation run.
+        #[arg(long, default_value = "3")]
+        max_cascade: usize,
     },
 }
 
@@ -1320,6 +1342,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 max_cascade,
                 spark_dir: spark,
                 oracle,
+                confidence_threshold: 0.6,
             };
 
             let moe_results = moe_tournament::run_moe_tournament(
@@ -1397,6 +1420,18 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             let (examples, stats) = logmine::f237().map_err(|e| anyhow::anyhow!("{}", e))?;
             logmine::f239(&stats, &examples);
             logmine::f238(&examples).map_err(|e| anyhow::anyhow!("{}", e))?;
+            Ok(())
+        }
+        MicroCmd::MineClassifier => {
+            use kova::micro::{logmine, train};
+            let (examples, stats) = logmine::f237().map_err(|e| anyhow::anyhow!("{}", e))?;
+            logmine::f239(&stats, &examples);
+            let (path, added) = train::f264(&examples).map_err(|e| anyhow::anyhow!("{}", e))?;
+            if added > 0 {
+                eprintln!("Classifier labels saved: {}", path.display());
+            } else {
+                eprintln!("No new classifier labels found.");
+            }
             Ok(())
         }
         MicroCmd::Train { format, iters, dry_run } => {
@@ -1495,6 +1530,139 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             };
             let path = candle_train::train(&config).map_err(anyhow::Error::msg)?;
             eprintln!("[evolve] Spark retrained: {}", path.display());
+            Ok(())
+        }
+        #[cfg(feature = "mobile-llm")]
+        MicroCmd::Quantize { tier, outlier_frac } => {
+            use kova::micro::quantize;
+
+            let tier_enum = match tier.as_str() {
+                "spark" => kova::micro::kova_model::Tier::Spark,
+                "flame" => kova::micro::kova_model::Tier::Flame,
+                "blaze" => kova::micro::kova_model::Tier::Blaze,
+                _ => anyhow::bail!("tier must be spark, flame, or blaze"),
+            };
+
+            let model_dir = kova::models_dir().join(format!("kova-{}", tier));
+            let st_path = model_dir.join("model.safetensors");
+            if !st_path.exists() {
+                anyhow::bail!("no model at {} — train first with `kova micro forge {}`", st_path.display(), tier);
+            }
+
+            eprintln!("[quantize] loading {} from {}", tier, model_dir.display());
+            let cfg = tier_enum.config();
+
+            // Load safetensors and extract weight tensors
+            let tensors = candle_core::safetensors::load(&st_path, &candle_core::Device::Cpu)
+                .map_err(|e| anyhow::anyhow!("load safetensors: {}", e))?;
+
+            let mut layers = Vec::new();
+            let mut total_fp32 = 0usize;
+
+            for (name, tensor) in &tensors {
+                let shape = tensor.dims();
+                if shape.len() != 2 { continue; } // Only quantize 2D weight matrices
+                let (rows, cols) = (shape[0], shape[1]);
+                let flat: Vec<f32> = tensor.to_dtype(candle_core::DType::F32)
+                    .and_then(|t| t.to_vec1())
+                    .map_err(|e| anyhow::anyhow!("flatten {}: {}", name, e))?;
+
+                total_fp32 += flat.len() * 4;
+                let ql = quantize::quantize_layer(name, &flat, rows, cols, outlier_frac, 4, 2, 42);
+                eprintln!("  {} [{} x {}] → outliers={}, inliers={}",
+                    name, rows, cols, ql.outlier_rows.len(), rows - ql.outlier_rows.len());
+                layers.push(ql);
+            }
+
+            // Load config.json as metadata
+            let config_path = model_dir.join("config.json");
+            let metadata: serde_json::Value = if config_path.exists() {
+                serde_json::from_str(&std::fs::read_to_string(&config_path)?)?
+            } else {
+                serde_json::json!({ "tier": tier })
+            };
+
+            let qmodel = quantize::QuantizedModel { layers, metadata };
+            let bpw = quantize::bits_per_weight(&qmodel);
+            let qsize = quantize::model_size_bytes(&qmodel);
+
+            let out_path = model_dir.join("model.quantized");
+            quantize::save_quantized(&qmodel, &out_path)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            let out_size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
+            eprintln!("\n[quantize] {}: FP32={:.1} KB → quantized={:.1} KB ({:.1} bpw)",
+                tier, total_fp32 as f64 / 1024.0, out_size as f64 / 1024.0, bpw);
+            eprintln!("[quantize] saved: {}", out_path.display());
+            Ok(())
+        }
+        #[cfg(feature = "mobile-llm")]
+        MicroCmd::EvolveFull { epochs, max_cascade } => {
+            use kova::micro::candle_train::{self, TrainConfig};
+            use kova::micro::kova_model::Tier;
+            use kova::micro::{moe_tournament, tournament, train};
+
+            eprintln!("[evolve-full] === Phase 1: Tournament ===");
+            let cluster = kova::cluster::T193::default_hive();
+            let result = tournament::f250(&registry, &cluster);
+            tournament::f251(&result);
+            let _ = tournament::f252(&result);
+
+            eprintln!("\n[evolve-full] === Phase 2: Export + Synth + Retrain ===");
+            let training_dir = candle_train::training_dir();
+            std::fs::create_dir_all(&training_dir)
+                .map_err(|e| anyhow::anyhow!("create training dir: {}", e))?;
+
+            let tp = tournament::f253();
+            if tp.exists() {
+                let json = std::fs::read_to_string(&tp)?;
+                if let Ok(result) = serde_json::from_str::<tournament::T165>(&json) {
+                    train::f263(&result, &registry)
+                        .map_err(anyhow::Error::msg)?;
+                }
+            }
+
+            candle_train::generate_synthetic_data(&training_dir)
+                .map_err(anyhow::Error::msg)?;
+
+            let data_path = training_dir.join("sft_chatml.jsonl");
+            let output_dir = kova::models_dir();
+            let config = TrainConfig {
+                tier: Tier::Spark,
+                data_path,
+                output_dir: output_dir.clone(),
+                epochs,
+                lr: 3e-4,
+                batch_size: 32,
+            };
+            let spark_path = candle_train::train(&config).map_err(anyhow::Error::msg)?;
+            eprintln!("[evolve-full] Spark retrained: {}", spark_path.display());
+
+            eprintln!("\n[evolve-full] === Phase 3: MoE Validation ===");
+            let tp_json = std::fs::read_to_string(&tp)?;
+            let hist: tournament::T165 = serde_json::from_str(&tp_json)?;
+            let challenges: Vec<_> = hist.matches.iter().map(|m| {
+                tournament::T166 {
+                    template_id: m.challenge.clone(),
+                    category: m.category.clone(),
+                    event_type: "evolve-full",
+                    input: m.response.chars().take(200).collect(),
+                    description: m.challenge.clone(),
+                    verify: String::new(),
+                }
+            }).collect();
+
+            let moe_config = moe_tournament::MoeConfig {
+                max_cascade,
+                spark_dir: output_dir.join("kova-spark"),
+                oracle: false,
+                confidence_threshold: 0.6,
+            };
+            let _moe_results = moe_tournament::run_moe_tournament(
+                &moe_config, &registry, &cluster, &challenges, Some(&hist),
+            );
+
+            eprintln!("\n[evolve-full] === Done ===");
             Ok(())
         }
     }
@@ -1936,13 +2104,15 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
         }
         Some(Cmd::Prompt(prompt_args)) => {
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(kova::browser::run_autoprompt(
-                &prompt_args.file,
-                &prompt_args.output,
-                prompt_args.workers,
-                prompt_args.skip,
-            ))
+            // Use tokio::task::block_in_place to avoid nested runtime panic
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(kova::browser::run_autoprompt(
+                    &prompt_args.file,
+                    &prompt_args.output,
+                    prompt_args.workers,
+                    prompt_args.skip,
+                ))
+            })
         }
         Some(Cmd::Git(args)) => {
             kova::git_cmd::f160(args.cmd, args.count, args.message, args.files, false)

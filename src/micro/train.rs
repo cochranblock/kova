@@ -391,14 +391,44 @@ pub fn f263(result: &T165, registry: &T149) -> Result<PathBuf, String> {
         lines.push(serde_json::to_string(&entry).map_err(|e| e.to_string())?);
     }
 
-    // Deduplicate (same input can appear multiple times across competitors)
-    let mut seen = std::collections::HashSet::new();
-    let unique: Vec<String> = lines.into_iter().filter(|l| seen.insert(l.clone())).collect();
-
+    // Load existing lines (preserve manually-added data)
     let path = base.join("classifier_sft.jsonl");
-    std::fs::write(&path, unique.join("\n") + "\n").map_err(|e| e.to_string())?;
+    let mut existing: Vec<String> = if path.exists() {
+        std::fs::read_to_string(&path).unwrap_or_default()
+            .lines().filter(|l| !l.trim().is_empty()).map(|l| l.to_string()).collect()
+    } else {
+        Vec::new()
+    };
+    let existing_count = existing.len();
 
-    eprintln!("[classifier] {} examples exported to {}", unique.len(), path.display());
+    // Deduplicate: check user content to avoid dupes
+    let mut seen: std::collections::HashSet<String> = existing.iter()
+        .filter_map(|l| {
+            serde_json::from_str::<serde_json::Value>(l).ok()
+                .and_then(|v| v["messages"].as_array()
+                    .and_then(|msgs| msgs.iter().find(|m| m["role"] == "user"))
+                    .and_then(|m| m["content"].as_str().map(|s| s.to_string())))
+        })
+        .collect();
+
+    let mut added = 0;
+    for line in lines {
+        // Extract user content for dedup check
+        let user_content = serde_json::from_str::<serde_json::Value>(&line).ok()
+            .and_then(|v| v["messages"].as_array()
+                .and_then(|msgs| msgs.iter().find(|m| m["role"] == "user"))
+                .and_then(|m| m["content"].as_str().map(|s| s.to_string())));
+        if let Some(uc) = user_content {
+            if seen.insert(uc) {
+                existing.push(line);
+                added += 1;
+            }
+        }
+    }
+
+    std::fs::write(&path, existing.join("\n") + "\n").map_err(|e| e.to_string())?;
+
+    eprintln!("[classifier] {} new + {} existing = {} total in {}", added, existing_count, existing.len(), path.display());
 
     // Per-category counts
     let mut cats: HashMap<String, usize> = HashMap::new();
@@ -425,4 +455,89 @@ fn training_dir() -> PathBuf {
 /// Path to the training data directory.
 pub fn f261() -> PathBuf {
     training_dir()
+}
+
+/// f264=mine_classifier_labels
+/// Keyword-match mined conversation logs to classifier categories.
+/// Appends to classifier_sft.jsonl with dedup.
+pub fn f264(examples: &[super::logmine::T146]) -> Result<(PathBuf, usize), String> {
+    let sys = "Classify the input into exactly one category. Reply with only the category name.\nCategories: classify, clippy_fix, code_gen, code_review, explain, fix_compile, test_write, validate";
+
+    // Keyword → category mapping
+    let rules: &[(&[&str], &str)] = &[
+        (&["clippy", "lint", "warning"], "clippy_fix"),
+        (&["fix compile", "compile error", "build error", "cannot borrow", "lifetime", "trait.*not implemented", "mismatched types"], "fix_compile"),
+        (&["write test", "add test", "unit test", "integration test", "test coverage"], "test_write"),
+        (&["explain", "what does", "how does", "why does", "what is"], "explain"),
+        (&["review", "check this", "is this correct", "any issues"], "code_review"),
+        (&["validate", "verify", "check if", "check that", "confirm"], "validate"),
+        (&["classify", "categorize", "what kind", "what type", "triage", "sort this"], "classify"),
+        (&["write a function", "implement", "create a", "generate", "add a", "build a"], "code_gen"),
+    ];
+
+    let out_path = training_dir().join("classifier_sft.jsonl");
+    let existing = if out_path.exists() {
+        std::fs::read_to_string(&out_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let mut lines: Vec<String> = existing.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.to_string())
+        .collect();
+    let before = lines.len();
+
+    // Dedup set from existing
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for line in &lines {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(msgs) = v["messages"].as_array() {
+                if let Some(user) = msgs.iter().find(|m| m["role"] == "user") {
+                    if let Some(c) = user["content"].as_str() {
+                        seen.insert(c.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut added = 0;
+    for ex in examples {
+        let text = ex.instruction.to_lowercase();
+        // Match first matching rule
+        let category = rules.iter().find_map(|(keywords, cat)| {
+            if keywords.iter().any(|kw| text.contains(kw)) {
+                Some(*cat)
+            } else {
+                None
+            }
+        });
+
+        if let Some(cat) = category {
+            if seen.insert(ex.instruction.clone()) {
+                let entry = serde_json::json!({
+                    "messages": [
+                        {"role": "system", "content": sys},
+                        {"role": "user", "content": ex.instruction},
+                        {"role": "assistant", "content": cat}
+                    ]
+                });
+                lines.push(serde_json::to_string(&entry).unwrap());
+                added += 1;
+            }
+        }
+    }
+
+    if added > 0 {
+        std::fs::create_dir_all(training_dir())
+            .map_err(|e| format!("create dir: {}", e))?;
+        std::fs::write(&out_path, lines.join("\n") + "\n")
+            .map_err(|e| format!("write: {}", e))?;
+    }
+
+    eprintln!("[mine-classifier] {} existing + {} new = {} total",
+        before, added, lines.len());
+
+    Ok((out_path, added))
 }

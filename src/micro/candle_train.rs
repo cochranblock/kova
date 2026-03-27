@@ -9,7 +9,7 @@
 //! Training data: tournament SFT/DPO exports from ~/.kova/micro/training/
 //! Output: ~/.kova/models/kova-{tier}/ as safetensors.
 
-use candle_core::{DType, Device, Tensor};
+use candle_core::{DType, Device, Tensor, D};
 use candle_nn::{Optimizer, VarBuilder, VarMap};
 use std::path::{Path, PathBuf};
 
@@ -157,12 +157,16 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
         return Err("no training samples found".into());
     }
 
-    // Print class distribution
+    // Print class distribution and compute inverse-frequency weights
     let mut dist = vec![0usize; NUM_CLASSES];
     for s in &samples { dist[s.label] += 1; }
+    let total_samples = samples.len() as f32;
+    let class_weights: Vec<f32> = dist.iter().map(|&c| {
+        if c > 0 { total_samples / (NUM_CLASSES as f32 * c as f32) } else { 1.0 }
+    }).collect();
     for (i, count) in dist.iter().enumerate() {
         if *count > 0 {
-            eprintln!("  {}: {}", CLASS_LABELS[i], count);
+            eprintln!("  {}: {} (w={:.2})", CLASS_LABELS[i], count, class_weights[i]);
         }
     }
 
@@ -297,10 +301,23 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
             let labels = Tensor::from_vec(batch_labels.clone(), (bs,), &device)
                 .map_err(|e| format!("label tensor: {}", e))?;
 
-            let logits = model.forward(&input)
+            let logits = model.forward_t(&input, true)
                 .map_err(|e| format!("forward: {}", e))?;
-            let loss = candle_nn::loss::cross_entropy(&logits, &labels)
-                .map_err(|e| format!("loss: {}", e))?;
+            // Class-weighted cross-entropy: per-sample loss * class weight
+            let log_sm = candle_nn::ops::log_softmax(&logits, D::Minus1)
+                .map_err(|e| format!("log_softmax: {}", e))?;
+            let nll = log_sm.gather(&labels.unsqueeze(1)
+                .map_err(|e| format!("unsqueeze: {}", e))?, 1)
+                .map_err(|e| format!("gather: {}", e))?
+                .squeeze(1).map_err(|e| format!("squeeze: {}", e))?
+                .neg().map_err(|e| format!("neg: {}", e))?; // [bs] per-sample loss
+            let batch_weights: Vec<f32> = batch_labels.iter()
+                .map(|&l| class_weights[l as usize])
+                .collect();
+            let w_tensor = Tensor::from_vec(batch_weights, (bs,), &device)
+                .map_err(|e| format!("weight tensor: {}", e))?;
+            let loss = (nll * w_tensor).map_err(|e| format!("weight mul: {}", e))?
+                .mean(D::Minus1).map_err(|e| format!("mean: {}", e))?;
             let loss_val: f64 = loss.to_dtype(DType::F64)
                 .and_then(|t| t.to_scalar())
                 .map_err(|e| format!("loss scalar: {}", e))?;
@@ -366,6 +383,32 @@ pub fn train(config: &TrainConfig) -> Result<PathBuf, String> {
         out_dir.join("config.json"),
         serde_json::to_string_pretty(&config_json).unwrap(),
     ).map_err(|e| format!("save config: {}", e))?;
+
+    // Save version metadata for reproducibility
+    let data_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        for s in &samples { s.text.hash(&mut hasher); }
+        format!("{:016x}", hasher.finish())
+    };
+    let version = serde_json::json!({
+        "tier": tier.name(),
+        "timestamp": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs()).unwrap_or(0),
+        "data_hash": data_hash,
+        "val_acc": best_val_acc,
+        "best_epoch": best_epoch,
+        "total_epochs": config.epochs,
+        "train_samples": n_train,
+        "val_samples": n_val,
+        "params": params,
+    });
+    std::fs::write(
+        out_dir.join("version.json"),
+        serde_json::to_string_pretty(&version).unwrap(),
+    ).map_err(|e| format!("save version: {}", e))?;
 
     eprintln!("[train] saved {} to {}", tier.name(), out_dir.display());
     eprintln!("[train] {} params, {:.1} KB", params, model_path.metadata().map(|m| m.len()).unwrap_or(0) as f64 / 1024.0);

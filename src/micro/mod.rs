@@ -35,3 +35,5 @@ pub mod candle_train;
 pub mod kova_model;
 #[cfg(feature = "mobile-llm")]
 pub mod moe_tournament;
+#[cfg(feature = "mobile-llm")]
+pub mod quantize;
