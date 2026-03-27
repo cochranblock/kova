@@ -20,8 +20,12 @@ path = "src/lib.rs"
 kova = { path = "..", features = ["gui", "mobile-llm"], default-features = false }
 log = "0.4"
 android_logger = "0.14"
-android-activity = { version = "0.6", features = ["native-activity"] }
-eframe = "0.33"
+android-activity = { version = "0.6", features = ["game-activity"] }
+eframe = { version = "0.33", default-features = false, features = ["android-game-activity", "glow", "default_fonts", "accesskit"] }
+winit = { version = "0.30", features = ["android-game-activity"] }
+
+[patch.crates-io]
+android-activity = { path = "../patches/android-activity" }
 
 [package.metadata.android]
 package = "org.cochranblock.kova"

@@ -73,6 +73,9 @@ core-graphics = { version = "0.24", optional = true }
 [build-dependencies]
 capnpc = { version = "0.25", optional = true }
 
+[patch.crates-io]
+android-activity = { git = "https://github.com/rust-mobile/android-activity", branch = "main" }
+
 [dev-dependencies]
 tempfile = "3"
 assert_matches = "1.5"

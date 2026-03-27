@@ -11115,3 +11115,8 @@ dependencies = [
  "syn 2.0.117",
  "winnow 0.7.15",
 ]
+
+[[patch.unused]]
+name = "android-activity"
+version = "0.6.1"
+source = "git+https://github.com/rust-mobile/android-activity?branch=main#b4ddf059b77be12cdb955d394e65a92e7568d936"

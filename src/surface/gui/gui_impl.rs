@@ -69,7 +69,7 @@ struct KovaApp {
     /// Pixel Forge panel state.
     pixel_forge: Option<super::pixel_forge::T220>,
     /// Micro Train panel state.
-    #[cfg(feature = "mobile-llm")]
+    #[cfg(all(feature = "mobile-llm", feature = "inference"))]
     micro_train: Option<super::micro_train::T222>,
     /// Dynamic product hub.
     product_hub: Option<super::products::T221>,
@@ -231,7 +231,7 @@ impl KovaApp {
             sprite_qc: None,
             sprite_qc_path: String::new(),
             pixel_forge: None,
-            #[cfg(feature = "mobile-llm")]
+            #[cfg(all(feature = "mobile-llm", feature = "inference"))]
             micro_train: None,
             product_hub: None,
         }
@@ -498,7 +498,7 @@ impl eframe::App for KovaApp {
                         self.pixel_forge = Some(super::pixel_forge::T220::new());
                     }
                 }
-                #[cfg(feature = "mobile-llm")]
+                #[cfg(all(feature = "mobile-llm", feature = "inference"))]
                 if ui.button("Train").clicked() {
                     if self.micro_train.is_some() {
                         self.micro_train = None;
@@ -638,7 +638,7 @@ impl eframe::App for KovaApp {
                 return;
             }
             // Micro Train panel — takes over the main area when active
-            #[cfg(feature = "mobile-llm")]
+            #[cfg(all(feature = "mobile-llm", feature = "inference"))]
             if self.micro_train.is_some() {
                 theme::f323().show(ui, |ui| {
                     let close = self.micro_train.as_mut().unwrap().show(ui, ctx);
