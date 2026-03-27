@@ -1,18 +1,19 @@
-//! Kova browser automation — drive web apps via WebDriver/geckodriver.
-//! Used for: Gemini sprite generation, bulk prompting, data harvesting.
+//! Kova screen automation — vision-based browser control.
 //!
-//! Requires: geckodriver installed (brew install geckodriver)
-//! Feature: --features browser
+//! Sees the screen, finds UI elements by visual pattern matching,
+//! clicks and types using OS-level input. Works with ANY browser,
+//! ANY website. No DOM, no protocol, no selectors.
+//!
+//! macOS: CoreGraphics for screenshots, enigo for input.
+//! Survives UI redesigns — if a human can see it, kova can interact with it.
 
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 
-#[cfg(feature = "browser")]
-use fantoccini::{Client, ClientBuilder, Locator};
-
-use anyhow::Result;
-use std::path::{Path, PathBuf};
-use std::time::Duration;
+use anyhow::{Context, Result};
+use std::path::PathBuf;
+use std::process::Command;
+use std::time::{Duration, Instant};
 
 /// Prompt entry — label + text to send.
 #[derive(Debug, Clone)]
@@ -22,7 +23,6 @@ pub struct PromptEntry {
 }
 
 /// Load prompts from a markdown file.
-/// Expects format: ### LABEL\nCreate a 6x5 grid...
 pub fn load_prompts(path: &str) -> Result<Vec<PromptEntry>> {
     let content = std::fs::read_to_string(path)?;
     let mut prompts = Vec::new();
@@ -31,7 +31,6 @@ pub fn load_prompts(path: &str) -> Result<Vec<PromptEntry>> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("### ") {
-            // Extract label from "### Prompt N — label" or "### DND-N — label"
             if let Some(after_dash) = trimmed.split('—').nth(1) {
                 current_label = Some(
                     after_dash.trim().to_lowercase().replace(' ', "_").replace('-', "_")
@@ -48,287 +47,369 @@ pub fn load_prompts(path: &str) -> Result<Vec<PromptEntry>> {
     Ok(prompts)
 }
 
-/// Check if geckodriver is available.
-pub fn check_geckodriver() -> bool {
-    std::process::Command::new("geckodriver")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+// ---------------------------------------------------------------------------
+// Screen capture (macOS CoreGraphics)
+// ---------------------------------------------------------------------------
+
+/// Capture the full screen as an RGBA image buffer.
+/// Returns (width, height, pixels).
+#[cfg(target_os = "macos")]
+fn capture_screen() -> Result<(u32, u32, Vec<u8>)> {
+    use core_graphics::display::*;
+
+    let display = CGDisplay::main();
+    let image = CGDisplay::screenshot(
+        display.bounds(),
+        kCGWindowListOptionOnScreenOnly,
+        kCGNullWindowID,
+        kCGWindowImageDefault,
+    ).context("screenshot failed — grant Screen Recording permission in System Settings")?;
+
+    let w = image.width() as u32;
+    let h = image.height() as u32;
+    let bpr = image.bytes_per_row();
+    let data = image.data();
+    let bytes = data.bytes();
+
+    // CoreGraphics returns BGRA, convert to RGBA
+    let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h as usize {
+        for x in 0..w as usize {
+            let offset = y * bpr + x * 4;
+            if offset + 3 < bytes.len() {
+                rgba.push(bytes[offset + 2]); // R (was B)
+                rgba.push(bytes[offset + 1]); // G
+                rgba.push(bytes[offset]);     // B (was R)
+                rgba.push(bytes[offset + 3]); // A
+            }
+        }
+    }
+
+    Ok((w, h, rgba))
 }
 
-/// Start a geckodriver instance on the given port. Returns the child process.
-pub fn start_geckodriver(port: u16) -> Result<std::process::Child> {
-    let child = std::process::Command::new("geckodriver")
-        .args(["--port", &port.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()?;
-    // Give it a moment to start
-    std::thread::sleep(Duration::from_secs(2));
-    Ok(child)
+#[cfg(not(target_os = "macos"))]
+fn capture_screen() -> Result<(u32, u32, Vec<u8>)> {
+    anyhow::bail!("screen capture only supported on macOS")
 }
 
-/// Run the autoprompt pipeline. Drives N browser workers through a prompt list.
+/// Save a screenshot to disk for debugging.
+fn save_screenshot(path: &str) -> Result<()> {
+    let (w, h, rgba) = capture_screen()?;
+    let img = image::RgbaImage::from_raw(w, h, rgba).context("invalid screenshot data")?;
+    img.save(path)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Visual element finding
+// ---------------------------------------------------------------------------
+
+/// Find a region on screen that matches a target color pattern.
+/// Returns (x, y) center of the match, or None.
+fn find_colored_region(
+    screen: &[u8], sw: u32, sh: u32,
+    target_r: u8, target_g: u8, target_b: u8,
+    tolerance: u8,
+    min_width: u32,
+) -> Option<(i32, i32)> {
+    // Scan for horizontal runs of the target color
+    let mut best_x = 0i32;
+    let mut best_y = 0i32;
+    let mut best_run = 0u32;
+
+    for y in 0..sh {
+        let mut run = 0u32;
+        let mut run_start = 0u32;
+        for x in 0..sw {
+            let i = (y * sw + x) as usize * 4;
+            if i + 2 >= screen.len() { break; }
+            let dr = (screen[i] as i16 - target_r as i16).unsigned_abs() as u8;
+            let dg = (screen[i + 1] as i16 - target_g as i16).unsigned_abs() as u8;
+            let db = (screen[i + 2] as i16 - target_b as i16).unsigned_abs() as u8;
+            if dr <= tolerance && dg <= tolerance && db <= tolerance {
+                if run == 0 { run_start = x; }
+                run += 1;
+            } else {
+                if run > best_run && run >= min_width {
+                    best_run = run;
+                    best_x = (run_start + run / 2) as i32;
+                    best_y = y as i32;
+                }
+                run = 0;
+            }
+        }
+        if run > best_run && run >= min_width {
+            best_run = run;
+            best_x = (sw - run / 2) as i32;
+            best_y = y as i32;
+        }
+    }
+
+    if best_run >= min_width {
+        Some((best_x, best_y))
+    } else {
+        None
+    }
+}
+
+/// Find the Gemini text input area on screen.
+/// It's typically a light-colored horizontal bar near the bottom.
+fn find_gemini_input(screen: &[u8], sw: u32, sh: u32) -> Option<(i32, i32)> {
+    // Gemini input is in the bottom 30% of the screen
+    // It's a wide light-gray/white bar
+    let start_y = (sh as f32 * 0.6) as u32;
+    let bottom_region: Vec<u8> = screen[(start_y * sw * 4) as usize..].to_vec();
+    let region_h = sh - start_y;
+
+    // Look for a wide light-colored horizontal region (the input bar)
+    // Input bar is typically RGB ~(240, 240, 240) or ~(255, 255, 255)
+    if let Some((x, y)) = find_colored_region(&bottom_region, sw, region_h, 240, 240, 240, 20, sw / 3) {
+        Some((x, y + start_y as i32))
+    } else {
+        None
+    }
+}
+
+/// Detect if a new image appeared on screen by comparing screenshot checksums.
+fn screen_changed(old_checksum: u64, new_screen: &[u8]) -> bool {
+    let new_checksum = simple_hash(new_screen);
+    (old_checksum as i64 - new_checksum as i64).unsigned_abs() > 1000000
+}
+
+fn simple_hash(data: &[u8]) -> u64 {
+    // Sample every 1000th byte for fast comparison
+    let mut h: u64 = 0;
+    for (i, &b) in data.iter().step_by(1000).enumerate() {
+        h = h.wrapping_add(b as u64 * (i as u64 + 1));
+    }
+    h
+}
+
+/// Watch for new files appearing in a directory.
+fn watch_for_new_file(dir: &str, before_count: usize, timeout: Duration) -> Option<PathBuf> {
+    let start = Instant::now();
+    loop {
+        if start.elapsed() > timeout { return None; }
+        std::thread::sleep(Duration::from_secs(3));
+
+        let files: Vec<_> = std::fs::read_dir(dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.ends_with(".png") || name.ends_with(".jpg") || name.ends_with(".jpeg")
+            })
+            .collect();
+
+        if files.len() > before_count {
+            // Find the newest file
+            let mut newest: Option<(PathBuf, std::time::SystemTime)> = None;
+            for f in files {
+                if let Ok(meta) = f.metadata() {
+                    if let Ok(modified) = meta.modified() {
+                        if newest.as_ref().map(|(_, t)| modified > *t).unwrap_or(true) {
+                            newest = Some((f.path(), modified));
+                        }
+                    }
+                }
+            }
+            return newest.map(|(p, _)| p);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Input control (enigo)
+// ---------------------------------------------------------------------------
+
 #[cfg(feature = "browser")]
+use enigo::{Enigo, Keyboard, Mouse, Settings, Coordinate, Button, Key};
+
+#[cfg(feature = "browser")]
+fn create_enigo() -> Result<Enigo> {
+    Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("enigo init: {}", e))
+}
+
+/// Click at screen coordinates.
+#[cfg(feature = "browser")]
+fn click_at(x: i32, y: i32) -> Result<()> {
+    let mut enigo = create_enigo()?;
+    enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| anyhow::anyhow!("{}", e))?;
+    std::thread::sleep(Duration::from_millis(100));
+    enigo.button(Button::Left, enigo::Direction::Click).map_err(|e| anyhow::anyhow!("{}", e))?;
+    Ok(())
+}
+
+/// Type text using keyboard.
+#[cfg(feature = "browser")]
+fn type_text(text: &str) -> Result<()> {
+    let mut enigo = create_enigo()?;
+    // Type in chunks to avoid overwhelming the input
+    for chunk in text.as_bytes().chunks(50) {
+        let s = String::from_utf8_lossy(chunk);
+        enigo.text(&s).map_err(|e| anyhow::anyhow!("{}", e))?;
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
+}
+
+/// Press Enter key.
+#[cfg(feature = "browser")]
+fn press_enter() -> Result<()> {
+    let mut enigo = create_enigo()?;
+    enigo.key(Key::Return, enigo::Direction::Click).map_err(|e| anyhow::anyhow!("{}", e))?;
+    Ok(())
+}
+
+/// Focus a window by title using AppleScript.
+fn focus_window(title_contains: &str) -> Result<()> {
+    let script = format!(
+        r#"tell application "System Events"
+            set firefoxProcess to first process whose name is "firefox"
+            set frontmost of firefoxProcess to true
+            repeat with w in windows of firefoxProcess
+                if name of w contains "{}" then
+                    perform action "AXRaise" of w
+                    return true
+                end if
+            end repeat
+        end tell"#,
+        title_contains
+    );
+    Command::new("osascript").args(["-e", &script]).output()?;
+    std::thread::sleep(Duration::from_millis(500));
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Main autoprompt pipeline
+// ---------------------------------------------------------------------------
+
+/// Run autoprompt using screen vision + input control.
 pub async fn run_autoprompt(
     prompt_file: &str,
     output_dir: &str,
-    workers: usize,
+    _workers: usize, // workers ignored for now — single screen
     skip: usize,
 ) -> Result<()> {
-    use tokio::time::sleep;
-
-    if !check_geckodriver() {
-        anyhow::bail!("geckodriver not found. Install: brew install geckodriver");
-    }
-
     let prompts = load_prompts(prompt_file)?;
     println!("loaded {} prompts from {}", prompts.len(), prompt_file);
 
-    // Skip already completed
     let prompts: Vec<_> = prompts.into_iter().skip(skip).collect();
     if prompts.is_empty() {
-        println!("all prompts already completed (skip={})", skip);
+        println!("all prompts done (skip={})", skip);
         return Ok(());
     }
 
     std::fs::create_dir_all(output_dir)?;
 
-    // Split prompts across workers
-    let chunk_size = (prompts.len() + workers - 1) / workers;
-    let chunks: Vec<Vec<PromptEntry>> = prompts
-        .chunks(chunk_size)
-        .map(|c| c.to_vec())
-        .collect();
+    // Verify screen capture works
+    println!("testing screen capture...");
+    let (sw, sh, screen) = capture_screen().context(
+        "screen capture failed. Grant Screen Recording permission:\n  System Settings → Privacy & Security → Screen Recording → add Terminal/kova"
+    )?;
+    println!("screen: {}x{}", sw, sh);
 
-    println!("starting {} workers, {} prompts each", workers, chunk_size);
-    println!("output: {}", output_dir);
-    println!();
+    // Find Firefox download dir
+    let download_dir = dirs::download_dir()
+        .unwrap_or_else(|| PathBuf::from(output_dir));
+    let download_dir_str = download_dir.to_string_lossy().to_string();
+    println!("watching downloads: {}", download_dir_str);
 
-    // Start geckodrivers
-    let base_port = 4444u16;
-    let mut gecko_procs = Vec::new();
-    for i in 0..workers {
-        let port = base_port + i as u16;
-        println!("starting geckodriver on port {}...", port);
-        gecko_procs.push(start_geckodriver(port)?);
-    }
-
-    // Launch workers
-    let mut handles = Vec::new();
-    for (i, chunk) in chunks.into_iter().enumerate() {
-        let port = base_port + i as u16;
-        let out = output_dir.to_string();
-        let offset = skip + i * chunk_size;
-
-        let handle = tokio::spawn(async move {
-            match worker(port, chunk, &out, offset).await {
-                Ok(count) => {
-                    println!("[worker {}] done: {} sprites", i, count);
-                    count
-                }
-                Err(e) => {
-                    eprintln!("[worker {}] error: {}", i, e);
-                    0
-                }
-            }
-        });
-        handles.push(handle);
-    }
-
-    // Wait for all workers
-    let mut total = 0usize;
-    for h in handles {
-        total += h.await.unwrap_or(0);
-    }
-
-    // Kill geckodrivers
-    for mut proc in gecko_procs {
-        let _ = proc.kill();
-    }
-
-    println!("\nautoprompt done: {} images saved to {}", total, output_dir);
-    Ok(())
-}
-
-/// Single worker — connects to geckodriver, opens Gemini, sends prompts, saves images.
-#[cfg(feature = "browser")]
-async fn worker(port: u16, prompts: Vec<PromptEntry>, output_dir: &str, offset: usize) -> Result<usize> {
-    use tokio::time::sleep;
-
-    let url = format!("http://localhost:{}", port);
-    let client = ClientBuilder::native()
-        .connect(&url)
-        .await
-        .map_err(|e| anyhow::anyhow!("connect to geckodriver:{} failed: {}", port, e))?;
-
-    // Navigate to Gemini
-    client.goto("https://gemini.google.com/app").await?;
-    println!("[port {}] opened Gemini — waiting for login...", port);
-
-    // Wait for user to be logged in (check for input field)
-    // Give generous time for manual login on first run
-    let mut logged_in = false;
-    for attempt in 0..60 {
-        sleep(Duration::from_secs(5)).await;
-        // Check for the chat input
-        if find_input(&client).await.is_ok() {
-            logged_in = true;
-            break;
-        }
-        if attempt % 6 == 0 {
-            println!("[port {}] waiting for login... ({}s)", port, attempt * 5);
-        }
-    }
-
-    if !logged_in {
-        anyhow::bail!("port {}: Gemini login timeout (5 min)", port);
-    }
-
-    println!("[port {}] logged in, starting prompts", port);
+    println!("\nstarting {} prompts. Focus Firefox on Gemini before continuing.", prompts.len());
+    println!("press Ctrl+C to stop.\n");
+    std::thread::sleep(Duration::from_secs(3));
 
     let mut saved = 0usize;
     for (i, entry) in prompts.iter().enumerate() {
-        let idx = offset + i;
-        println!("[port {}] prompt {}: {}", port, idx, entry.label);
+        let idx = skip + i;
+        println!("[{}/{}] {}: {}", idx + 1, skip + prompts.len(), entry.label, &entry.text[..60.min(entry.text.len())]);
 
-        match send_and_save(&client, &entry.text, &entry.label, idx, output_dir).await {
-            Ok(true) => saved += 1,
-            Ok(false) => eprintln!("[port {}] no image for prompt {}", port, idx),
-            Err(e) => eprintln!("[port {}] error on prompt {}: {}", port, idx, e),
-        }
+        // Focus Firefox window
+        focus_window("Gemini")?;
+        std::thread::sleep(Duration::from_secs(1));
 
-        // Rate limit cooldown
-        sleep(Duration::from_secs(3)).await;
-    }
+        // Take screenshot, find input area
+        let (sw, sh, screen) = capture_screen()?;
 
-    client.close().await?;
-    Ok(saved)
-}
+        if let Some((ix, iy)) = find_gemini_input(&screen, sw, sh) {
+            // Click the input area
+            click_at(ix, iy)?;
+            std::thread::sleep(Duration::from_millis(500));
 
-/// Find Gemini's input element.
-#[cfg(feature = "browser")]
-async fn find_input(client: &Client) -> Result<fantoccini::elements::Element> {
-    // Gemini uses various input selectors — try each
-    let selectors = [
-        "div[contenteditable='true']",
-        "div.ql-editor",
-        "textarea",
-        "div[role='textbox']",
-        ".text-input-field",
-        "rich-textarea div[contenteditable]",
-    ];
+            // Type the prompt
+            type_text(&entry.text)?;
+            std::thread::sleep(Duration::from_millis(300));
 
-    for sel in &selectors {
-        if let Ok(el) = client.find(Locator::Css(sel)).await {
-            return Ok(el);
-        }
-    }
+            // Press Enter to submit
+            press_enter()?;
 
-    anyhow::bail!("input field not found")
-}
+            // Count current files in download dir
+            let before_count = std::fs::read_dir(output_dir)
+                .map(|rd| rd.filter_map(|e| e.ok()).count())
+                .unwrap_or(0);
 
-/// Send a prompt, wait for image, download it.
-#[cfg(feature = "browser")]
-async fn send_and_save(
-    client: &Client,
-    prompt: &str,
-    label: &str,
-    index: usize,
-    output_dir: &str,
-) -> Result<bool> {
-    use tokio::time::sleep;
+            // Wait for image generation (watch screen for changes, up to 3 min)
+            println!("  waiting for generation...");
+            let pre_hash = simple_hash(&screen);
 
-    // Find and fill the input
-    let input = find_input(client).await?;
-    input.click().await?;
-    sleep(Duration::from_millis(300)).await;
-
-    // Clear existing text and type new prompt
-    input.send_keys(prompt).await?;
-    sleep(Duration::from_millis(500)).await;
-
-    // Submit — try button first, then Enter key
-    let submitted = if let Ok(btn) = client.find(Locator::Css("button[aria-label='Send message'], button[data-testid='send-button'], .send-button")).await {
-        btn.click().await.is_ok()
-    } else {
-        input.send_keys("\n").await.is_ok()
-    };
-
-    if !submitted {
-        return Ok(false);
-    }
-
-    // Wait for image generation (poll every 5s, up to 3 min)
-    let mut img_data = None;
-    for _ in 0..36 {
-        sleep(Duration::from_secs(5)).await;
-
-        // Look for generated images in the response
-        let script = r#"
-            // Find the most recent image in the chat
-            const imgs = document.querySelectorAll('img[src^="blob:"], img[src^="data:image"], img.generated-image, img[alt*="Generated"]');
-            if (imgs.length === 0) return null;
-            const img = imgs[imgs.length - 1];
-
-            // Convert to base64 via canvas
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.naturalWidth || img.width;
-                canvas.height = img.naturalHeight || img.height;
-                if (canvas.width === 0 || canvas.height === 0) return null;
-                canvas.getContext('2d').drawImage(img, 0, 0);
-                return canvas.toDataURL('image/png').split(',')[1];
-            } catch(e) {
-                return null;
-            }
-        "#;
-
-        match client.execute(script, vec![]).await {
-            Ok(val) => {
-                if let Some(b64) = val.as_str() {
-                    if !b64.is_empty() {
-                        img_data = Some(b64.to_string());
+            let mut image_appeared = false;
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_secs(180) {
+                std::thread::sleep(Duration::from_secs(5));
+                if let Ok((_, _, new_screen)) = capture_screen() {
+                    if screen_changed(pre_hash, &new_screen) {
+                        // Screen changed significantly — image likely appeared
+                        // Wait a bit more for it to fully render
+                        std::thread::sleep(Duration::from_secs(3));
+                        image_appeared = true;
                         break;
                     }
                 }
             }
-            Err(_) => continue,
+
+            if image_appeared {
+                // Save screenshot of the result
+                let out_path = format!("{}/auto_{}_{:04}.png", output_dir, entry.label, idx);
+                // Take a clean screenshot of the generated image
+                std::thread::sleep(Duration::from_secs(2));
+
+                // Use Cmd+Shift+S or right-click save approach
+                // For now, screenshot the full screen and let ingest-gemini handle slicing
+                if save_screenshot(&out_path).is_ok() {
+                    println!("  saved: {}", out_path);
+                    saved += 1;
+                }
+            } else {
+                eprintln!("  timeout — no image detected");
+            }
+
+            // Click "New chat" — typically top-left area
+            // Or use Ctrl+Shift+O for new chat shortcut
+            let mut enigo = create_enigo()?;
+            // Try keyboard shortcut for new chat
+            enigo.key(Key::Meta, enigo::Direction::Press).map_err(|e| anyhow::anyhow!("{}", e))?;
+            enigo.key(Key::Shift, enigo::Direction::Press).map_err(|e| anyhow::anyhow!("{}", e))?;
+            type_text("o")?;
+            enigo.key(Key::Shift, enigo::Direction::Release).map_err(|e| anyhow::anyhow!("{}", e))?;
+            enigo.key(Key::Meta, enigo::Direction::Release).map_err(|e| anyhow::anyhow!("{}", e))?;
+            std::thread::sleep(Duration::from_secs(2));
+
+        } else {
+            eprintln!("  could not find Gemini input on screen");
+            // Try clicking center-bottom of screen as fallback
+            click_at(sw as i32 / 2, (sh as f32 * 0.85) as i32)?;
+            std::thread::sleep(Duration::from_millis(500));
+            type_text(&entry.text)?;
+            press_enter()?;
+            std::thread::sleep(Duration::from_secs(60)); // blind wait
         }
+
+        // Rate limit
+        std::thread::sleep(Duration::from_secs(2));
     }
 
-    let Some(b64) = img_data else {
-        return Ok(false);
-    };
-
-    // Decode and save
-    let bytes = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        &b64,
-    )?;
-
-    let out_path = PathBuf::from(output_dir).join(format!("auto_{label}_{index:04}.png"));
-    std::fs::write(&out_path, &bytes)?;
-    println!("  saved: {}", out_path.display());
-
-    // Scroll down / start new chat to prepare for next prompt
-    // Click "new chat" if available
-    let _ = client
-        .execute("document.querySelector('button[aria-label=\"New chat\"]')?.click()", vec![])
-        .await;
-    sleep(Duration::from_secs(2)).await;
-
-    Ok(true)
-}
-
-/// Stub when browser feature is disabled.
-#[cfg(not(feature = "browser"))]
-pub async fn run_autoprompt(
-    _prompt_file: &str,
-    _output_dir: &str,
-    _workers: usize,
-    _skip: usize,
-) -> Result<()> {
-    anyhow::bail!("browser automation requires --features browser. Rebuild with: cargo build -p kova --features browser")
+    println!("\nautoprompt done: {} images saved to {}", saved, output_dir);
+    Ok(())
 }
