@@ -169,8 +169,6 @@ pub struct KovaApp {
     store: Option<crate::storage::t12>,
     system_prompt: String,
     persona: String,
-    show_prompts: bool,
-    show_backlog: bool,
     pending_intent: Option<crate::t0>,
     /// Current project for code gen. Discovered from projects_root; user selects from dropdown.
     current_project: std::path::PathBuf,
@@ -194,10 +192,6 @@ pub struct KovaApp {
     restatement_pending_msg: Option<String>,
     /// Demo mode: record actions to ~/.kova/demos/
     demo_recording: Option<DemoRecording>,
-    /// Sprite QC panel state.
-    sprite_qc: Option<crate::sprite_qc::T213>,
-    /// Path input for sprite QC directory.
-    sprite_qc_path: String,
     // ── Navigation ──
     active_tab: Tab,
     // ── Proof of Artifacts ──
@@ -211,6 +205,7 @@ pub struct KovaApp {
     /// Whether remote cluster is reachable.
     cluster_online: bool,
     /// Show cluster config panel.
+    #[allow(dead_code)]
     show_cluster_config: bool,
     // ── Deploy tab state ──
     deploy_cmd: String,
@@ -369,8 +364,6 @@ impl KovaApp {
             store,
             system_prompt,
             persona,
-            show_prompts: false,
-            show_backlog: false,
             pending_intent: None,
             current_project: crate::default_project(),
             #[cfg(feature = "inference")]
@@ -392,8 +385,6 @@ impl KovaApp {
             #[cfg(feature = "inference")]
             restatement_pending_msg: None,
             demo_recording,
-            sprite_qc: None,
-            sprite_qc_path: String::new(),
             active_tab: Tab::Chat,
             proof_git_line: String::new(),
             proof_expanded: false,
@@ -640,49 +631,49 @@ impl eframe::App for KovaApp {
         }
 
         // ── Poll MoE receiver ──
-        if let Some(rx) = &self.moe_receiver {
-            if let Ok(result) = rx.try_recv() {
-                let summary = if let Some(ref w) = result.winner {
-                    format!("[MoE] Winner: {} (score {})", w.node_id, w.total_score)
-                } else {
-                    "[MoE] No winner".into()
-                };
-                self.messages.push(crate::Message {
-                    role: "assistant".into(),
-                    content: summary.clone(),
-                });
-                self.persist("assistant", &summary);
-                self.moe_result = Some(result);
-                self.moe_receiver = None;
-                ctx.request_repaint();
-            }
+        if let Some(rx) = &self.moe_receiver
+            && let Ok(result) = rx.try_recv()
+        {
+            let summary = if let Some(ref w) = result.winner {
+                format!("[MoE] Winner: {} (score {})", w.node_id, w.total_score)
+            } else {
+                "[MoE] No winner".into()
+            };
+            self.messages.push(crate::Message {
+                role: "assistant".into(),
+                content: summary.clone(),
+            });
+            self.persist("assistant", &summary);
+            self.moe_result = Some(result);
+            self.moe_receiver = None;
+            ctx.request_repaint();
         }
         if self.moe_receiver.is_some() {
             ctx.request_repaint();
         }
 
         // ── Poll remote chat receiver ──
-        if let Some(rx) = &self.remote_chat_receiver {
-            if let Ok(response) = rx.try_recv() {
-                self.messages.push(crate::Message {
-                    role: "assistant".into(),
-                    content: response.clone(),
-                });
-                self.persist("assistant", &response);
-                self.remote_chat_receiver = None;
-                ctx.request_repaint();
-            }
+        if let Some(rx) = &self.remote_chat_receiver
+            && let Ok(response) = rx.try_recv()
+        {
+            self.messages.push(crate::Message {
+                role: "assistant".into(),
+                content: response.clone(),
+            });
+            self.persist("assistant", &response);
+            self.remote_chat_receiver = None;
+            ctx.request_repaint();
         }
         if self.remote_chat_receiver.is_some() {
             ctx.request_repaint();
         }
 
         // ── Poll startup cluster check ──
-        if let Some(rx) = &self.cluster_check_rx {
-            if let Ok(online) = rx.try_recv() {
-                self.cluster_online = online;
-                self.cluster_check_rx = None;
-            }
+        if let Some(rx) = &self.cluster_check_rx
+            && let Ok(online) = rx.try_recv()
+        {
+            self.cluster_online = online;
+            self.cluster_check_rx = None;
         }
 
         // ── Refresh proof card when project changes ──
@@ -701,25 +692,25 @@ impl eframe::App for KovaApp {
         }
 
         // ── Onboarding test result polling ──
-        if let Some(rx) = &self.onboarding_test_rx {
-            if let Ok(result) = rx.try_recv() {
-                self.onboarding_test_result = Some(result);
-                self.cluster_online = result;
-                if result {
-                    self.cluster_url = self.onboarding_url.clone();
-                }
-                self.onboarding_test_rx = None;
-                if result {
-                    self.onboarding = OnboardingState::Done;
-                    self.messages.push(crate::Message {
-                        role: "assistant".into(),
-                        content: format!("Connected to cluster at {}. MoE, chat, and code generation ready. What do you want to build?", self.onboarding_url),
-                    });
-                } else {
-                    self.onboarding = OnboardingState::ConnectSetup;
-                }
-                ctx.request_repaint();
+        if let Some(rx) = &self.onboarding_test_rx
+            && let Ok(result) = rx.try_recv()
+        {
+            self.onboarding_test_result = Some(result);
+            self.cluster_online = result;
+            if result {
+                self.cluster_url = self.onboarding_url.clone();
             }
+            self.onboarding_test_rx = None;
+            if result {
+                self.onboarding = OnboardingState::Done;
+                self.messages.push(crate::Message {
+                    role: "assistant".into(),
+                    content: format!("Connected to cluster at {}. MoE, chat, and code generation ready. What do you want to build?", self.onboarding_url),
+                });
+            } else {
+                self.onboarding = OnboardingState::ConnectSetup;
+            }
+            ctx.request_repaint();
         }
         if self.onboarding_test_rx.is_some() {
             ctx.request_repaint();
@@ -832,7 +823,10 @@ impl eframe::App for KovaApp {
         self.toasts.retain(|t| !t.expired());
 
         // Landscape detection
-        let landscape = ctx.screen_rect().width() > ctx.screen_rect().height();
+        let landscape = ctx.input(|i| {
+            let r = i.viewport_rect();
+            r.width() > r.height()
+        });
 
         // ── Bottom Tab Bar ──
         egui::TopBottomPanel::bottom("tab_bar")
@@ -1140,9 +1134,8 @@ impl eframe::App for KovaApp {
                             self.moe_receiver = Some(rx);
                             self.moe_result = None;
                             std::thread::spawn(move || {
-                                match remote_moe(&url, &prompt) {
-                                    Ok(result) => { let _ = tx.send(result); }
-                                    Err(_) => {} // silently fail for now
+                                if let Ok(result) = remote_moe(&url, &prompt) {
+                                    let _ = tx.send(result);
                                 }
                             });
                         }

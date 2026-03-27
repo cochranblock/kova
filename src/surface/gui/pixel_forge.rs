@@ -42,12 +42,12 @@ fn find_binary() -> Option<PathBuf> {
         }
     }
 
-    if let Ok(output) = Command::new("which").arg("pixel-forge").output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Some(PathBuf::from(path));
-            }
+    if let Ok(output) = Command::new("which").arg("pixel-forge").output()
+        && output.status.success()
+    {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path.is_empty() {
+            return Some(PathBuf::from(path));
         }
     }
 
@@ -98,6 +98,7 @@ struct SpriteCard {
 
 /// Generation batch — a group of sprites from one Forge invocation.
 struct ForgeBatch {
+    #[allow(dead_code)]
     sprites: Vec<SpriteCard>,
     class: String,
     palette: String,
@@ -137,6 +138,10 @@ pub struct T220 {
     total_generated: u32,
 }
 
+impl Default for T220 {
+    fn default() -> Self { Self::new() }
+}
+
 impl T220 {
     pub fn new() -> Self {
         let binary = find_binary();
@@ -147,12 +152,9 @@ impl T220 {
         let mut binary_error = None;
 
         if let Some(bin) = &binary {
-            match plugin_call(bin, "version", None) {
-                Ok(data) => {
-                    let v = data.get("version").and_then(|v| v.as_str()).unwrap_or("?");
-                    version_info = format!("v{v}");
-                }
-                Err(_) => {}
+            if let Ok(data) = plugin_call(bin, "version", None) {
+                let v = data.get("version").and_then(|v| v.as_str()).unwrap_or("?");
+                version_info = format!("v{v}");
             }
             match plugin_call(bin, "probe", None) {
                 Ok(data) => {
@@ -164,23 +166,20 @@ impl T220 {
                 }
                 Err(e) => device_info = format!("probe failed: {e}"),
             }
-            match plugin_call(bin, "models", None) {
-                Ok(data) => {
-                    if let Some(models) = data.get("models").and_then(|v| v.as_array()) {
-                        let parts: Vec<String> = models.iter().filter_map(|m| {
-                            let t = m.get("tier").and_then(|v| v.as_str())?;
-                            let exists = m.get("exists").and_then(|v| v.as_bool()).unwrap_or(false);
-                            if exists {
-                                let size = m.get("size_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
-                                Some(format!("{} {:.1}MB", t, size as f64 / 1_048_576.0))
-                            } else {
-                                None
-                            }
-                        }).collect();
-                        models_info = parts.join("  ");
+            if let Ok(data) = plugin_call(bin, "models", None)
+                && let Some(models) = data.get("models").and_then(|v| v.as_array())
+            {
+                let parts: Vec<String> = models.iter().filter_map(|m| {
+                    let t = m.get("tier").and_then(|v| v.as_str())?;
+                    let exists = m.get("exists").and_then(|v| v.as_bool()).unwrap_or(false);
+                    if exists {
+                        let size = m.get("size_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                        Some(format!("{} {:.1}MB", t, size as f64 / 1_048_576.0))
+                    } else {
+                        None
                     }
-                }
-                Err(_) => {}
+                }).collect();
+                models_info = parts.join("  ");
             }
         } else {
             binary_error = Some("pixel-forge not found — cargo build -p pixel-forge".to_string());

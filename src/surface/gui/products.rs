@@ -115,6 +115,7 @@ struct DiscoveredProduct {
     selectors: Vec<SelectorDef>,
     sliders: Vec<SliderDef>,
     action_cmd: String,
+    #[allow(dead_code)]
     output_type: String, // "sprites", etc.
 
     // Runtime state
@@ -301,7 +302,12 @@ impl DiscoveredProduct {
 pub struct T221 {
     products: Vec<DiscoveredProduct>,
     active_tab: usize,
+    #[allow(dead_code)]
     scan_done: bool,
+}
+
+impl Default for T221 {
+    fn default() -> Self { Self::new() }
 }
 
 impl T221 {
@@ -310,32 +316,32 @@ impl T221 {
         let mut products = Vec::new();
 
         for name in PRODUCT_NAMES {
-            if let Some(binary) = find_binary(name) {
-                if let Some(product) = DiscoveredProduct::from_binary(binary) {
-                    products.push(product);
-                }
+            if let Some(binary) = find_binary(name)
+                && let Some(product) = DiscoveredProduct::from_binary(binary)
+            {
+                products.push(product);
             }
         }
 
         // Also scan ~/bin for anything that responds to plugin protocol
         if let Some(home) = dirs::home_dir() {
             let bin_dir = home.join("bin");
-            if bin_dir.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(&bin_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if !path.is_file() { continue; }
-                        let name = path.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("");
-                        // Skip known system binaries and already-discovered
-                        if PRODUCT_NAMES.contains(&name) { continue; }
-                        if name.starts_with('.') || name == "kova" { continue; }
+            if bin_dir.is_dir()
+                && let Ok(entries) = std::fs::read_dir(&bin_dir)
+            {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if !path.is_file() { continue; }
+                    let name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("");
+                    // Skip known system binaries and already-discovered
+                    if PRODUCT_NAMES.contains(&name) { continue; }
+                    if name.starts_with('.') || name == "kova" { continue; }
 
-                        // Quick check: does it speak plugin?
-                        if let Some(product) = DiscoveredProduct::from_binary(path) {
-                            products.push(product);
-                        }
+                    // Quick check: does it speak plugin?
+                    if let Some(product) = DiscoveredProduct::from_binary(path) {
+                        products.push(product);
                     }
                 }
             }

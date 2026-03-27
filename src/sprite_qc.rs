@@ -218,22 +218,21 @@ impl T213 {
         let entry = &self.sprites[self.current];
 
         // Load texture if needed
-        if self.loaded_path.as_ref() != Some(&entry.path) {
-            if let Ok(img_data) = std::fs::read(&entry.path) {
-                if let Ok(img) = image::load_from_memory(&img_data) {
-                    let rgba = img.to_rgba8();
-                    let size = [rgba.width() as usize, rgba.height() as usize];
-                    let pixels = rgba.into_raw();
-                    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
-                    let tex = ctx.load_texture(
-                        entry.path.to_string_lossy(),
-                        color_image,
-                        egui::TextureOptions::NEAREST, // pixel art — no filtering
-                    );
-                    self.texture = Some(tex);
-                    self.loaded_path = Some(entry.path.clone());
-                }
-            }
+        if self.loaded_path.as_ref() != Some(&entry.path)
+            && let Ok(img_data) = std::fs::read(&entry.path)
+            && let Ok(img) = image::load_from_memory(&img_data)
+        {
+            let rgba = img.to_rgba8();
+            let size = [rgba.width() as usize, rgba.height() as usize];
+            let pixels = rgba.into_raw();
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+            let tex = ctx.load_texture(
+                entry.path.to_string_lossy(),
+                color_image,
+                egui::TextureOptions::NEAREST, // pixel art — no filtering
+            );
+            self.texture = Some(tex);
+            self.loaded_path = Some(entry.path.clone());
         }
 
         // Label
@@ -255,7 +254,7 @@ impl T213 {
             let tex_size = tex.size_vec2();
             // Scale up: pixel art is small, show at 4x or fill available width
             let available = ui.available_width().min(512.0);
-            let scale = (available / tex_size.x).max(1.0).min(8.0);
+            let scale = (available / tex_size.x).clamp(1.0, 8.0);
             let display_size = egui::vec2(tex_size.x * scale, tex_size.y * scale);
 
             ui.horizontal(|ui| {
