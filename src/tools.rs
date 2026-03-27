@@ -658,7 +658,7 @@ fn f145(call: &t103, project_dir: &Path) -> t104 {
     let cwd = get_arg(call, "cwd")
         .map(PathBuf::from)
         .unwrap_or_else(|| project_dir.to_path_buf());
-    let _timeout_secs: u64 = get_arg(call, "timeout")
+    let timeout_secs: u64 = get_arg(call, "timeout")
         .and_then(|s| s.parse().ok())
         .unwrap_or(120);
 
@@ -670,7 +670,33 @@ fn f145(call: &t103, project_dir: &Path) -> t104 {
         .spawn();
 
     match child {
-        Ok(child) => {
+        Ok(mut child) => {
+            // Enforce timeout: poll in a loop, kill if exceeded
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => break, // process exited
+                    Ok(None) => {
+                        if std::time::Instant::now() >= deadline {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return t104 {
+                                tool: call.tool.clone(),
+                                success: false,
+                                output: format!("killed: exceeded {}s timeout", timeout_secs),
+                            };
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    Err(e) => {
+                        return t104 {
+                            tool: call.tool.clone(),
+                            success: false,
+                            output: format!("wait: {}", e),
+                        };
+                    }
+                }
+            }
             let output = match child.wait_with_output() {
                 Ok(o) => o,
                 Err(e) => {
