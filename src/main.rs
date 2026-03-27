@@ -34,6 +34,8 @@ enum Cmd {
     Recent(RecentArgs),
     /// Autopilot: type prompt into Cursor composer. No API costs. Requires Cursor focused.
     Autopilot(AutopilotArgs),
+    /// Browser automation: drive Gemini/etc via WebDriver. Bulk sprite generation.
+    Prompt(PromptArgs),
     /// Deploy quality gate: clippy, TRIPLE SIMS, release build, smoke, baked demo. Requires --features tests.
     Test,
     /// Tokenized cargo commands. §13 compressed output. x0=build x1=check x2=test x3=clippy x4=run x5=build-rel x6=clean x7=doc x8=fmt-chk x9=bench.
@@ -834,6 +836,22 @@ struct AutopilotArgs {
     /// Prompt to type into Cursor agent composer
     #[arg(required = true)]
     prompt: Vec<String>,
+}
+
+#[derive(clap::Args)]
+struct PromptArgs {
+    /// Path to prompt file (markdown with ### headers and Create prompts)
+    #[arg(short, long)]
+    file: String,
+    /// Output directory for downloaded images
+    #[arg(short, long, default_value = "data/raw/gemini")]
+    output: String,
+    /// Number of parallel browser workers (one per Gemini account)
+    #[arg(short, long, default_value_t = 2)]
+    workers: usize,
+    /// Skip first N prompts (resume from where you left off)
+    #[arg(short, long, default_value_t = 0)]
+    skip: usize,
 }
 
 #[derive(clap::Args)]
@@ -1916,6 +1934,15 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
                 let _ = autopilot_args;
                 anyhow::bail!("Build with --features autopilot for autopilot mode")
             }
+        }
+        Some(Cmd::Prompt(prompt_args)) => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(kova::browser::run_autoprompt(
+                &prompt_args.file,
+                &prompt_args.output,
+                prompt_args.workers,
+                prompt_args.skip,
+            ))
         }
         Some(Cmd::Git(args)) => {
             kova::git_cmd::f160(args.cmd, args.count, args.message, args.files, false)

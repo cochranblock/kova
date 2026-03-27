@@ -73,6 +73,8 @@ pub mod theme;
 #[cfg(feature = "autopilot")]
 pub mod autopilot;
 
+pub mod browser;
+
 #[cfg(feature = "daemon")]
 pub mod daemon;
 
