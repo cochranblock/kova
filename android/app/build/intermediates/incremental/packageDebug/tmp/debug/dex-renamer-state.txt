@@ -1,0 +1,4 @@
+#Fri Mar 20 06:45:51 PDT 2026
+base.0=/Users/mcochran/kova/android/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
+renamed.0=classes.dex
+path.0=0/classes.dex

@@ -1,19 +1,30 @@
-//! Kova screen automation — vision-based browser control.
+//! Kova screen automation — vision-based dual-browser Gemini prompting.
 //!
-//! Sees the screen, finds UI elements by visual pattern matching,
-//! clicks and types using OS-level input. Works with ANY browser,
-//! ANY website. No DOM, no protocol, no selectors.
+//! Drives two Firefox Gemini windows simultaneously via screen vision.
+//! Interleaved pipeline: while one generates, the other gets a new prompt.
 //!
-//! macOS: CoreGraphics for screenshots, enigo for input.
-//! Survives UI redesigns — if a human can see it, kova can interact with it.
+//! Flow per window:
+//!   1. Focus window → click input → type prompt → Enter
+//!   2. Switch to other window while this one generates
+//!   3. Come back → hover image → click download button → new chat
+//!
+//! macOS: CoreGraphics screenshots, enigo input, AppleScript window focus.
 
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 
-use anyhow::{Context, Result};
-use std::path::PathBuf;
+use anyhow::Result;
+#[cfg(feature = "browser")]
+use anyhow::Context;
+#[cfg(feature = "browser")]
 use std::process::Command;
+#[cfg(feature = "browser")]
 use std::time::{Duration, Instant};
+#[cfg(feature = "browser")]
+use std::path::PathBuf;
+
+#[cfg(feature = "browser")]
+use enigo::{Enigo, Keyboard, Mouse, Settings, Coordinate, Button, Key, Direction};
 
 /// Prompt entry — label + text to send.
 #[derive(Debug, Clone)]
@@ -33,7 +44,7 @@ pub fn load_prompts(path: &str) -> Result<Vec<PromptEntry>> {
         if trimmed.starts_with("### ") {
             if let Some(after_dash) = trimmed.split('—').nth(1) {
                 current_label = Some(
-                    after_dash.trim().to_lowercase().replace(' ', "_").replace('-', "_")
+                    after_dash.trim().to_lowercase().replace([' ', '-'], "_")
                 );
             }
         } else if trimmed.starts_with("Create a ") && current_label.is_some() {
@@ -48,12 +59,10 @@ pub fn load_prompts(path: &str) -> Result<Vec<PromptEntry>> {
 }
 
 // ---------------------------------------------------------------------------
-// Screen capture (macOS CoreGraphics)
+// Screen capture
 // ---------------------------------------------------------------------------
 
-/// Capture the full screen as an RGBA image buffer.
-/// Returns (width, height, pixels).
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "browser"))]
 fn capture_screen() -> Result<(u32, u32, Vec<u8>)> {
     use core_graphics::display::*;
 
@@ -63,7 +72,7 @@ fn capture_screen() -> Result<(u32, u32, Vec<u8>)> {
         kCGWindowListOptionOnScreenOnly,
         kCGNullWindowID,
         kCGWindowImageDefault,
-    ).context("screenshot failed — grant Screen Recording permission in System Settings")?;
+    ).context("screenshot failed — grant Screen Recording permission")?;
 
     let w = image.width() as u32;
     let h = image.height() as u32;
@@ -71,15 +80,14 @@ fn capture_screen() -> Result<(u32, u32, Vec<u8>)> {
     let data = image.data();
     let bytes = data.bytes();
 
-    // CoreGraphics returns BGRA, convert to RGBA
     let mut rgba = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h as usize {
         for x in 0..w as usize {
             let offset = y * bpr + x * 4;
             if offset + 3 < bytes.len() {
-                rgba.push(bytes[offset + 2]); // R (was B)
+                rgba.push(bytes[offset + 2]); // R
                 rgba.push(bytes[offset + 1]); // G
-                rgba.push(bytes[offset]);     // B (was R)
+                rgba.push(bytes[offset]);     // B
                 rgba.push(bytes[offset + 3]); // A
             }
         }
@@ -88,209 +96,356 @@ fn capture_screen() -> Result<(u32, u32, Vec<u8>)> {
     Ok((w, h, rgba))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(feature = "browser", not(target_os = "macos")))]
 fn capture_screen() -> Result<(u32, u32, Vec<u8>)> {
     anyhow::bail!("screen capture only supported on macOS")
 }
 
-/// Save a screenshot to disk for debugging.
-fn save_screenshot(path: &str) -> Result<()> {
-    let (w, h, rgba) = capture_screen()?;
-    let img = image::RgbaImage::from_raw(w, h, rgba).context("invalid screenshot data")?;
-    img.save(path)?;
-    Ok(())
+#[cfg(feature = "browser")]
+fn screen_hash(screen: &[u8]) -> u64 {
+    let mut h: u64 = 0;
+    for (i, &b) in screen.iter().step_by(997).enumerate() {
+        h = h.wrapping_add(b as u64 * (i as u64 + 1));
+    }
+    h
 }
 
 // ---------------------------------------------------------------------------
-// Visual element finding
+// Visual finders
 // ---------------------------------------------------------------------------
 
-/// Find a region on screen that matches a target color pattern.
-/// Returns (x, y) center of the match, or None.
-fn find_colored_region(
-    screen: &[u8], sw: u32, sh: u32,
-    target_r: u8, target_g: u8, target_b: u8,
-    tolerance: u8,
-    min_width: u32,
-) -> Option<(i32, i32)> {
-    // Scan for horizontal runs of the target color
-    let mut best_x = 0i32;
-    let mut best_y = 0i32;
-    let mut best_run = 0u32;
+/// Find the center of the largest image on screen.
+/// Images are large rectangles of varied color surrounded by UI chrome.
+/// We look for a region in the middle ~60% of the screen with high color variance.
+#[cfg(feature = "browser")]
+fn find_generated_image(screen: &[u8], sw: u32, sh: u32) -> Option<(i32, i32)> {
+    // The generated image is usually in the center of the page
+    // Scan the middle portion of the screen for a large block of non-uniform pixels
+    let y_start = (sh as f32 * 0.15) as u32;
+    let y_end = (sh as f32 * 0.75) as u32;
+    let x_start = (sw as f32 * 0.1) as u32;
+    let x_end = (sw as f32 * 0.9) as u32;
 
-    for y in 0..sh {
-        let mut run = 0u32;
-        let mut run_start = 0u32;
-        for x in 0..sw {
-            let i = (y * sw + x) as usize * 4;
-            if i + 2 >= screen.len() { break; }
-            let dr = (screen[i] as i16 - target_r as i16).unsigned_abs() as u8;
-            let dg = (screen[i + 1] as i16 - target_g as i16).unsigned_abs() as u8;
-            let db = (screen[i + 2] as i16 - target_b as i16).unsigned_abs() as u8;
-            if dr <= tolerance && dg <= tolerance && db <= tolerance {
-                if run == 0 { run_start = x; }
-                run += 1;
-            } else {
-                if run > best_run && run >= min_width {
-                    best_run = run;
-                    best_x = (run_start + run / 2) as i32;
-                    best_y = y as i32;
+    // Sample blocks and find the one with highest color variance
+    let block_size = 64u32;
+    let mut best_var = 0.0f64;
+    let mut best_x = sw / 2;
+    let mut best_y = sh / 2;
+
+    for by in (y_start..y_end).step_by(block_size as usize) {
+        for bx in (x_start..x_end).step_by(block_size as usize) {
+            let mut sum_r = 0u64;
+            let mut sum_g = 0u64;
+            let mut sum_b = 0u64;
+            let mut sum_r2 = 0u64;
+            let mut sum_g2 = 0u64;
+            let mut sum_b2 = 0u64;
+            let mut count = 0u64;
+
+            for dy in 0..block_size.min(y_end - by) {
+                for dx in 0..block_size.min(x_end - bx) {
+                    let px = bx + dx;
+                    let py = by + dy;
+                    let i = (py * sw + px) as usize * 4;
+                    if i + 2 >= screen.len() { continue; }
+                    let r = screen[i] as u64;
+                    let g = screen[i + 1] as u64;
+                    let b = screen[i + 2] as u64;
+                    sum_r += r; sum_g += g; sum_b += b;
+                    sum_r2 += r * r; sum_g2 += g * g; sum_b2 += b * b;
+                    count += 1;
                 }
-                run = 0;
             }
-        }
-        if run > best_run && run >= min_width {
-            best_run = run;
-            best_x = (sw - run / 2) as i32;
-            best_y = y as i32;
+
+            if count == 0 { continue; }
+            let var_r = (sum_r2 as f64 / count as f64) - (sum_r as f64 / count as f64).powi(2);
+            let var_g = (sum_g2 as f64 / count as f64) - (sum_g as f64 / count as f64).powi(2);
+            let var_b = (sum_b2 as f64 / count as f64) - (sum_b as f64 / count as f64).powi(2);
+            let total_var = var_r + var_g + var_b;
+
+            if total_var > best_var {
+                best_var = total_var;
+                best_x = bx + block_size / 2;
+                best_y = by + block_size / 2;
+            }
         }
     }
 
-    if best_run >= min_width {
+    // Only return if variance is meaningful (actual image, not solid background)
+    if best_var > 500.0 {
+        Some((best_x as i32, best_y as i32))
+    } else {
+        None
+    }
+}
+
+/// After hovering over image, find the download button.
+/// It's a small icon that appears on hover — typically a down-arrow,
+/// lighter/darker than the image. We look for small UI elements that
+/// appeared after the hover near the cursor position.
+#[cfg(feature = "browser")]
+fn find_download_button(
+    before: &[u8], after: &[u8],
+    sw: u32, sh: u32,
+    hover_x: i32, hover_y: i32,
+) -> Option<(i32, i32)> {
+    // Compare before/after hover to find newly appeared elements
+    // Search in a region around the image (especially bottom-right, bottom-center)
+    let search_radius = 200i32;
+    let x_start = (hover_x - search_radius).max(0) as u32;
+    let x_end = (hover_x + search_radius).min(sw as i32) as u32;
+    let y_start = hover_y.max(0) as u32;  // only below the hover point
+    let y_end = (hover_y + search_radius).min(sh as i32) as u32;
+
+    let mut best_diff = 0u64;
+    let mut best_x = 0i32;
+    let mut best_y = 0i32;
+
+    // Find where the biggest pixel difference is (where the button appeared)
+    let block = 16u32;
+    for by in (y_start..y_end).step_by(block as usize / 2) {
+        for bx in (x_start..x_end).step_by(block as usize / 2) {
+            let mut diff = 0u64;
+            for dy in 0..block.min(y_end - by) {
+                for dx in 0..block.min(x_end - bx) {
+                    let px = bx + dx;
+                    let py = by + dy;
+                    let i = (py * sw + px) as usize * 4;
+                    if i + 2 >= before.len() || i + 2 >= after.len() { continue; }
+                    let dr = (before[i] as i32 - after[i] as i32).unsigned_abs();
+                    let dg = (before[i+1] as i32 - after[i+1] as i32).unsigned_abs();
+                    let db = (before[i+2] as i32 - after[i+2] as i32).unsigned_abs();
+                    diff += (dr + dg + db) as u64;
+                }
+            }
+            if diff > best_diff {
+                best_diff = diff;
+                best_x = (bx + block / 2) as i32;
+                best_y = (by + block / 2) as i32;
+            }
+        }
+    }
+
+    // Only return if we found a meaningful new element
+    if best_diff > 5000 {
         Some((best_x, best_y))
     } else {
         None
     }
 }
 
-/// Find the Gemini text input area on screen.
-/// It's typically a light-colored horizontal bar near the bottom.
-fn find_gemini_input(screen: &[u8], sw: u32, sh: u32) -> Option<(i32, i32)> {
-    // Gemini input is in the bottom 30% of the screen
-    // It's a wide light-gray/white bar
-    let start_y = (sh as f32 * 0.6) as u32;
-    let bottom_region: Vec<u8> = screen[(start_y * sw * 4) as usize..].to_vec();
-    let region_h = sh - start_y;
+/// Find Gemini input area — wide light bar in bottom portion of screen.
+#[cfg(feature = "browser")]
+fn find_input(screen: &[u8], sw: u32, sh: u32) -> Option<(i32, i32)> {
+    let y_start = (sh as f32 * 0.65) as u32;
 
-    // Look for a wide light-colored horizontal region (the input bar)
-    // Input bar is typically RGB ~(240, 240, 240) or ~(255, 255, 255)
-    if let Some((x, y)) = find_colored_region(&bottom_region, sw, region_h, 240, 240, 240, 20, sw / 3) {
-        Some((x, y + start_y as i32))
+    // Scan for a wide horizontal run of light pixels (the input bar)
+    let mut best_y = 0i32;
+    let mut best_run = 0u32;
+    let min_run = sw / 3;
+
+    for y in y_start..sh {
+        let mut run = 0u32;
+        for x in 0..sw {
+            let i = (y * sw + x) as usize * 4;
+            if i + 2 >= screen.len() { break; }
+            let r = screen[i];
+            let g = screen[i + 1];
+            let b = screen[i + 2];
+            // Light gray or white
+            if r > 220 && g > 220 && b > 220 {
+                run += 1;
+            } else {
+                if run > best_run && run >= min_run {
+                    best_run = run;
+                    best_y = y as i32;
+                }
+                run = 0;
+            }
+        }
+        if run > best_run && run >= min_run {
+            best_run = run;
+            best_y = y as i32;
+        }
+    }
+
+    if best_run >= min_run {
+        Some((sw as i32 / 2, best_y))
     } else {
         None
     }
 }
 
-/// Detect if a new image appeared on screen by comparing screenshot checksums.
-fn screen_changed(old_checksum: u64, new_screen: &[u8]) -> bool {
-    let new_checksum = simple_hash(new_screen);
-    (old_checksum as i64 - new_checksum as i64).unsigned_abs() > 1000000
-}
-
-fn simple_hash(data: &[u8]) -> u64 {
-    // Sample every 1000th byte for fast comparison
-    let mut h: u64 = 0;
-    for (i, &b) in data.iter().step_by(1000).enumerate() {
-        h = h.wrapping_add(b as u64 * (i as u64 + 1));
-    }
-    h
-}
-
-/// Watch for new files appearing in a directory.
-fn watch_for_new_file(dir: &str, before_count: usize, timeout: Duration) -> Option<PathBuf> {
-    let start = Instant::now();
-    loop {
-        if start.elapsed() > timeout { return None; }
-        std::thread::sleep(Duration::from_secs(3));
-
-        let files: Vec<_> = std::fs::read_dir(dir)
-            .ok()?
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                name.ends_with(".png") || name.ends_with(".jpg") || name.ends_with(".jpeg")
-            })
-            .collect();
-
-        if files.len() > before_count {
-            // Find the newest file
-            let mut newest: Option<(PathBuf, std::time::SystemTime)> = None;
-            for f in files {
-                if let Ok(meta) = f.metadata() {
-                    if let Ok(modified) = meta.modified() {
-                        if newest.as_ref().map(|(_, t)| modified > *t).unwrap_or(true) {
-                            newest = Some((f.path(), modified));
-                        }
-                    }
-                }
-            }
-            return newest.map(|(p, _)| p);
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
-// Input control (enigo)
+// Input helpers
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "browser")]
-use enigo::{Enigo, Keyboard, Mouse, Settings, Coordinate, Button, Key};
-
-#[cfg(feature = "browser")]
-fn create_enigo() -> Result<Enigo> {
-    Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("enigo init: {}", e))
-}
-
-/// Click at screen coordinates.
 #[cfg(feature = "browser")]
 fn click_at(x: i32, y: i32) -> Result<()> {
-    let mut enigo = create_enigo()?;
-    enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
+    e.move_mouse(x, y, Coordinate::Abs).map_err(|e| anyhow::anyhow!("{}", e))?;
     std::thread::sleep(Duration::from_millis(100));
-    enigo.button(Button::Left, enigo::Direction::Click).map_err(|e| anyhow::anyhow!("{}", e))?;
+    e.button(Button::Left, Direction::Click).map_err(|e| anyhow::anyhow!("{}", e))?;
     Ok(())
 }
 
-/// Type text using keyboard.
+#[cfg(feature = "browser")]
+fn move_mouse(x: i32, y: i32) -> Result<()> {
+    let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
+    e.move_mouse(x, y, Coordinate::Abs).map_err(|e| anyhow::anyhow!("{}", e))?;
+    Ok(())
+}
+
 #[cfg(feature = "browser")]
 fn type_text(text: &str) -> Result<()> {
-    let mut enigo = create_enigo()?;
-    // Type in chunks to avoid overwhelming the input
+    let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
     for chunk in text.as_bytes().chunks(50) {
         let s = String::from_utf8_lossy(chunk);
-        enigo.text(&s).map_err(|e| anyhow::anyhow!("{}", e))?;
+        e.text(&s).map_err(|e| anyhow::anyhow!("{}", e))?;
         std::thread::sleep(Duration::from_millis(50));
     }
     Ok(())
 }
 
-/// Press Enter key.
 #[cfg(feature = "browser")]
 fn press_enter() -> Result<()> {
-    let mut enigo = create_enigo()?;
-    enigo.key(Key::Return, enigo::Direction::Click).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
+    e.key(Key::Return, Direction::Click).map_err(|e| anyhow::anyhow!("{}", e))?;
     Ok(())
 }
 
-/// Focus a window by title using AppleScript.
-fn focus_window(title_contains: &str) -> Result<()> {
+/// Focus a specific Firefox window by index (0 or 1).
+#[cfg(feature = "browser")]
+fn focus_gemini_window(index: usize) -> Result<()> {
     let script = format!(
         r#"tell application "System Events"
-            set firefoxProcess to first process whose name is "firefox"
-            set frontmost of firefoxProcess to true
-            repeat with w in windows of firefoxProcess
-                if name of w contains "{}" then
-                    perform action "AXRaise" of w
-                    return true
-                end if
-            end repeat
+            set firefoxWindows to every window of process "firefox" whose name contains "Gemini"
+            if (count of firefoxWindows) > {}
+                perform action "AXRaise" of item {} of firefoxWindows
+                set frontmost of process "firefox" to true
+            end if
         end tell"#,
-        title_contains
+        index, index + 1
     );
     Command::new("osascript").args(["-e", &script]).output()?;
     std::thread::sleep(Duration::from_millis(500));
     Ok(())
 }
 
+/// Count Gemini windows.
+#[cfg(feature = "browser")]
+fn count_gemini_windows() -> usize {
+    let out = Command::new("osascript")
+        .args(["-e", r#"tell application "System Events" to count (every window of process "firefox" whose name contains "Gemini")"#])
+        .output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().parse().unwrap_or(0),
+        Err(_) => 0,
+    }
+}
+
+/// Start new chat in current Gemini window.
+#[cfg(feature = "browser")]
+fn new_chat() -> Result<()> {
+    // Gemini keyboard shortcut for new chat
+    let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
+    // Try Cmd+Shift+O (common Gemini shortcut)
+    e.key(Key::Meta, Direction::Press).map_err(|e| anyhow::anyhow!("{}", e))?;
+    e.key(Key::Shift, Direction::Press).map_err(|e| anyhow::anyhow!("{}", e))?;
+    e.key(Key::Unicode('o'), Direction::Click).map_err(|e| anyhow::anyhow!("{}", e))?;
+    e.key(Key::Shift, Direction::Release).map_err(|e| anyhow::anyhow!("{}", e))?;
+    e.key(Key::Meta, Direction::Release).map_err(|e| anyhow::anyhow!("{}", e))?;
+    std::thread::sleep(Duration::from_secs(1));
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
-// Main autoprompt pipeline
+// Single prompt cycle
 // ---------------------------------------------------------------------------
 
-/// Run autoprompt using screen vision + input control.
+/// Send a prompt in the currently focused window.
+#[cfg(feature = "browser")]
+fn send_prompt(text: &str) -> Result<()> {
+    let (sw, sh, screen) = capture_screen()?;
+
+    let (ix, iy) = find_input(&screen, sw, sh)
+        .unwrap_or((sw as i32 / 2, (sh as f32 * 0.85) as i32));
+
+    click_at(ix, iy)?;
+    std::thread::sleep(Duration::from_millis(500));
+    type_text(text)?;
+    std::thread::sleep(Duration::from_millis(300));
+    press_enter()?;
+    Ok(())
+}
+
+/// Wait for image to appear, hover it, find and click download.
+#[cfg(feature = "browser")]
+fn harvest_image(timeout: Duration) -> Result<bool> {
+    let (sw, sh, initial) = capture_screen()?;
+    let initial_hash = screen_hash(&initial);
+    let start = Instant::now();
+
+    // Wait for screen to change (image generated)
+    loop {
+        if start.elapsed() > timeout { return Ok(false); }
+        std::thread::sleep(Duration::from_secs(5));
+        let (_, _, current) = capture_screen()?;
+        let current_hash = screen_hash(&current);
+        if (initial_hash as i64 - current_hash as i64).unsigned_abs() > 500000 {
+            // Screen changed — wait a bit more for full render
+            std::thread::sleep(Duration::from_secs(3));
+            break;
+        }
+    }
+
+    // Take pre-hover screenshot
+    let (sw, sh, before_hover) = capture_screen()?;
+
+    // Find the generated image
+    let (img_x, img_y) = find_generated_image(&before_hover, sw, sh)
+        .unwrap_or((sw as i32 / 2, sh as i32 / 2));
+
+    // Hover over the image
+    move_mouse(img_x, img_y)?;
+    std::thread::sleep(Duration::from_secs(1));
+
+    // Take post-hover screenshot
+    let (_, _, after_hover) = capture_screen()?;
+
+    // Find the download button (new element that appeared on hover)
+    if let Some((dx, dy)) = find_download_button(&before_hover, &after_hover, sw, sh, img_x, img_y) {
+        click_at(dx, dy)?;
+        std::thread::sleep(Duration::from_secs(2));
+        return Ok(true);
+    }
+
+    // Fallback: try clicking slightly below the image center
+    // Many UIs put the download button below the image
+    let fallback_y = img_y + 50;
+    click_at(img_x, fallback_y)?;
+    std::thread::sleep(Duration::from_secs(1));
+
+    // Second fallback: try right side of image (common icon placement)
+    let (_, _, after_click) = capture_screen()?;
+    if screen_hash(&after_click) != screen_hash(&after_hover) {
+        // Something happened — download might have triggered
+        std::thread::sleep(Duration::from_secs(2));
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+// ---------------------------------------------------------------------------
+// Main pipeline
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "browser")]
 pub async fn run_autoprompt(
     prompt_file: &str,
     output_dir: &str,
-    _workers: usize, // workers ignored for now — single screen
+    _workers: usize,
     skip: usize,
 ) -> Result<()> {
     let prompts = load_prompts(prompt_file)?;
@@ -298,118 +453,100 @@ pub async fn run_autoprompt(
 
     let prompts: Vec<_> = prompts.into_iter().skip(skip).collect();
     if prompts.is_empty() {
-        println!("all prompts done (skip={})", skip);
+        println!("all prompts done");
         return Ok(());
     }
 
     std::fs::create_dir_all(output_dir)?;
 
-    // Verify screen capture works
-    println!("testing screen capture...");
-    let (sw, sh, screen) = capture_screen().context(
-        "screen capture failed. Grant Screen Recording permission:\n  System Settings → Privacy & Security → Screen Recording → add Terminal/kova"
+    // Check screen capture
+    let (sw, sh, _) = capture_screen().context(
+        "grant Screen Recording permission in System Settings"
     )?;
     println!("screen: {}x{}", sw, sh);
 
-    // Find Firefox download dir
-    let download_dir = dirs::download_dir()
-        .unwrap_or_else(|| PathBuf::from(output_dir));
-    let download_dir_str = download_dir.to_string_lossy().to_string();
-    println!("watching downloads: {}", download_dir_str);
+    // Count Gemini windows
+    let num_windows = count_gemini_windows();
+    println!("found {} Gemini windows", num_windows);
 
-    println!("\nstarting {} prompts. Focus Firefox on Gemini before continuing.", prompts.len());
-    println!("press Ctrl+C to stop.\n");
+    if num_windows == 0 {
+        anyhow::bail!("no Firefox windows with 'Gemini' in title found. Open Gemini first.");
+    }
+
+    let dual = num_windows >= 2;
+    println!("mode: {}", if dual { "dual window (interleaved)" } else { "single window" });
+    println!("output: {}", output_dir);
+    println!("\nstarting in 3 seconds...\n");
     std::thread::sleep(Duration::from_secs(3));
 
     let mut saved = 0usize;
-    for (i, entry) in prompts.iter().enumerate() {
+    let mut i = 0;
+
+    while i < prompts.len() {
         let idx = skip + i;
-        println!("[{}/{}] {}: {}", idx + 1, skip + prompts.len(), entry.label, &entry.text[..60.min(entry.text.len())]);
 
-        // Focus Firefox window
-        focus_window("Gemini")?;
-        std::thread::sleep(Duration::from_secs(1));
+        if dual && i + 1 < prompts.len() {
+            // Dual mode: send to window 0, then window 1, then harvest both
+            let entry0 = &prompts[i];
+            let entry1 = &prompts[i + 1];
 
-        // Take screenshot, find input area
-        let (sw, sh, screen) = capture_screen()?;
-
-        if let Some((ix, iy)) = find_gemini_input(&screen, sw, sh) {
-            // Click the input area
-            click_at(ix, iy)?;
+            // Window 0: send prompt
+            println!("[win0] {}: {}...", entry0.label, &entry0.text[..50.min(entry0.text.len())]);
+            focus_gemini_window(0)?;
             std::thread::sleep(Duration::from_millis(500));
+            send_prompt(&entry0.text)?;
 
-            // Type the prompt
-            type_text(&entry.text)?;
-            std::thread::sleep(Duration::from_millis(300));
+            // Window 1: send prompt while window 0 generates
+            println!("[win1] {}: {}...", entry1.label, &entry1.text[..50.min(entry1.text.len())]);
+            focus_gemini_window(1)?;
+            std::thread::sleep(Duration::from_millis(500));
+            send_prompt(&entry1.text)?;
 
-            // Press Enter to submit
-            press_enter()?;
+            // Wait a bit for both to start generating
+            std::thread::sleep(Duration::from_secs(30));
 
-            // Count current files in download dir
-            let before_count = std::fs::read_dir(output_dir)
-                .map(|rd| rd.filter_map(|e| e.ok()).count())
-                .unwrap_or(0);
-
-            // Wait for image generation (watch screen for changes, up to 3 min)
-            println!("  waiting for generation...");
-            let pre_hash = simple_hash(&screen);
-
-            let mut image_appeared = false;
-            let start = Instant::now();
-            while start.elapsed() < Duration::from_secs(180) {
-                std::thread::sleep(Duration::from_secs(5));
-                if let Ok((_, _, new_screen)) = capture_screen() {
-                    if screen_changed(pre_hash, &new_screen) {
-                        // Screen changed significantly — image likely appeared
-                        // Wait a bit more for it to fully render
-                        std::thread::sleep(Duration::from_secs(3));
-                        image_appeared = true;
-                        break;
-                    }
-                }
+            // Harvest window 0
+            focus_gemini_window(0)?;
+            std::thread::sleep(Duration::from_secs(1));
+            match harvest_image(Duration::from_secs(150)) {
+                Ok(true) => { println!("  [win0] downloaded"); saved += 1; }
+                Ok(false) => eprintln!("  [win0] no download button found"),
+                Err(e) => eprintln!("  [win0] error: {}", e),
             }
+            new_chat()?;
 
-            if image_appeared {
-                // Save screenshot of the result
-                let out_path = format!("{}/auto_{}_{:04}.png", output_dir, entry.label, idx);
-                // Take a clean screenshot of the generated image
-                std::thread::sleep(Duration::from_secs(2));
-
-                // Use Cmd+Shift+S or right-click save approach
-                // For now, screenshot the full screen and let ingest-gemini handle slicing
-                if save_screenshot(&out_path).is_ok() {
-                    println!("  saved: {}", out_path);
-                    saved += 1;
-                }
-            } else {
-                eprintln!("  timeout — no image detected");
+            // Harvest window 1
+            focus_gemini_window(1)?;
+            std::thread::sleep(Duration::from_secs(1));
+            match harvest_image(Duration::from_secs(150)) {
+                Ok(true) => { println!("  [win1] downloaded"); saved += 1; }
+                Ok(false) => eprintln!("  [win1] no download button found"),
+                Err(e) => eprintln!("  [win1] error: {}", e),
             }
+            new_chat()?;
 
-            // Click "New chat" — typically top-left area
-            // Or use Ctrl+Shift+O for new chat shortcut
-            let mut enigo = create_enigo()?;
-            // Try keyboard shortcut for new chat
-            enigo.key(Key::Meta, enigo::Direction::Press).map_err(|e| anyhow::anyhow!("{}", e))?;
-            enigo.key(Key::Shift, enigo::Direction::Press).map_err(|e| anyhow::anyhow!("{}", e))?;
-            type_text("o")?;
-            enigo.key(Key::Shift, enigo::Direction::Release).map_err(|e| anyhow::anyhow!("{}", e))?;
-            enigo.key(Key::Meta, enigo::Direction::Release).map_err(|e| anyhow::anyhow!("{}", e))?;
-            std::thread::sleep(Duration::from_secs(2));
-
+            i += 2;
         } else {
-            eprintln!("  could not find Gemini input on screen");
-            // Try clicking center-bottom of screen as fallback
-            click_at(sw as i32 / 2, (sh as f32 * 0.85) as i32)?;
-            std::thread::sleep(Duration::from_millis(500));
-            type_text(&entry.text)?;
-            press_enter()?;
-            std::thread::sleep(Duration::from_secs(60)); // blind wait
-        }
+            // Single mode
+            let entry = &prompts[i];
+            println!("[{}] {}: {}...", idx, entry.label, &entry.text[..50.min(entry.text.len())]);
 
-        // Rate limit
-        std::thread::sleep(Duration::from_secs(2));
+            focus_gemini_window(0)?;
+            std::thread::sleep(Duration::from_millis(500));
+            send_prompt(&entry.text)?;
+
+            match harvest_image(Duration::from_secs(180)) {
+                Ok(true) => { println!("  downloaded"); saved += 1; }
+                Ok(false) => eprintln!("  no download button found"),
+                Err(e) => eprintln!("  error: {}", e),
+            }
+            new_chat()?;
+
+            i += 1;
+        }
     }
 
-    println!("\nautoprompt done: {} images saved to {}", saved, output_dir);
+    println!("\nautoprompt done: {} downloads triggered", saved);
+    println!("run 'pixel-forge ingest-gemini' to process them");
     Ok(())
 }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#0D0D14</color>
+    <color name="kova_accent">#81D4FA</color>
+    <color name="kova_bg">#0D0D14</color>
+    <color name="kova_primary">#4FC3F7</color>
+    <color name="kova_surface">#1A1A2E</color>
+    <color name="kova_text">#E0E0E0</color>
+    <string name="app_name">Kova</string>
+    <style name="Theme.Kova" parent="android:Theme.NoTitleBar.Fullscreen">
+        <item name="android:windowBackground">@color/kova_bg</item>
+        <item name="android:statusBarColor">@color/kova_bg</item>
+        <item name="android:navigationBarColor">@color/kova_bg</item>
+    </style>
+</resources>

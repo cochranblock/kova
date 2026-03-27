@@ -56,7 +56,7 @@ kalosm = { version = "0.4", features = ["language", "llama"], optional = true }
 kalosm-sample = { version = "0.4", optional = true }
 lru = { version = "0.16", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "blocking", "json"] }
-exopack = { git = "https://github.com/cochranblock/exopack", optional = true, features = ["triple_sims", "interface", "baked_demo", "demo", "video", "screenshot"] }
+exopack = { path = "exopack", optional = true, features = ["triple_sims", "interface", "baked_demo", "demo", "video", "screenshot"] }
 fastembed = { version = "5", optional = true }
 ordered-float = { version = "4", optional = true }
 dirs = "5"

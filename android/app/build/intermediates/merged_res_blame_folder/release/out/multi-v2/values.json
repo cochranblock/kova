@@ -1,0 +1,62 @@
+{
+    "logs": [
+        {
+            "outputFile": "org.cochranblock.kova.app-mergeReleaseResources-2:/values/values.xml",
+            "map": [
+                {
+                    "source": "/Users/mcochran/kova/android/app/src/main/res/values/themes.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "6",
+                        "endColumns": "12",
+                        "endOffsets": "342"
+                    },
+                    "to": {
+                        "startLines": "9",
+                        "startColumns": "4",
+                        "startOffsets": "380",
+                        "endLines": "13",
+                        "endColumns": "12",
+                        "endOffsets": "667"
+                    }
+                },
+                {
+                    "source": "/Users/mcochran/kova/android/app/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "41",
+                        "endOffsets": "92"
+                    },
+                    "to": {
+                        "startLines": "8",
+                        "startColumns": "4",
+                        "startOffsets": "338",
+                        "endColumns": "41",
+                        "endOffsets": "375"
+                    }
+                },
+                {
+                    "source": "/Users/mcochran/kova/android/app/src/main/res/values/colors.xml",
+                    "from": {
+                        "startLines": "7,6,2,3,4,5",
+                        "startColumns": "4,4,4,4,4,4",
+                        "startOffsets": "281,235,55,97,144,191",
+                        "endColumns": "56,45,41,46,46,43",
+                        "endOffsets": "333,276,92,139,186,230"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6,7",
+                        "startColumns": "4,4,4,4,4,4",
+                        "startOffsets": "55,112,158,200,247,294",
+                        "endColumns": "56,45,41,46,46,43",
+                        "endOffsets": "107,153,195,242,289,333"
+                    }
+                }
+            ]
+        }
+    ]
+}

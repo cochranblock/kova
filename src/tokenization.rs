@@ -163,40 +163,39 @@ fn scan_file(path: &Path, entries: &mut Vec<TokenEntry>) {
         }
 
         // pub fn NAME — only count top-level or in impl blocks
-        if let Some(rest) = trimmed.strip_prefix("pub fn ") {
-            if let Some(name) = extract_ident(rest) {
-                // Skip known helper/infra names (impl methods, delegators, trait methods)
-                if SKIP_FN.contains(&name.as_str()) {
-                    continue;
-                }
-                let tokenized = is_fn_token(&name);
-                entries.push(TokenEntry {
-                    file: path.to_path_buf(),
-                    line: i + 1,
-                    kind: TokenKind::Function,
-                    name,
-                    tokenized,
-                });
+        if let Some(rest) = trimmed.strip_prefix("pub fn ")
+            && let Some(name) = extract_ident(rest)
+        {
+            // Skip known helper/infra names (impl methods, delegators, trait methods)
+            if SKIP_FN.contains(&name.as_str()) {
+                continue;
             }
+            let tokenized = is_fn_token(&name);
+            entries.push(TokenEntry {
+                file: path.to_path_buf(),
+                line: i + 1,
+                kind: TokenKind::Function,
+                name,
+                tokenized,
+            });
         }
 
         // pub struct NAME or pub enum NAME
         if let Some(rest) = trimmed.strip_prefix("pub struct ")
             .or_else(|| trimmed.strip_prefix("pub enum "))
+            && let Some(name) = extract_ident(rest)
         {
-            if let Some(name) = extract_ident(rest) {
-                if SKIP_TYPE.contains(&name.as_str()) {
-                    continue;
-                }
-                let tokenized = is_type_token(&name);
-                entries.push(TokenEntry {
-                    file: path.to_path_buf(),
-                    line: i + 1,
-                    kind: TokenKind::Type,
-                    name,
-                    tokenized,
-                });
+            if SKIP_TYPE.contains(&name.as_str()) {
+                continue;
             }
+            let tokenized = is_type_token(&name);
+            entries.push(TokenEntry {
+                file: path.to_path_buf(),
+                line: i + 1,
+                kind: TokenKind::Type,
+                name,
+                tokenized,
+            });
         }
     }
 }
