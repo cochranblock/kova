@@ -1152,12 +1152,12 @@ fn find_pixel_forge() -> Option<PathBuf> {
         }
     }
     // Try which
-    if let Ok(output) = Command::new("which").arg("pixel-forge").output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Some(PathBuf::from(path));
-            }
+    if let Ok(output) = Command::new("which").arg("pixel-forge").output()
+        && output.status.success()
+    {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path.is_empty() {
+            return Some(PathBuf::from(path));
         }
     }
     None

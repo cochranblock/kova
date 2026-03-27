@@ -418,11 +418,11 @@ pub fn f263(result: &T165, registry: &T149) -> Result<PathBuf, String> {
             .and_then(|v| v["messages"].as_array()
                 .and_then(|msgs| msgs.iter().find(|m| m["role"] == "user"))
                 .and_then(|m| m["content"].as_str().map(|s| s.to_string())));
-        if let Some(uc) = user_content {
-            if seen.insert(uc) {
-                existing.push(line);
-                added += 1;
-            }
+        if let Some(uc) = user_content
+            && seen.insert(uc)
+        {
+            existing.push(line);
+            added += 1;
         }
     }
 
@@ -491,14 +491,12 @@ pub fn f264(examples: &[super::logmine::T146]) -> Result<(PathBuf, usize), Strin
     // Dedup set from existing
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for line in &lines {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(msgs) = v["messages"].as_array() {
-                if let Some(user) = msgs.iter().find(|m| m["role"] == "user") {
-                    if let Some(c) = user["content"].as_str() {
-                        seen.insert(c.to_string());
-                    }
-                }
-            }
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line)
+            && let Some(msgs) = v["messages"].as_array()
+            && let Some(user) = msgs.iter().find(|m| m["role"] == "user")
+            && let Some(c) = user["content"].as_str()
+        {
+            seen.insert(c.to_string());
         }
     }
 
@@ -514,18 +512,18 @@ pub fn f264(examples: &[super::logmine::T146]) -> Result<(PathBuf, usize), Strin
             }
         });
 
-        if let Some(cat) = category {
-            if seen.insert(ex.instruction.clone()) {
-                let entry = serde_json::json!({
-                    "messages": [
-                        {"role": "system", "content": sys},
-                        {"role": "user", "content": ex.instruction},
-                        {"role": "assistant", "content": cat}
-                    ]
-                });
-                lines.push(serde_json::to_string(&entry).unwrap());
-                added += 1;
-            }
+        if let Some(cat) = category
+            && seen.insert(ex.instruction.clone())
+        {
+            let entry = serde_json::json!({
+                "messages": [
+                    {"role": "system", "content": sys},
+                    {"role": "user", "content": ex.instruction},
+                    {"role": "assistant", "content": cat}
+                ]
+            });
+            lines.push(serde_json::to_string(&entry).unwrap());
+            added += 1;
         }
     }
 

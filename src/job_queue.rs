@@ -167,12 +167,11 @@ fn load_all_jobs() -> Result<Vec<Job>> {
     let mut jobs = Vec::new();
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
-        if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
-            if let Ok(data) = fs::read_to_string(entry.path()) {
-                if let Ok(job) = serde_json::from_str::<Job>(&data) {
-                    jobs.push(job);
-                }
-            }
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("json")
+            && let Ok(data) = fs::read_to_string(entry.path())
+            && let Ok(job) = serde_json::from_str::<Job>(&data)
+        {
+            jobs.push(job);
         }
     }
     jobs.sort_by_key(|j| (j.priority, j.submitted));
@@ -183,12 +182,11 @@ fn load_all_jobs() -> Result<Vec<Job>> {
 
 fn load_health(node: &str) -> NodeHealth {
     let path = health_path(node);
-    if path.exists() {
-        if let Ok(data) = fs::read_to_string(&path) {
-            if let Ok(h) = serde_json::from_str::<NodeHealth>(&data) {
-                return h;
-            }
-        }
+    if path.exists()
+        && let Ok(data) = fs::read_to_string(&path)
+        && let Ok(h) = serde_json::from_str::<NodeHealth>(&data)
+    {
+        return h;
     }
     NodeHealth {
         node: node.to_string(),
@@ -446,12 +444,7 @@ pub fn drain_next() -> Result<Option<String>> {
 
 /// Drain all queued jobs sequentially.
 pub fn drain_all() -> Result<()> {
-    loop {
-        match drain_next()? {
-            Some(_) => continue,
-            None => break,
-        }
-    }
+    while drain_next()?.is_some() {}
     Ok(())
 }
 
@@ -545,11 +538,11 @@ pub fn purge(hours: u64) -> Result<()> {
     let mut removed = 0;
 
     for j in &jobs {
-        if matches!(j.status, JobStatus::Done | JobStatus::Dead) {
-            if j.finished.unwrap_or(0) < cutoff {
-                let _ = fs::remove_file(job_path(&j.id));
-                removed += 1;
-            }
+        if matches!(j.status, JobStatus::Done | JobStatus::Dead)
+            && j.finished.unwrap_or(0) < cutoff
+        {
+            let _ = fs::remove_file(job_path(&j.id));
+            removed += 1;
         }
     }
     println!("purged {removed} jobs older than {hours}h");

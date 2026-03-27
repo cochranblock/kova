@@ -762,12 +762,11 @@ fn disk_usage_percent() -> u8 {
         if let Some(line) = text.lines().nth(1) {
             // df -k output: Filesystem 1K-blocks Used Available Use% Mounted
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 5 {
-                if let Some(pct) = parts[4].strip_suffix('%') {
-                    if let Ok(n) = pct.parse::<u8>() {
-                        return n;
-                    }
-                }
+            if parts.len() >= 5
+                && let Some(pct) = parts[4].strip_suffix('%')
+                && let Ok(n) = pct.parse::<u8>()
+            {
+                return n;
             }
         }
     }

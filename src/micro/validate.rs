@@ -35,7 +35,7 @@ pub struct T174 {
 /// - Confidence patterns: detect hedging language that signals low confidence
 /// - Coherence: response should relate to the input (basic overlap check)
 /// - Format: response should match expected output schema
-/// f263=validate
+///   f263=validate
 pub fn f263(result: &T154, input: &str, expected_format: &str) -> T173 {
     let mut checks = Vec::new();
     let response = &result.response;

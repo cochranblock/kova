@@ -118,7 +118,7 @@ impl T160 {
 fn extract_param_size(model: &str) -> Option<f64> {
     // Match patterns like ":3b", ":7b", ":14b", ":0.5b", "-0.5B-", "7B-Instruct", ":135m", ":360m"
     // Split on both ':' and '-' to handle ollama names (qwen:0.5b) and HF names (Qwen-0.5B-Instruct)
-    for part in model.split(|c| c == ':' || c == '-') {
+    for part in model.split([':', '-']) {
         let size_part = part;
         // Check for billions (e.g. "3b", "0.5b", "14b")
         if let Some(num_str) = size_part.strip_suffix('b').or_else(|| size_part.strip_suffix('B'))

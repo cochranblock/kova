@@ -115,9 +115,8 @@ pub fn status(node_filter: Option<&str>) -> Result<()> {
     let mut found = false;
 
     for node in &nodes {
-        if let Some(filter) = node_filter {
-            if *node != filter { continue; }
-        }
+        if let Some(filter) = node_filter
+            && *node != filter { continue; }
 
         let lock = lock_path(node);
         let queue = load_queue(node)?;

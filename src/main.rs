@@ -697,6 +697,7 @@ enum MicroCmd {
         batch_size: usize,
     },
     /// Generate synthetic classifier training data for all 8 categories.
+    #[cfg(feature = "mobile-llm")]
     Synth,
     /// Synth + retrain Spark in one shot. The evolve loop.
     #[cfg(feature = "mobile-llm")]
@@ -1015,7 +1016,7 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             full,
         } => kova::c2::f358(dry_run, &target, local, all, full),
         C2Cmd::Offload { dry_run, threshold, target } => {
-            let thresh = threshold.unwrap_or_else(|| kova::config::offload_threshold());
+            let thresh = threshold.unwrap_or_else(kova::config::offload_threshold);
             kova::c2::f360(dry_run, thresh, target)
         }
         C2Cmd::Gpu { action } => {
@@ -1482,6 +1483,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        #[cfg(feature = "mobile-llm")]
         MicroCmd::Synth => {
             use kova::micro::candle_train;
             let training_dir = candle_train::training_dir();
@@ -2104,15 +2106,23 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
         }
         Some(Cmd::Prompt(prompt_args)) => {
-            // Use tokio::task::block_in_place to avoid nested runtime panic
-            tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(kova::browser::run_autoprompt(
-                    &prompt_args.file,
-                    &prompt_args.output,
-                    prompt_args.workers,
-                    prompt_args.skip,
-                ))
-            })
+            #[cfg(feature = "browser")]
+            {
+                // Use tokio::task::block_in_place to avoid nested runtime panic
+                tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(kova::browser::run_autoprompt(
+                        &prompt_args.file,
+                        &prompt_args.output,
+                        prompt_args.workers,
+                        prompt_args.skip,
+                    ))
+                })
+            }
+            #[cfg(not(feature = "browser"))]
+            {
+                let _ = prompt_args;
+                anyhow::bail!("Build with --features browser for prompt mode")
+            }
         }
         Some(Cmd::Git(args)) => {
             kova::git_cmd::f160(args.cmd, args.count, args.message, args.files, false)
