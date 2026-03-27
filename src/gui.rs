@@ -18,9 +18,7 @@ use crate::theme::{self, colors, layout};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Chat,
-    Artifacts,
     Moe,
-    Forge,
     Deploy,
 }
 
@@ -28,11 +26,31 @@ impl Tab {
     fn label(&self) -> &'static str {
         match self {
             Tab::Chat => "Chat",
-            Tab::Artifacts => "Artifacts",
             Tab::Moe => "MoE",
-            Tab::Forge => "Forge",
             Tab::Deploy => "Deploy",
         }
+    }
+}
+
+/// Toast notification — auto-dismiss overlay.
+struct Toast {
+    message: String,
+    color: egui::Color32,
+    created_at: std::time::Instant,
+    duration: std::time::Duration,
+}
+
+impl Toast {
+    fn new(message: impl Into<String>, color: egui::Color32) -> Self {
+        Self {
+            message: message.into(),
+            color,
+            created_at: std::time::Instant::now(),
+            duration: std::time::Duration::from_secs(3),
+        }
+    }
+    fn expired(&self) -> bool {
+        self.created_at.elapsed() >= self.duration
     }
 }
 
@@ -202,6 +220,10 @@ pub struct KovaApp {
     deploy_output_rx: Option<mpsc::Receiver<String>>,
     // ── MoE tab state ──
     moe_prompt: String,
+    // ── Toast notifications ──
+    toasts: Vec<Toast>,
+    // ── Cluster re-check timer ──
+    last_cluster_check: std::time::Instant,
     /// MoE result receiver (from background thread).
     moe_receiver: Option<std::sync::mpsc::Receiver<MoeResult>>,
     /// Last MoE result for display.
@@ -374,7 +396,7 @@ impl KovaApp {
             sprite_qc_path: String::new(),
             active_tab: Tab::Chat,
             proof_git_line: String::new(),
-            proof_expanded: true,
+            proof_expanded: false,
             proof_project: std::path::PathBuf::new(),
             cluster_url: load_cluster_url(),
             cluster_online: false,
@@ -408,6 +430,8 @@ impl KovaApp {
             deploy_output: Vec::new(),
             deploy_output_rx: None,
             moe_prompt: String::new(),
+            toasts: Vec::new(),
+            last_cluster_check: std::time::Instant::now(),
         }
     }
 
@@ -795,6 +819,42 @@ impl eframe::App for KovaApp {
             return;
         }
 
+        // ── Periodic cluster re-check (every 30s) ──
+        if self.last_cluster_check.elapsed() >= std::time::Duration::from_secs(30) && self.cluster_check_rx.is_none() {
+            let url = self.cluster_url.clone();
+            let (tx, rx) = mpsc::channel();
+            self.cluster_check_rx = Some(rx);
+            self.last_cluster_check = std::time::Instant::now();
+            std::thread::spawn(move || { let _ = tx.send(check_cluster(&url)); });
+        }
+
+        // ── Toast cleanup ──
+        self.toasts.retain(|t| !t.expired());
+
+        // Landscape detection
+        let landscape = ctx.screen_rect().width() > ctx.screen_rect().height();
+
+        // ── Bottom Tab Bar ──
+        egui::TopBottomPanel::bottom("tab_bar")
+            .frame(egui::Frame::default().fill(colors::SURFACE).inner_margin(egui::Margin::symmetric(0, 4)))
+            .show(ctx, |ui| {
+                let tab_width = ui.available_width() / 3.0;
+                ui.horizontal(|ui| {
+                    for tab in [Tab::Chat, Tab::Deploy, Tab::Moe] {
+                        let active = self.active_tab == tab;
+                        let text = if active {
+                            egui::RichText::new(tab.label()).color(colors::PRIMARY).strong().size(14.0)
+                        } else {
+                            egui::RichText::new(tab.label()).color(colors::MUTED).size(14.0)
+                        };
+                        let fill = if active { colors::SURFACE_ELEVATED } else { colors::SURFACE };
+                        if ui.add(egui::Button::new(text).fill(fill).min_size(egui::vec2(tab_width, 56.0))).clicked() {
+                            self.active_tab = tab;
+                        }
+                    }
+                });
+            });
+
         egui::CentralPanel::default()
             .frame(egui::Frame::default().fill(colors::BG).inner_margin(egui::Margin::same(layout::MARGIN_I8)))
             .show(ctx, |ui| {
@@ -835,7 +895,8 @@ impl eframe::App for KovaApp {
                 });
             });
 
-            // ── Proof of Artifacts card ──
+            // ── Proof of Artifacts card (hidden in landscape) ──
+            if !landscape {
             ui.add_space(layout::PADDING_SM);
             let proof_header = if self.proof_expanded { "Proof of Artifacts  \u{25B4}" } else { "Proof of Artifacts  \u{25BE}" };
             if ui.add(egui::Label::new(
@@ -878,28 +939,17 @@ impl eframe::App for KovaApp {
                     }
                 });
             }
+            } // end if !landscape (proof card)
             ui.add_space(layout::GAP);
             ui.separator();
 
-            // ════════════════════════════════════════════════════════════
-            // TAB BAR
-            // ════════════════════════════════════════════════════════════
-            ui.add_space(layout::PADDING_SM);
-            ui.horizontal(|ui| {
-                for tab in [Tab::Chat, Tab::Deploy, Tab::Moe] {
-                    let active = self.active_tab == tab;
-                    let label = tab.label();
-                    let text = if active {
-                        egui::RichText::new(label).color(colors::BG).strong()
-                    } else {
-                        egui::RichText::new(label).color(colors::MUTED)
-                    };
-                    let fill = if active { colors::PRIMARY } else { colors::SURFACE_ELEVATED };
-                    if ui.add(egui::Button::new(text).fill(fill).min_size(egui::vec2(72.0, 32.0))).clicked() {
-                        self.active_tab = tab;
-                    }
-                }
-            });
+            // ── Toast overlay ──
+            for toast in &self.toasts {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(&toast.message).color(toast.color).strong());
+                });
+            }
+
             ui.add_space(layout::PADDING_SM);
 
             // ── Poll deploy output ──
@@ -915,27 +965,60 @@ impl eframe::App for KovaApp {
             if self.active_tab == Tab::Deploy {
                 let available = ui.available_height() - layout::GAP;
                 egui::ScrollArea::vertical().max_height(available.max(80.0)).show(ui, |ui| {
-                    // Node grid
+                    if !self.cluster_online {
+                        // Offline state
+                        ui.add_space(40.0);
+                        ui.vertical_centered(|ui| {
+                            ui.label(egui::RichText::new("Cluster Offline").color(colors::MUTED).size(18.0));
+                            ui.add_space(12.0);
+                            if ui.add(egui::Button::new(egui::RichText::new("Retry").color(colors::BG).strong())
+                                .fill(colors::PRIMARY).min_size(egui::vec2(120.0, 48.0))).clicked()
+                                && self.cluster_check_rx.is_none()
+                            {
+                                let url = self.cluster_url.clone();
+                                let (tx, rx) = mpsc::channel();
+                                self.cluster_check_rx = Some(rx);
+                                self.last_cluster_check = std::time::Instant::now();
+                                std::thread::spawn(move || { let _ = tx.send(check_cluster(&url)); });
+                            }
+                        });
+                    } else {
+                    // Node cards
                     ui.label(egui::RichText::new("Nodes").color(colors::PRIMARY).strong());
                     ui.add_space(layout::PADDING_SM);
                     let node_ids = ["lf", "gd", "bt", "st"];
                     let node_names = ["kova-legion-forge", "kova-tunnel-god", "kova-thick-beast", "kova-elite-support"];
-                    egui::Grid::new("node_grid").striped(true).min_col_width(80.0).show(ui, |ui| {
-                        for (i, (&id, &name)) in node_ids.iter().zip(node_names.iter()).enumerate() {
-                            let dot_color = if self.deploy_nodes[i] { colors::TERTIARY } else { colors::MUTED };
-                            ui.label(egui::RichText::new("\u{25CF}").color(dot_color).size(14.0));
-                            ui.label(egui::RichText::new(id).color(colors::TEXT).strong());
-                            ui.label(egui::RichText::new(name).color(colors::MUTED).small());
-                            ui.checkbox(&mut self.deploy_nodes[i], "");
-                            if ui.add(egui::Button::new(egui::RichText::new("WoL").color(colors::TEXT).small()).fill(colors::SURFACE_ELEVATED).min_size(egui::vec2(40.0, 24.0))).clicked() {
-                                let node = id.to_string();
-                                std::thread::spawn(move || {
-                                    let _ = crate::c2::f352(&node);
+                    let full_w = ui.available_width();
+                    for (i, (&id, &name)) in node_ids.iter().zip(node_names.iter()).enumerate() {
+                        let dot_color = if self.deploy_nodes[i] { colors::TERTIARY } else { colors::MUTED };
+                        egui::Frame::default().fill(colors::SURFACE_ELEVATED)
+                            .corner_radius(egui::CornerRadius::same(layout::RADIUS_SM_U8))
+                            .inner_margin(egui::Margin::symmetric(12, 8))
+                            .show(ui, |ui| {
+                                ui.set_min_height(72.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("\u{25CF}").color(dot_color).size(16.0));
+                                    ui.vertical(|ui| {
+                                        ui.label(egui::RichText::new(id).color(colors::TEXT).strong().size(16.0));
+                                        ui.label(egui::RichText::new(name).color(colors::MUTED).size(12.0));
+                                    });
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.add(egui::Button::new(egui::RichText::new("WoL").color(colors::TEXT))
+                                            .fill(colors::SURFACE).min_size(egui::vec2(60.0, 48.0))).clicked() {
+                                            let node = id.to_string();
+                                            self.toasts.push(Toast::new(format!("WoL sent → {}", id), colors::TERTIARY));
+                                            std::thread::spawn(move || { let _ = crate::c2::f352(&node); });
+                                        }
+                                        let toggle_label = if self.deploy_nodes[i] { "ON" } else { "OFF" };
+                                        let toggle_color = if self.deploy_nodes[i] { colors::TERTIARY } else { colors::MUTED };
+                                        if ui.add(egui::Button::new(egui::RichText::new(toggle_label).color(toggle_color))
+                                            .fill(colors::SURFACE).min_size(egui::vec2(80.0, 48.0))).clicked() {
+                                            self.deploy_nodes[i] = !self.deploy_nodes[i];
+                                        }
+                                    });
                                 });
-                            }
-                            ui.end_row();
-                        }
-                    });
+                            });
+                    }
 
                     ui.add_space(layout::GAP);
                     ui.separator();
@@ -946,7 +1029,7 @@ impl eframe::App for KovaApp {
                     ui.add_space(layout::PADDING_SM);
                     ui.add(egui::TextEdit::singleline(&mut self.deploy_cmd)
                         .hint_text("cargo build --release -p kova")
-                        .desired_width(ui.available_width() - 8.0));
+                        .desired_width(full_w - 8.0));
                     ui.add_space(layout::PADDING_SM);
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut self.deploy_release, "Release");
@@ -960,7 +1043,7 @@ impl eframe::App for KovaApp {
                     let can_send = !self.deploy_cmd.is_empty() && self.deploy_output_rx.is_none();
                     if ui.add_enabled(can_send,
                         egui::Button::new(egui::RichText::new("Send").color(colors::BG).strong())
-                            .fill(colors::PRIMARY).min_size(egui::vec2(80.0, 36.0))
+                            .fill(colors::PRIMARY).min_size(egui::vec2(full_w, 48.0))
                     ).clicked() {
                         let cmd = self.deploy_cmd.clone();
                         let nodes: Vec<String> = node_ids.iter().enumerate()
@@ -1005,6 +1088,7 @@ impl eframe::App for KovaApp {
                             }
                         });
                     });
+                    } // end else (cluster online)
                 });
                 if self.deploy_output_rx.is_some() {
                     ctx.request_repaint();
@@ -1017,6 +1101,25 @@ impl eframe::App for KovaApp {
             if self.active_tab == Tab::Moe {
                 let available = ui.available_height() - layout::GAP;
                 egui::ScrollArea::vertical().max_height(available.max(80.0)).show(ui, |ui| {
+                    if !self.cluster_online {
+                        ui.add_space(40.0);
+                        ui.vertical_centered(|ui| {
+                            ui.label(egui::RichText::new("Cluster Offline").color(colors::MUTED).size(18.0));
+                            ui.add_space(8.0);
+                            ui.label(egui::RichText::new("MoE requires a running cluster.").color(colors::MUTED));
+                            ui.add_space(12.0);
+                            if ui.add(egui::Button::new(egui::RichText::new("Retry").color(colors::BG).strong())
+                                .fill(colors::PRIMARY).min_size(egui::vec2(120.0, 48.0))).clicked()
+                                && self.cluster_check_rx.is_none()
+                            {
+                                let url = self.cluster_url.clone();
+                                let (tx, rx) = mpsc::channel();
+                                self.cluster_check_rx = Some(rx);
+                                self.last_cluster_check = std::time::Instant::now();
+                                std::thread::spawn(move || { let _ = tx.send(check_cluster(&url)); });
+                            }
+                        });
+                    } else {
                     ui.label(egui::RichText::new("MoE Code Generation").color(colors::PRIMARY).strong().size(16.0));
                     ui.add_space(layout::GAP);
                     ui.label(egui::RichText::new("Prompt:").color(colors::MUTED));
@@ -1029,7 +1132,7 @@ impl eframe::App for KovaApp {
                     ui.horizontal(|ui| {
                         if ui.add_enabled(can_send,
                             egui::Button::new(egui::RichText::new("Generate").color(colors::BG).strong())
-                                .fill(colors::SECONDARY).min_size(egui::vec2(100.0, 36.0))
+                                .fill(colors::SECONDARY).min_size(egui::vec2(140.0, 48.0))
                         ).clicked() {
                             let url = self.cluster_url.clone();
                             let prompt = self.moe_prompt.clone();
@@ -1090,6 +1193,7 @@ impl eframe::App for KovaApp {
                             }
                         }
                     }
+                    } // end else (cluster online)
                 });
             }
 

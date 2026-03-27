@@ -75,8 +75,9 @@ fn visuals() -> Visuals {
 
 fn spacing() -> egui::style::Spacing {
     egui::style::Spacing {
-        item_spacing: egui::vec2(layout::GAP, layout::GAP),
-        button_padding: egui::vec2(layout::PADDING_MD, layout::PADDING_SM),
+        item_spacing: egui::vec2(layout::GAP, 12.0),
+        button_padding: egui::vec2(16.0, 12.0),
+        interact_size: egui::vec2(48.0, 48.0),
         window_margin: egui::Margin::same(layout::MARGIN_I8),
         ..Default::default()
     }
