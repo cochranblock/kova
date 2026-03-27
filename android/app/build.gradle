@@ -17,13 +17,10 @@ android {
 
     signingConfigs {
         release {
-            def keystoreFile = file("${project.rootDir}/keystore/kova-release.jks")
-            if (keystoreFile.exists()) {
-                storeFile keystoreFile
-                storePassword System.getenv("KOVA_KEYSTORE_PASS") ?: ""
-                keyAlias "kova"
-                keyPassword System.getenv("KOVA_KEY_PASS") ?: ""
-            }
+            storeFile file("${project.rootDir}/upload-keystore.jks")
+            storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias "upload-key"
+            keyPassword System.getenv("KEY_PASSWORD") ?: ""
         }
     }
 
