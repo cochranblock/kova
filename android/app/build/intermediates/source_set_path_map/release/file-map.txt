@@ -1,7 +1,0 @@
-org.cochranblock.kova.app-pngs-0 /Users/mcochran/kova/android/app/build/generated/res/pngs/release
-org.cochranblock.kova.app-resValues-1 /Users/mcochran/kova/android/app/build/generated/res/resValues/release
-org.cochranblock.kova.app-packageReleaseResources-2 /Users/mcochran/kova/android/app/build/intermediates/incremental/release/packageReleaseResources/merged.dir
-org.cochranblock.kova.app-packageReleaseResources-3 /Users/mcochran/kova/android/app/build/intermediates/incremental/release/packageReleaseResources/stripped.dir
-org.cochranblock.kova.app-merged_res-4 /Users/mcochran/kova/android/app/build/intermediates/merged_res/release
-org.cochranblock.kova.app-main-5 /Users/mcochran/kova/android/app/src/main/res
-org.cochranblock.kova.app-release-6 /Users/mcochran/kova/android/app/src/release/res

@@ -11,3 +11,7 @@
 wasm/target/
 # Android build output
 android/target/
+android/.gradle/
+android/app/build/
+android/build/
+android/app/src/main/jniLibs/
