@@ -9,15 +9,15 @@ use eframe::egui::{self, CornerRadius, FontId, Stroke, TextStyle, Visuals};
 pub mod colors {
     use eframe::egui::Color32;
 
-    pub const BG: Color32 = Color32::from_rgb(0x0a, 0x0a, 0x0f);
-    pub const SURFACE: Color32 = Color32::from_rgb(0x14, 0x14, 0x1f);
-    pub const SURFACE_ELEVATED: Color32 = Color32::from_rgb(0x1a, 0x1a, 0x28);
+    pub const BG: Color32 = Color32::from_rgb(0x05, 0x05, 0x08);
+    pub const SURFACE: Color32 = Color32::from_rgb(0x0d, 0x0d, 0x14);
+    pub const SURFACE_ELEVATED: Color32 = Color32::from_rgb(0x14, 0x14, 0x1f);
     pub const SURFACE_HOVER: Color32 = Color32::from_rgb(0x1a, 0x2a, 0x35);
-    pub const PRIMARY: Color32 = Color32::from_rgb(0x00, 0xd4, 0xff);
-    pub const SECONDARY: Color32 = Color32::from_rgb(0xa8, 0x55, 0xf7);
-    pub const TERTIARY: Color32 = Color32::from_rgb(0x14, 0xb8, 0xa6);
-    pub const TEXT: Color32 = Color32::from_rgb(0xe2, 0xe8, 0xf0);
-    pub const MUTED: Color32 = Color32::from_rgb(0x64, 0x74, 0x8b);
+    pub const PRIMARY: Color32 = Color32::from_rgb(0x00, 0xd9, 0xff);
+    pub const SECONDARY: Color32 = Color32::from_rgb(0x9d, 0x4e, 0xdd);
+    pub const TERTIARY: Color32 = Color32::from_rgb(0x00, 0xff, 0xcc);
+    pub const TEXT: Color32 = Color32::from_rgb(0xe8, 0xe8, 0xe8);
+    pub const MUTED: Color32 = Color32::from_rgb(0x9c, 0xa3, 0xaf);
 }
 
 /// Layout constants.

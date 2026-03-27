@@ -194,6 +194,14 @@ pub struct KovaApp {
     cluster_online: bool,
     /// Show cluster config panel.
     show_cluster_config: bool,
+    // ── Deploy tab state ──
+    deploy_cmd: String,
+    deploy_nodes: [bool; 4],
+    deploy_release: bool,
+    deploy_output: Vec<String>,
+    deploy_output_rx: Option<mpsc::Receiver<String>>,
+    // ── MoE tab state ──
+    moe_prompt: String,
     /// MoE result receiver (from background thread).
     moe_receiver: Option<std::sync::mpsc::Receiver<MoeResult>>,
     /// Last MoE result for display.
@@ -394,6 +402,12 @@ impl KovaApp {
             onboarding_url: load_cluster_url(),
             onboarding_test_rx: None,
             onboarding_test_result: None,
+            deploy_cmd: String::new(),
+            deploy_nodes: [true, true, true, true],
+            deploy_release: true,
+            deploy_output: Vec::new(),
+            deploy_output_rx: None,
+            moe_prompt: String::new(),
         }
     }
 
@@ -868,8 +882,221 @@ impl eframe::App for KovaApp {
             ui.separator();
 
             // ════════════════════════════════════════════════════════════
+            // TAB BAR
+            // ════════════════════════════════════════════════════════════
+            ui.add_space(layout::PADDING_SM);
+            ui.horizontal(|ui| {
+                for tab in [Tab::Chat, Tab::Deploy, Tab::Moe] {
+                    let active = self.active_tab == tab;
+                    let label = tab.label();
+                    let text = if active {
+                        egui::RichText::new(label).color(colors::BG).strong()
+                    } else {
+                        egui::RichText::new(label).color(colors::MUTED)
+                    };
+                    let fill = if active { colors::PRIMARY } else { colors::SURFACE_ELEVATED };
+                    if ui.add(egui::Button::new(text).fill(fill).min_size(egui::vec2(72.0, 32.0))).clicked() {
+                        self.active_tab = tab;
+                    }
+                }
+            });
+            ui.add_space(layout::PADDING_SM);
+
+            // ── Poll deploy output ──
+            if let Some(rx) = &self.deploy_output_rx {
+                while let Ok(line) = rx.try_recv() {
+                    self.deploy_output.push(line);
+                }
+            }
+
+            // ════════════════════════════════════════════════════════════
+            // DEPLOY TAB
+            // ════════════════════════════════════════════════════════════
+            if self.active_tab == Tab::Deploy {
+                let available = ui.available_height() - layout::GAP;
+                egui::ScrollArea::vertical().max_height(available.max(80.0)).show(ui, |ui| {
+                    // Node grid
+                    ui.label(egui::RichText::new("Nodes").color(colors::PRIMARY).strong());
+                    ui.add_space(layout::PADDING_SM);
+                    let node_ids = ["lf", "gd", "bt", "st"];
+                    let node_names = ["kova-legion-forge", "kova-tunnel-god", "kova-thick-beast", "kova-elite-support"];
+                    egui::Grid::new("node_grid").striped(true).min_col_width(80.0).show(ui, |ui| {
+                        for (i, (&id, &name)) in node_ids.iter().zip(node_names.iter()).enumerate() {
+                            let dot_color = if self.deploy_nodes[i] { colors::TERTIARY } else { colors::MUTED };
+                            ui.label(egui::RichText::new("\u{25CF}").color(dot_color).size(14.0));
+                            ui.label(egui::RichText::new(id).color(colors::TEXT).strong());
+                            ui.label(egui::RichText::new(name).color(colors::MUTED).small());
+                            ui.checkbox(&mut self.deploy_nodes[i], "");
+                            if ui.add(egui::Button::new(egui::RichText::new("WoL").color(colors::TEXT).small()).fill(colors::SURFACE_ELEVATED).min_size(egui::vec2(40.0, 24.0))).clicked() {
+                                let node = id.to_string();
+                                std::thread::spawn(move || {
+                                    let _ = crate::c2::f352(&node);
+                                });
+                            }
+                            ui.end_row();
+                        }
+                    });
+
+                    ui.add_space(layout::GAP);
+                    ui.separator();
+                    ui.add_space(layout::PADDING_SM);
+
+                    // Command builder
+                    ui.label(egui::RichText::new("Broadcast Command").color(colors::PRIMARY).strong());
+                    ui.add_space(layout::PADDING_SM);
+                    ui.add(egui::TextEdit::singleline(&mut self.deploy_cmd)
+                        .hint_text("cargo build --release -p kova")
+                        .desired_width(ui.available_width() - 8.0));
+                    ui.add_space(layout::PADDING_SM);
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut self.deploy_release, "Release");
+                        let selected: Vec<&str> = node_ids.iter().enumerate()
+                            .filter(|(i, _)| self.deploy_nodes[*i])
+                            .map(|(_, &id)| id)
+                            .collect();
+                        ui.label(egui::RichText::new(format!("→ {}", selected.join(", "))).color(colors::MUTED));
+                    });
+                    ui.add_space(layout::PADDING_SM);
+                    let can_send = !self.deploy_cmd.is_empty() && self.deploy_output_rx.is_none();
+                    if ui.add_enabled(can_send,
+                        egui::Button::new(egui::RichText::new("Send").color(colors::BG).strong())
+                            .fill(colors::PRIMARY).min_size(egui::vec2(80.0, 36.0))
+                    ).clicked() {
+                        let cmd = self.deploy_cmd.clone();
+                        let nodes: Vec<String> = node_ids.iter().enumerate()
+                            .filter(|(i, _)| self.deploy_nodes[*i])
+                            .map(|(_, &id)| id.to_string())
+                            .collect();
+                        let nodes_str = nodes.join(",");
+                        let release = self.deploy_release;
+                        let (tx, rx) = mpsc::channel();
+                        self.deploy_output.clear();
+                        self.deploy_output_rx = Some(rx);
+                        std::thread::spawn(move || {
+                            let _ = tx.send(format!("[deploy] {} → {}", cmd, nodes_str));
+                            match crate::c2::f354(
+                                crate::c2::T212::F18,
+                                None,
+                                true,
+                                release,
+                                Some(nodes_str),
+                                false,
+                            ) {
+                                Ok(()) => { let _ = tx.send("[deploy] done".into()); }
+                                Err(e) => { let _ = tx.send(format!("[deploy] error: {}", e)); }
+                            }
+                        });
+                    }
+
+                    ui.add_space(layout::GAP);
+                    ui.separator();
+                    ui.add_space(layout::PADDING_SM);
+
+                    // Live output
+                    ui.label(egui::RichText::new("Output").color(colors::PRIMARY).strong());
+                    ui.add_space(layout::PADDING_SM);
+                    egui::Frame::default().fill(colors::BG).corner_radius(egui::CornerRadius::same(layout::RADIUS_SM_U8)).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+                        egui::ScrollArea::vertical().max_height(200.0).stick_to_bottom(true).id_salt("deploy_log").show(ui, |ui| {
+                            if self.deploy_output.is_empty() {
+                                ui.label(egui::RichText::new("(no output)").color(colors::MUTED));
+                            }
+                            for line in &self.deploy_output {
+                                ui.label(egui::RichText::new(line).color(colors::TEXT).monospace().size(12.0));
+                            }
+                        });
+                    });
+                });
+                if self.deploy_output_rx.is_some() {
+                    ctx.request_repaint();
+                }
+            }
+
+            // ════════════════════════════════════════════════════════════
+            // MOE TAB
+            // ════════════════════════════════════════════════════════════
+            if self.active_tab == Tab::Moe {
+                let available = ui.available_height() - layout::GAP;
+                egui::ScrollArea::vertical().max_height(available.max(80.0)).show(ui, |ui| {
+                    ui.label(egui::RichText::new("MoE Code Generation").color(colors::PRIMARY).strong().size(16.0));
+                    ui.add_space(layout::GAP);
+                    ui.label(egui::RichText::new("Prompt:").color(colors::MUTED));
+                    ui.add(egui::TextEdit::multiline(&mut self.moe_prompt)
+                        .hint_text("Describe what to generate...")
+                        .desired_rows(3)
+                        .desired_width(ui.available_width() - 8.0));
+                    ui.add_space(layout::PADDING_SM);
+                    let can_send = !self.moe_prompt.is_empty() && self.moe_receiver.is_none();
+                    ui.horizontal(|ui| {
+                        if ui.add_enabled(can_send,
+                            egui::Button::new(egui::RichText::new("Generate").color(colors::BG).strong())
+                                .fill(colors::SECONDARY).min_size(egui::vec2(100.0, 36.0))
+                        ).clicked() {
+                            let url = self.cluster_url.clone();
+                            let prompt = self.moe_prompt.clone();
+                            let (tx, rx) = mpsc::channel();
+                            self.moe_receiver = Some(rx);
+                            self.moe_result = None;
+                            std::thread::spawn(move || {
+                                match remote_moe(&url, &prompt) {
+                                    Ok(result) => { let _ = tx.send(result); }
+                                    Err(_) => {} // silently fail for now
+                                }
+                            });
+                        }
+                        if self.moe_receiver.is_some() {
+                            ui.spinner();
+                            ui.label(egui::RichText::new("Generating...").color(colors::MUTED));
+                        }
+                        let status = if self.cluster_online { "cluster online" } else { "cluster offline" };
+                        let sc = if self.cluster_online { colors::TERTIARY } else { colors::MUTED };
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(egui::RichText::new(status).color(sc).small());
+                        });
+                    });
+
+                    // Show MoE result
+                    if let Some(ref result) = self.moe_result {
+                        ui.add_space(layout::GAP);
+                        ui.separator();
+                        ui.add_space(layout::PADDING_SM);
+                        egui::Grid::new("moe_tab_grid").striped(true).show(ui, |ui| {
+                            ui.label(egui::RichText::new("Node").color(colors::MUTED).strong());
+                            ui.label(egui::RichText::new("Compile").color(colors::MUTED).strong());
+                            ui.label(egui::RichText::new("Clippy").color(colors::MUTED).strong());
+                            ui.label(egui::RichText::new("Tests").color(colors::MUTED).strong());
+                            ui.label(egui::RichText::new("Score").color(colors::MUTED).strong());
+                            ui.end_row();
+                            for v in &result.variants {
+                                let is_winner = result.winner.as_ref().map(|w| w.node_id == v.node_id).unwrap_or(false);
+                                let nc = if is_winner { colors::TERTIARY } else { colors::TEXT };
+                                ui.label(egui::RichText::new(&v.node_id).color(nc));
+                                let ok = |b: bool| if b { egui::RichText::new("ok").color(colors::TERTIARY) } else { egui::RichText::new("FAIL").color(colors::SECONDARY) };
+                                ui.label(ok(v.compile_ok));
+                                ui.label(ok(v.clippy_ok));
+                                ui.label(ok(v.tests_ok));
+                                ui.label(egui::RichText::new(format!("{}", v.total_score)).color(nc));
+                                ui.end_row();
+                            }
+                        });
+                        if let Some(ref w) = result.winner {
+                            ui.add_space(layout::PADDING_SM);
+                            ui.label(egui::RichText::new(format!("Winner: {} (score {})", w.node_id, w.total_score)).color(colors::TERTIARY).strong());
+                            ui.add_space(layout::PADDING_SM);
+                            egui::ScrollArea::vertical().max_height(200.0).id_salt("moe_tab_code").show(ui, |ui| {
+                                ui.label(egui::RichText::new(&w.code).color(colors::TEXT).monospace());
+                            });
+                            if ui.button("Copy").clicked() {
+                                ui.ctx().output_mut(|o| o.commands.push(egui::OutputCommand::CopyText(w.code.clone())));
+                            }
+                        }
+                    }
+                });
+            }
+
+            // ════════════════════════════════════════════════════════════
             // ZONE 2: Chat (scrollable, takes remaining space minus input)
             // ════════════════════════════════════════════════════════════
+            if self.active_tab == Tab::Chat {
             let input_height = 48.0;
             let available = ui.available_height() - input_height - layout::GAP * 2.0;
             egui::ScrollArea::vertical()
@@ -1040,7 +1267,7 @@ impl eframe::App for KovaApp {
             });
 
             // ════════════════════════════════════════════════════════════
-            // ZONE 3: Prompt (bottom, always visible)
+            // ZONE 3: Prompt (bottom, Chat tab only)
             // ════════════════════════════════════════════════════════════
             ui.add_space(layout::GAP);
             let prompt_height = 48.0; // Bigger touch target for mobile
@@ -1300,6 +1527,7 @@ impl eframe::App for KovaApp {
                     }
                 }
             });
+            } // end if Tab::Chat
         });
     }
 
