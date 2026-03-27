@@ -231,6 +231,17 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f363 | clarification_question | router | Get clarification question |
 | f364 | clarification_choices | router | Get clarification choices |
 | f365 | use_coder | router | Check if coder model needed |
+| f366 | fwht | quantize | Fast Walsh-Hadamard Transform |
+| f367 | ifwht | quantize | Inverse FWHT |
+| f368 | fwht_signed | quantize | Signed FWHT with deterministic sign flips |
+| f369 | ifwht_signed | quantize | Inverse signed FWHT |
+| f370 | pad_to_pow2 | quantize | Pad vector to next power of 2 |
+| f371 | quantize_layer | quantize | Mixed-precision weight quantization + QJL |
+| f372 | dequantize_layer | quantize | Dequantize layer with QJL residual recovery |
+| f373 | model_size_bytes | quantize | Compute quantized model size in bytes |
+| f374 | bits_per_weight | quantize | Compute effective bits per weight |
+| f375 | save_quantized | quantize | Save quantized model to binary |
+| f376 | load_quantized | quantize | Load quantized model from binary |
 
 ## Types (TN)
 
@@ -326,6 +337,8 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | T211 | StrategyConfig |
 | T212 | Token (c2) |
 | T213 | SpriteQc |
+| T214 | QuantizedLayer |
+| T215 | QuantizedModel |
 
 ## Struct fields (sN) — plan t3
 

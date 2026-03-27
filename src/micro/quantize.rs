@@ -17,7 +17,8 @@ use std::path::Path;
 /// Apply in-place Fast Walsh-Hadamard Transform to a vector.
 /// Input length must be a power of 2. If not, pad to next power of 2.
 /// Normalizes by 1/sqrt(n) for orthogonality.
-pub fn fwht(data: &mut [f32]) {
+/// f366=fwht
+pub fn f366(data: &mut [f32]) {
     let n = data.len();
     assert!(n.is_power_of_two(), "FWHT requires power-of-2 length, got {}", n);
 
@@ -42,13 +43,15 @@ pub fn fwht(data: &mut [f32]) {
 }
 
 /// Inverse FWHT (same as forward for orthogonal Hadamard).
-pub fn ifwht(data: &mut [f32]) {
-    fwht(data);
+/// f367=ifwht
+pub fn f367(data: &mut [f32]) {
+    f366(data);
 }
 
 /// Apply FWHT with deterministic sign flipping (randomized Hadamard).
 /// seed controls the sign pattern — different seeds give different rotations.
-pub fn fwht_signed(data: &mut [f32], seed: u64) {
+/// f368=fwht_signed
+pub fn f368(data: &mut [f32], seed: u64) {
     let n = data.len();
     // Deterministic sign flip based on seed
     let mut rng = seed;
@@ -60,12 +63,13 @@ pub fn fwht_signed(data: &mut [f32], seed: u64) {
             *v = -*v;
         }
     }
-    fwht(data);
+    f366(data);
 }
 
 /// Inverse signed FWHT: undo FWHT then undo sign flips.
-pub fn ifwht_signed(data: &mut [f32], seed: u64) {
-    ifwht(data);
+/// f369=ifwht_signed
+pub fn f369(data: &mut [f32], seed: u64) {
+    f367(data);
     // Undo sign flips (same pattern, applied in reverse order doesn't matter for signs)
     let n = data.len();
     let mut rng = seed;
@@ -80,7 +84,8 @@ pub fn ifwht_signed(data: &mut [f32], seed: u64) {
 }
 
 /// Pad a vector to the next power of 2, returning (padded_vec, original_len).
-pub fn pad_to_pow2(data: &[f32]) -> (Vec<f32>, usize) {
+/// f370=pad_to_pow2
+pub fn f370(data: &[f32]) -> (Vec<f32>, usize) {
     let n = data.len();
     let target = n.next_power_of_two();
     let mut padded = data.to_vec();
@@ -135,7 +140,8 @@ fn split_outlier_inlier(norms: &[f32], outlier_frac: f32) -> (Vec<usize>, Vec<us
 
 /// Quantized weight layer with mixed precision.
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct QuantizedLayer {
+/// T214=T214
+pub struct T214 {
     /// Layer name (for matching during load).
     pub name: String,
     /// Original shape (rows, cols).
@@ -247,8 +253,8 @@ fn encode_qjl_residual(original: &[f32], dequantized: &[f32], seed: u64) -> (Vec
     }
 
     // Hadamard-transform the residual
-    let (mut padded, orig_len) = pad_to_pow2(&residual);
-    fwht_signed(&mut padded, seed);
+    let (mut padded, orig_len) = f370(&residual);
+    f368(&mut padded, seed);
 
     // Store only signs
     let signs = pack_signs(&padded[..orig_len]);
@@ -262,8 +268,8 @@ fn decode_qjl_residual(signs: &[u8], norm: f32, dim: usize, seed: u64) -> Vec<f3
     }
 
     let sign_vals = unpack_signs(signs, dim);
-    let (mut padded, _) = pad_to_pow2(&sign_vals);
-    ifwht_signed(&mut padded, seed);
+    let (mut padded, _) = f370(&sign_vals);
+    f369(&mut padded, seed);
 
     // Scale: sqrt(pi/2) / dim * norm (JL scaling)
     let scale = (std::f32::consts::FRAC_PI_2).sqrt() / dim as f32 * norm;
@@ -276,7 +282,8 @@ fn decode_qjl_residual(signs: &[u8], norm: f32, dim: usize, seed: u64) -> Vec<f3
 /// outlier_frac: fraction of rows treated as outliers (e.g. 0.25).
 /// outlier_bits: bits for outlier rows (e.g. 4).
 /// inlier_bits: bits for inlier rows (e.g. 2).
-pub fn quantize_layer(
+/// f371=quantize_layer
+pub fn f371(
     name: &str,
     weights: &[f32],
     rows: usize,
@@ -285,7 +292,7 @@ pub fn quantize_layer(
     outlier_bits: u8,
     inlier_bits: u8,
     hadamard_seed: u64,
-) -> QuantizedLayer {
+) -> T214 {
     let qjl_seed = hadamard_seed.wrapping_add(0xDEAD_BEEF);
 
     // Step 1: Hadamard pre-rotation per row
@@ -296,7 +303,7 @@ pub fn quantize_layer(
         let start = r * cols;
         row_buf[..cols].copy_from_slice(&rotated[start..start + cols]);
         row_buf[cols..].fill(0.0);
-        fwht_signed(&mut row_buf, hadamard_seed);
+        f368(&mut row_buf, hadamard_seed);
         rotated[start..start + cols].copy_from_slice(&row_buf[..cols]);
     }
 
@@ -342,7 +349,7 @@ pub fn quantize_layer(
         all_norms.push(norm);
     }
 
-    QuantizedLayer {
+    T214 {
         name: name.to_string(),
         shape: (rows, cols),
         outlier_rows: outlier_idx,
@@ -359,7 +366,8 @@ pub fn quantize_layer(
 }
 
 /// Dequantize a layer back to f32 weights.
-pub fn dequantize_layer(layer: &QuantizedLayer) -> Vec<f32> {
+/// f372=dequantize_layer
+pub fn f372(layer: &T214) -> Vec<f32> {
     let (rows, cols) = layer.shape;
     let qjl_seed = layer.hadamard_seed.wrapping_add(0xDEAD_BEEF);
     let pad_cols = cols.next_power_of_two();
@@ -413,7 +421,7 @@ pub fn dequantize_layer(layer: &QuantizedLayer) -> Vec<f32> {
         let start = r * cols;
         row_buf[..cols].copy_from_slice(&result[start..start + cols]);
         row_buf[cols..].fill(0.0);
-        ifwht_signed(&mut row_buf, layer.hadamard_seed);
+        f369(&mut row_buf, layer.hadamard_seed);
         result[start..start + cols].copy_from_slice(&row_buf[..cols]);
     }
 
@@ -424,13 +432,15 @@ pub fn dequantize_layer(layer: &QuantizedLayer) -> Vec<f32> {
 
 /// Quantized model: all layers packed.
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct QuantizedModel {
-    pub layers: Vec<QuantizedLayer>,
+/// T215=T215
+pub struct T215 {
+    pub layers: Vec<T214>,
     pub metadata: serde_json::Value,
 }
 
 /// Compute total size in bytes of a quantized model.
-pub fn model_size_bytes(model: &QuantizedModel) -> usize {
+/// f373=model_size_bytes
+pub fn f373(model: &T215) -> usize {
     model.layers.iter().map(|l| {
         l.outlier_data.len()
             + l.inlier_data.len()
@@ -442,7 +452,8 @@ pub fn model_size_bytes(model: &QuantizedModel) -> usize {
 }
 
 /// Compute effective bits per weight.
-pub fn bits_per_weight(model: &QuantizedModel) -> f64 {
+/// f374=bits_per_weight
+pub fn f374(model: &T215) -> f64 {
     let total_weights: usize = model.layers.iter()
         .map(|l| l.shape.0 * l.shape.1)
         .sum();
@@ -457,13 +468,15 @@ pub fn bits_per_weight(model: &QuantizedModel) -> f64 {
 }
 
 /// Save quantized model to binary file.
-pub fn save_quantized(model: &QuantizedModel, path: &Path) -> Result<(), String> {
+/// f375=save_quantized
+pub fn f375(model: &T215, path: &Path) -> Result<(), String> {
     let json = serde_json::to_vec(model).map_err(|e| format!("serialize: {}", e))?;
     std::fs::write(path, &json).map_err(|e| format!("write: {}", e))
 }
 
 /// Load quantized model from binary file.
-pub fn load_quantized(path: &Path) -> Result<QuantizedModel, String> {
+/// f376=load_quantized
+pub fn f376(path: &Path) -> Result<T215, String> {
     let data = std::fs::read(path).map_err(|e| format!("read: {}", e))?;
     serde_json::from_slice(&data).map_err(|e| format!("parse: {}", e))
 }
@@ -476,11 +489,11 @@ mod tests {
     fn test_fwht_roundtrip() {
         let mut data = vec![1.0, 2.0, 3.0, 4.0];
         let original = data.clone();
-        fwht(&mut data);
+        f366(&mut data);
         // After FWHT, data should be different
         assert_ne!(data, original);
         // Inverse should recover original
-        ifwht(&mut data);
+        f367(&mut data);
         for (a, b) in data.iter().zip(original.iter()) {
             assert!((a - b).abs() < 1e-5, "FWHT roundtrip failed: {} vs {}", a, b);
         }
@@ -491,8 +504,8 @@ mod tests {
         let mut data = vec![1.0, -0.5, 3.0, -2.0, 0.1, 0.2, 0.3, 0.4];
         let original = data.clone();
         let seed = 42;
-        fwht_signed(&mut data, seed);
-        ifwht_signed(&mut data, seed);
+        f368(&mut data, seed);
+        f369(&mut data, seed);
         for (a, b) in data.iter().zip(original.iter()) {
             assert!((a - b).abs() < 1e-5, "signed FWHT roundtrip failed: {} vs {}", a, b);
         }
@@ -518,12 +531,12 @@ mod tests {
     fn test_quantize_dequantize_layer() {
         // 4 rows x 8 cols (power of 2 for FWHT)
         let weights: Vec<f32> = (0..32).map(|i| (i as f32 - 16.0) * 0.1).collect();
-        let layer = quantize_layer("test", &weights, 4, 8, 0.25, 4, 2, 42);
+        let layer = f371("test", &weights, 4, 8, 0.25, 4, 2, 42);
 
         assert_eq!(layer.shape, (4, 8));
         assert_eq!(layer.outlier_rows.len(), 1); // 25% of 4 = 1
 
-        let recovered = dequantize_layer(&layer);
+        let recovered = f372(&layer);
         assert_eq!(recovered.len(), weights.len());
 
         // Check that dequantized weights are reasonably close

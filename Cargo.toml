@@ -92,3 +92,10 @@ path = "src/main.rs"
 name = "kova-test"
 path = "src/bin/kova-test.rs"
 required-features = ["tests"]
+
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true

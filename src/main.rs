@@ -1570,7 +1570,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                     .map_err(|e| anyhow::anyhow!("flatten {}: {}", name, e))?;
 
                 total_fp32 += flat.len() * 4;
-                let ql = quantize::quantize_layer(name, &flat, rows, cols, outlier_frac, 4, 2, 42);
+                let ql = quantize::f371(name, &flat, rows, cols, outlier_frac, 4, 2, 42);
                 eprintln!("  {} [{} x {}] → outliers={}, inliers={}",
                     name, rows, cols, ql.outlier_rows.len(), rows - ql.outlier_rows.len());
                 layers.push(ql);
@@ -1584,12 +1584,12 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 serde_json::json!({ "tier": tier })
             };
 
-            let qmodel = quantize::QuantizedModel { layers, metadata };
-            let bpw = quantize::bits_per_weight(&qmodel);
-            let qsize = quantize::model_size_bytes(&qmodel);
+            let qmodel = quantize::T215 { layers, metadata };
+            let bpw = quantize::f374(&qmodel);
+            let qsize = quantize::f373(&qmodel);
 
             let out_path = model_dir.join("model.quantized");
-            quantize::save_quantized(&qmodel, &out_path)
+            quantize::f375(&qmodel, &out_path)
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
 
             let out_size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
