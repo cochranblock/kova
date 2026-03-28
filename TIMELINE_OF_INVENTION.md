@@ -18,6 +18,72 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-03-27 — Federal Compliance Documentation
+
+**What:** 11 govdocs created: SBOM (EO 14028), SSDF (NIST 800-218), supply chain, security posture, Section 508 accessibility, privacy impact, FIPS gap analysis, FedRAMP notes, CMMC mapping, ITAR/EAR export control, federal agency use cases.
+**Commit:** `7c474da`
+**AI Role:** AI generated all documents. Human directed scope (which frameworks matter) and verified claims trace to source.
+
+### 2026-03-27 — User Story Analysis + TTY Fix + Deploy Alias
+
+**What:** Full user walkthrough as new user (scored 6/10). Fixed: REPL TTY error message ("Device not configured" → helpful message), added `kova deploy` subcommand (shortcut for c2 build --broadcast --release).
+**Commit:** `4228073`
+**AI Role:** AI simulated real user, identified pain points, implemented fixes. Human reviewed and approved.
+
+### 2026-03-27 — P13 Tokenization + Binary Size Optimization
+
+**What:** Tokenized quantize.rs (f366-f376, T214-T215). Release profile: opt-level=z, LTO, codegen-units=1, panic=abort, strip. Binary: 54 MB → 27 MB (48% reduction).
+**Commit:** `1012a05`
+**AI Role:** AI renamed symbols and configured profile. Human directed compression map numbering.
+
+### 2026-03-27 — Clippy Clean + QA Round 2
+
+**What:** Fixed deprecated screen_rect, removed dead fields, collapsed if-let chains across 5 files. QA Round 2: clean build, clippy -D warnings pass on all feature sets.
+**Commit:** `9937c7f`
+**AI Role:** AI fixed all clippy issues. Human ran QA gate.
+
+### 2026-03-27 — Bash Tool Timeout Enforcement
+
+**What:** f145 bash tool now enforces timeout — polls with try_wait in 50ms loop, kills after deadline. Default 120s. Previously parsed but never used.
+**Commit:** `739bd65`
+**AI Role:** AI found the bug during audit and implemented fix. Human directed the audit.
+
+### 2026-03-27 — Google Play Deploy Pipeline
+
+**What:** android/deploy-play.sh: cargo ndk → copy .so → bundleRelease → fastlane supply. Upload keystore generated. AAB: 6.6 MB.
+**Commit:** `3ead4ae`
+**AI Role:** AI wrote the script and gradle config. Human directed the pipeline architecture.
+
+### 2026-03-27 — GUI Mobile UX: Bottom Tab Bar + Node Cards + Toasts
+
+**What:** Bottom tab bar (Chat/Deploy/MoE, 56pt buttons), node cards (72pt, toggle+WoL), toast notifications (3s auto-dismiss), offline handling (Retry buttons), periodic 30s cluster re-check, landscape detection, proof card collapsed by default.
+**Commit:** `357235f`
+**AI Role:** AI implemented all UI changes. Human designed the UX specifications.
+
+### 2026-03-27 — Android APK: Patch android-activity for Rust 1.94
+
+**What:** Patched android-activity 0.6.0 Arc::as_ptr inference bug. Switched to game-activity backend. Fixed micro_train feature gates. .so: 17 MB, APK: 17 MB.
+**Commit:** `fb0b380`
+**AI Role:** AI diagnosed and patched the upstream Rust toolchain incompatibility. Human directed the investigation.
+
+### 2026-03-27 — GUI Tabs: Chat, Deploy, MoE
+
+**What:** Tab bar with 3 tabs. Deploy tab: node grid, command builder, WoL buttons, c2::f354 wiring. MoE tab: prompt + remote_moe() + results grid. Theme update: BG=#050508, PRIMARY=#00d9ff.
+**Commit:** `8e75231`
+**AI Role:** AI wrote all egui layout code. Human designed tab structure and feature set.
+
+### 2026-03-27 — Browser Feature Gates + Clippy Clean
+
+**What:** Gated all browser-only functions behind #[cfg(feature = "browser")]. Fixed collapsible_if across 12 files. Switched exopack to path dependency.
+**Commits:** `23ed702`, `366230b`
+**AI Role:** AI fixed all compile errors and clippy warnings. Human directed the feature gate strategy.
+
+### 2026-03-27 — MoE Phase 2-5: Training + Routing + TurboQuant
+
+**What:** Phase 4: dropout, padding mask, class-weighted loss. Phase 3b: confidence-weighted routing. Phase 2: evolve-full pipeline, model versioning, mine-classifier. Phase 5: quantize.rs — FWHT, mixed-precision, QJL residual. New commands: evolve-full, mine-classifier, quantize.
+**Commit:** `1dee3af`
+**AI Role:** AI implemented all phases. Human directed the TurboQuant technique selection and MoE architecture.
+
 ### 2026-03-23 — Evolve Loop: Synthetic Data + Shuffled Training
 
 **What:** Added synthetic data generation and shuffled training to the evolve loop. New CLI commands for training orchestration.
@@ -75,6 +141,6 @@ Each entry follows this format:
 
 ---
 
-*170 commits in 13 days. Every decision human-directed. Every output AI-executed and human-verified.*
+*185+ commits in 17 days. Every decision human-directed. Every output AI-executed and human-verified.*
 
 *Part of the [CochranBlock](https://cochranblock.org) zero-cloud architecture. All source under the Unlicense.*

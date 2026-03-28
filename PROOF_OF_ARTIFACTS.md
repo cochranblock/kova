@@ -35,15 +35,50 @@ flowchart TD
 
 | Metric | Value |
 |--------|-------|
-| Binary size | 55 MB (release, stripped, LTO) |
-| Lines of Rust | 63,353 across 101 files |
-| Tokenized functions | 231 (f0–f365) |
-| Tokenized types | 137 (t0–t213) |
-| Tokenization coverage | 100% (368/368 symbols) |
-| User surfaces | 4 (REPL, TUI, GUI, HTTP+WASM) |
-| CLI subcommands | 20+ with tokenized short forms |
+| Binary size (release) | 27 MB (opt-z, LTO, strip, codegen-units=1, panic=abort) |
+| Binary size (before opt) | 54 MB |
+| Android .so | 17 MB (arm64-v8a release) |
+| Android APK | 17 MB (signed release) |
+| Android AAB | 6.6 MB (signed, for Play Store) |
+| Lines of Rust | 40,393 across 92 files |
+| Public functions | 449 |
+| Public types | 170 |
+| Tokenized functions | 246 (f0–f376) |
+| Tokenized types | 142 (t0–T215) |
+| Tokenization coverage | 86.6% (388/448 symbols) |
+| User surfaces | 5 (REPL, TUI, GUI, HTTP+WASM, Android APK) |
+| CLI subcommands | 31 with tokenized short forms |
 | Worker nodes | 4 (SSH orchestrated) |
 | LLMs evaluated | 42 (Micro Olympics tournament) |
+| Direct dependencies | 31 (all from crates.io) |
+
+## QA Results (2026-03-27)
+
+| Gate | Result |
+|------|--------|
+| cargo build --release | PASS (zero errors, zero warnings) |
+| cargo clippy -D warnings | PASS (default, gui, tests features) |
+| cargo clippy --features gui -D warnings | PASS |
+| TRIPLE SIMS (exopack) | 101 pass, 1 warn, 2 fail (pre-existing: TUI verdict, headless pixel) |
+| QA Round 1 | PASS — browser.rs feature gates fixed, all clippy clean |
+| QA Round 2 | PASS — clean build from `cargo clean`, zero errors |
+| Android cross-compile | PASS (game-activity patch for Rust 1.94) |
+| AAB bundleRelease | PASS (6.6 MB, signed) |
+
+## Federal Compliance
+
+| Document | Status |
+|----------|--------|
+| SBOM (EO 14028) | govdocs/SBOM.md — 31 deps with versions + licenses |
+| SSDF (NIST 800-218) | govdocs/SSDF.md — all 4 practice groups mapped |
+| Supply Chain | govdocs/SUPPLY_CHAIN.md — crates.io provenance, Cargo.lock pinning |
+| Security | govdocs/SECURITY.md — attack surface analysis, crypto controls |
+| Section 508 | govdocs/ACCESSIBILITY.md — CLI, TUI, GUI, WASM coverage |
+| Privacy | govdocs/PRIVACY.md — zero PII, zero telemetry |
+| FIPS | govdocs/FIPS.md — gap analysis, remediation path |
+| FedRAMP | govdocs/FedRAMP_NOTES.md — on-prem, no authorization boundary |
+| CMMC | govdocs/CMMC.md — Level 1-2 mapping |
+| ITAR/EAR | govdocs/ITAR_EAR.md — License Exception TSU |
 
 ## Key Artifacts
 
@@ -62,10 +97,14 @@ flowchart TD
 
 ```bash
 cargo build -p kova --release
-ls -lh target/release/kova            # 55 MB
-kova tokens                            # 100% tokenization coverage
+ls -lh target/release/kova            # 27 MB (opt-z, LTO, strip)
+kova tokens                            # 86.6% tokenization coverage
+kova --help                            # 31 subcommands
 kova chat                              # Agent loop with tool use
+kova deploy                            # Broadcast build to all nodes
 kova c2 ncmd ci --oneline             # Cluster status
+kova micro evolve-full                 # Full MoE training pipeline
+kova micro quantize spark              # TurboQuant-inspired weight compression
 ```
 
 ---
