@@ -17,7 +17,7 @@ use std::thread;
 const NODE_MAP: &[(&str, &str)] = &[("n0", "lf"), ("n1", "gd"), ("n2", "bt"), ("n3", "st")];
 
 /// Resolve nN token or pass through raw hostname.
-fn resolve_node(s: &str) -> &str {
+pub fn resolve_node(s: &str) -> &str {
     NODE_MAP
         .iter()
         .find(|(k, _)| *k == s)

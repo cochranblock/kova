@@ -107,6 +107,13 @@ enum Cmd {
         #[arg(long)]
         nodes: Option<String>,
     },
+    /// Federal compliance docs. Baked into the binary — no external files needed.
+    #[command(name = "govdocs")]
+    Govdocs {
+        /// Document to show: sbom, security, ssdf, supply-chain, accessibility, privacy, fips, fedramp, cmmc, itar, use-cases. Or 'list' for all.
+        #[arg(default_value = "list")]
+        doc: String,
+    },
 }
 
 #[derive(clap::Args)]
@@ -385,6 +392,31 @@ enum C2Cmd {
         #[arg(long)]
         skip_models: bool,
     },
+    /// SSH dispatch to a single node, streaming output.
+    Dispatch {
+        /// Target node: lf, gd, bt, st.
+        node: String,
+        /// Command to run on the node.
+        command: Vec<String>,
+    },
+    /// Parallel dispatch to all nodes (or --nodes subset). Streaming output with [node] prefixes.
+    Broadcast {
+        /// Command to run on all nodes.
+        command: Vec<String>,
+        /// Restrict to nodes (comma-separated). Default: all online.
+        #[arg(long)]
+        nodes: Option<String>,
+    },
+    /// Check all nodes: CPU, memory, GPU util, running processes. Compressed output.
+    Status,
+    /// Continuous monitoring loop. 3-second poll, prints status changes only.
+    Monitor {
+        /// Poll interval in seconds (default: 3).
+        #[arg(long, default_value = "3")]
+        interval: u64,
+    },
+    /// Fleet overview: all projects, build status, binary sizes, last commit per node.
+    Fleet,
     /// Tokenized node commands (c1-c9, ci, ct). §13 compressed output.
     Ncmd {
         /// Command token: c1(nstat) c2(nspec) c3(nsvc) c4(nrust) c5(nsync) c6(nbuild) c7(nlog) c8(nkill) c9(ndeploy) ci(inspect) ct(ntest).
@@ -1083,6 +1115,152 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
         C2Cmd::Deploy { nodes, skip_build, skip_models } => {
             let node_list = nodes.map(|s| s.split(',').map(|n| n.trim().to_string()).collect());
             kova::c2::f370(node_list, skip_build, skip_models).map_err(|e| anyhow::anyhow!("{}", e))
+        }
+        C2Cmd::Dispatch { node, command } => {
+            let cmd_str = command.join(" ");
+            if cmd_str.is_empty() {
+                anyhow::bail!("no command specified");
+            }
+            let host = kova::node_cmd::resolve_node(&node).to_string();
+            eprintln!("[{}] {}", node, cmd_str);
+            let output = std::process::Command::new("ssh")
+                .args([&host, &cmd_str])
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .status()?;
+            if !output.success() {
+                anyhow::bail!("[{}] exit {}", node, output.code().unwrap_or(-1));
+            }
+            Ok(())
+        }
+        C2Cmd::Broadcast { command, nodes } => {
+            let cmd_str = command.join(" ");
+            if cmd_str.is_empty() {
+                anyhow::bail!("no command specified");
+            }
+            let node_ids: Vec<String> = nodes
+                .map(|s| s.split(',').map(|n| n.trim().to_string()).collect())
+                .unwrap_or_else(|| kova::c2::f350().into_iter().map(String::from).collect());
+            let handles: Vec<_> = node_ids.iter().map(|node| {
+                let host = kova::node_cmd::resolve_node(node).to_string();
+                let cmd = cmd_str.clone();
+                let id = node.clone();
+                std::thread::spawn(move || {
+                    let output = std::process::Command::new("ssh")
+                        .args([&host, &cmd])
+                        .output();
+                    (id, output)
+                })
+            }).collect();
+            let mut failed = 0;
+            for h in handles {
+                match h.join() {
+                    Ok((id, Ok(output))) => {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        for line in stdout.lines() {
+                            println!("[{}] {}", id, line);
+                        }
+                        for line in stderr.lines() {
+                            eprintln!("[{}] {}", id, line);
+                        }
+                        if !output.status.success() {
+                            failed += 1;
+                        }
+                    }
+                    Ok((id, Err(e))) => {
+                        eprintln!("[{}] ssh error: {}", id, e);
+                        failed += 1;
+                    }
+                    Err(_) => { failed += 1; }
+                }
+            }
+            if failed > 0 {
+                anyhow::bail!("{} node(s) failed", failed);
+            }
+            Ok(())
+        }
+        C2Cmd::Status => {
+            // Parallel SSH to all nodes: hostname, uptime, load, memory
+            let node_ids: Vec<String> = kova::c2::f350().into_iter().map(String::from).collect();
+            let cmd = "hostname && uptime | awk '{print $NF}' && free -m 2>/dev/null | awk '/Mem:/{printf \"%dM/%dM\", $3, $2}' || vm_stat 2>/dev/null | head -1";
+            let handles: Vec<_> = node_ids.into_iter().map(|node| {
+                let host = kova::node_cmd::resolve_node(&node).to_string();
+                let cmd_s = cmd.to_string();
+                std::thread::spawn(move || {
+                    let output = std::process::Command::new("ssh")
+                        .args(["-o", "ConnectTimeout=3", &host, &cmd_s])
+                        .output();
+                    (node, output)
+                })
+            }).collect();
+            for h in handles {
+                if let Ok((id, Ok(output))) = h.join() {
+                    let dot = if output.status.success() { "\u{25CF}" } else { "\u{25CB}" };
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    let one_line: String = text.lines().collect::<Vec<_>>().join(" ");
+                    println!("{} {} {}", dot, id, one_line);
+                }
+            }
+            Ok(())
+        }
+        C2Cmd::Monitor { interval } => {
+            let dur = std::time::Duration::from_secs(interval);
+            let mut last_state: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            eprintln!("[monitor] polling every {}s. Ctrl+C to stop.", interval);
+            loop {
+                let node_ids: Vec<String> = kova::c2::f350().into_iter().map(String::from).collect();
+                let handles: Vec<_> = node_ids.into_iter().map(|node| {
+                    let host = kova::node_cmd::resolve_node(&node).to_string();
+                    std::thread::spawn(move || {
+                        let output = std::process::Command::new("ssh")
+                            .args(["-o", "ConnectTimeout=3", &host, "uptime | awk '{print $NF}'"])
+                            .output();
+                        (node, output)
+                    })
+                }).collect();
+                for h in handles {
+                    if let Ok((id, Ok(output))) = h.join() {
+                        let state = if output.status.success() {
+                            String::from_utf8_lossy(&output.stdout).trim().to_string()
+                        } else {
+                            "offline".to_string()
+                        };
+                        let changed = last_state.get(&id).map(|s| s != &state).unwrap_or(true);
+                        if changed {
+                            let dot = if state != "offline" { "\u{25CF}" } else { "\u{25CB}" };
+                            println!("{} {} load={}", dot, id, state);
+                            last_state.insert(id, state);
+                        }
+                    }
+                }
+                std::thread::sleep(dur);
+            }
+        }
+        C2Cmd::Fleet => {
+            let projects = kova::discover_projects();
+            println!("{:<20} {:<10} {:<12} {}", "project", "status", "binary", "last commit");
+            println!("{}", "-".repeat(60));
+            for p in &projects {
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+                let bin_path = p.join("target/release").join(name);
+                let size = if bin_path.exists() {
+                    let bytes = std::fs::metadata(&bin_path).map(|m| m.len()).unwrap_or(0);
+                    format!("{:.1}M", bytes as f64 / 1_048_576.0)
+                } else {
+                    "-".into()
+                };
+                let status = if p.join("target/release").exists() { "built" } else { "clean" };
+                let commit = std::process::Command::new("git")
+                    .args(["log", "-1", "--oneline"])
+                    .current_dir(p)
+                    .output()
+                    .ok()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    .unwrap_or_else(|| "-".into());
+                println!("{:<20} {:<10} {:<12} {}", name, status, size, commit);
+            }
+            Ok(())
         }
         C2Cmd::SshCa { cmd } => match cmd {
             SshCaCmd::Init => kova::ssh_ca::f298(),
@@ -2003,10 +2181,40 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
         | Some(Cmd::Deploy { .. })
+        | Some(Cmd::Govdocs { .. })
         | Some(Cmd::Tokens) => {
             return match args.cmd.unwrap() {
                 Cmd::Deploy { project, nodes } => {
                     kova::c2::f356(true, true, false, false, nodes, project)
+                }
+                Cmd::Govdocs { doc } => {
+                    let docs: &[(&str, &str)] = &[
+                        ("sbom", include_str!("../govdocs/SBOM.md")),
+                        ("security", include_str!("../govdocs/SECURITY.md")),
+                        ("ssdf", include_str!("../govdocs/SSDF.md")),
+                        ("supply-chain", include_str!("../govdocs/SUPPLY_CHAIN.md")),
+                        ("accessibility", include_str!("../govdocs/ACCESSIBILITY.md")),
+                        ("privacy", include_str!("../govdocs/PRIVACY.md")),
+                        ("fips", include_str!("../govdocs/FIPS.md")),
+                        ("fedramp", include_str!("../govdocs/FedRAMP_NOTES.md")),
+                        ("cmmc", include_str!("../govdocs/CMMC.md")),
+                        ("itar", include_str!("../govdocs/ITAR_EAR.md")),
+                        ("use-cases", include_str!("../govdocs/FEDERAL_USE_CASES.md")),
+                    ];
+                    if doc == "list" {
+                        println!("Federal compliance docs baked into kova v{}:", env!("CARGO_PKG_VERSION"));
+                        for (name, content) in docs {
+                            let first_line = content.lines().find(|l| l.starts_with('#')).unwrap_or(name);
+                            println!("  {:<16} {}", name, first_line);
+                        }
+                        println!("\nUsage: kova govdocs <name>");
+                    } else if let Some((_, content)) = docs.iter().find(|(n, _)| *n == doc) {
+                        print!("{}", content);
+                    } else {
+                        eprintln!("Unknown doc: {}. Use 'kova govdocs list'.", doc);
+                        std::process::exit(1);
+                    }
+                    Ok(())
                 }
                 #[cfg(feature = "rag")]
                 Cmd::Rag(a) => run_rag(a),
@@ -2200,7 +2408,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
         | Some(Cmd::Tokens)
-        | Some(Cmd::Deploy { .. }) => unreachable!("handled before tokio"),
+        | Some(Cmd::Deploy { .. })
+        | Some(Cmd::Govdocs { .. }) => unreachable!("handled before tokio"),
         None => {
             // Default: TUI (like Claude Code). Fallback: REPL, then GUI.
             #[cfg(feature = "tui")]
