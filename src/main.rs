@@ -97,6 +97,16 @@ enum Cmd {
     /// Tokenization validator. Check compression protocol coverage.
     #[command(name = "tokens")]
     Tokens,
+    /// Deploy: sync + build --release on all worker nodes. Shortcut for c2 build --broadcast --release.
+    #[command(name = "deploy")]
+    Deploy {
+        /// Project to build (default: kova).
+        #[arg(short, long)]
+        project: Option<std::path::PathBuf>,
+        /// Target nodes (comma-separated). Default: all.
+        #[arg(long)]
+        nodes: Option<String>,
+    },
 }
 
 #[derive(clap::Args)]
@@ -1992,8 +2002,12 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Mcp(_))
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
+        | Some(Cmd::Deploy { .. })
         | Some(Cmd::Tokens) => {
             return match args.cmd.unwrap() {
+                Cmd::Deploy { project, nodes } => {
+                    kova::c2::f356(true, true, false, false, nodes, project)
+                }
                 #[cfg(feature = "rag")]
                 Cmd::Rag(a) => run_rag(a),
                 Cmd::Traces(a) => run_traces(a),
@@ -2185,11 +2199,16 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Mcp(_))
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
-        | Some(Cmd::Tokens) => unreachable!("handled before tokio"),
+        | Some(Cmd::Tokens)
+        | Some(Cmd::Deploy { .. }) => unreachable!("handled before tokio"),
         None => {
             // Default: TUI (like Claude Code). Fallback: REPL, then GUI.
             #[cfg(feature = "tui")]
             {
+                if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                    eprintln!("kova: REPL requires a terminal. Use: kova --help");
+                    std::process::exit(1);
+                }
                 run_tui(None)
             }
             #[cfg(all(not(feature = "tui"), feature = "inference"))]
