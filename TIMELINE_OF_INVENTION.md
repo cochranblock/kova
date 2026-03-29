@@ -18,6 +18,24 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-03-29 — Multi-Architecture Release
+
+**What:** Built for macOS ARM64 (27 MB), macOS x86_64 (13 MB), Android AAB (6.6 MB), Android APK (17 MB). iOS scaffold (staticlib crate). PWA manifest + service worker. build-all-targets.sh. All artifacts uploaded to GitHub Release v0.7.0.
+**Commit:** `c876698`
+**AI Role:** AI built cross-compile pipeline, diagnosed ort-sys x86_64 incompatibility. Human directed target list.
+
+### 2026-03-29 — Snap Store Packaging
+
+**What:** snapcraft.yaml for kova (core22, classic confinement, amd64+arm64). cochranblock-stack snap for approuter repo (3 daemons: approuter + cochranblock + cloudflared).
+**Commit:** `93f3102`
+**AI Role:** AI wrote both snapcraft configs. Human directed snap architecture.
+
+### 2026-03-28 — C2 CLI Tools + Govdocs Subcommand
+
+**What:** 5 new c2 subcommands: dispatch (single node SSH), broadcast (parallel fan-out), status (health check), monitor (continuous poll), fleet (project overview). Govdocs subcommand: 11 compliance docs baked into binary via include_str!.
+**Commit:** `0398ed4`
+**AI Role:** AI implemented all handlers. Human designed the C2 dispatch architecture.
+
 ### 2026-03-27 — Federal Compliance Documentation
 
 **What:** 11 govdocs created: SBOM (EO 14028), SSDF (NIST 800-218), supply chain, security posture, Section 508 accessibility, privacy impact, FIPS gap analysis, FedRAMP notes, CMMC mapping, ITAR/EAR export control, federal agency use cases.

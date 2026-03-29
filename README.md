@@ -124,6 +124,20 @@ Canonical map: [`docs/compression_map.md`](docs/compression_map.md)
 | `.kova-aliases` | 110+ shell aliases for macOS + Debian. Deployed to all nodes | 280 |
 | **Total** | **92 Rust source files** | **32,305** |
 
+## Supported Platforms
+
+| Platform | Binary | Size | Status |
+|----------|--------|------|--------|
+| macOS ARM64 (M1/M2/M3/M4) | `kova-macos-arm64` | 27 MB | Full (all features) |
+| macOS x86_64 (Intel) | `kova-macos-x86_64` | 13 MB | No RAG (ort lacks x86 prebuilts) |
+| Android arm64-v8a | `kova-android.apk` / `.aab` | 17 MB / 6.6 MB | GUI + mobile-llm |
+| Linux x86_64 (Debian) | Build on node | ~25 MB | Full (build on st/gd) |
+| iOS arm64 | `libkova_ios.a` | scaffold | staticlib, needs Xcode |
+| Web (PWA) | WASM + service worker | ~2.5 MB | Offline-first, installable |
+| Snap (Linux) | `snap/snapcraft.yaml` | — | core22, classic confinement |
+
+[GitHub Release v0.7.0](https://github.com/cochranblock/kova/releases/tag/v0.7.0) — download binaries.
+
 ## Binaries
 
 | Binary | Features | Purpose |

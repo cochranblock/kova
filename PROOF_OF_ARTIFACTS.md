@@ -46,8 +46,9 @@ flowchart TD
 | Tokenized functions | 246 (f0–f376) |
 | Tokenized types | 142 (t0–T215) |
 | Tokenization coverage | 86.6% (388/448 symbols) |
-| User surfaces | 5 (REPL, TUI, GUI, HTTP+WASM, Android APK) |
-| CLI subcommands | 31 with tokenized short forms |
+| macOS x86_64 (Intel) | 13 MB (no RAG — ort lacks x86 macOS prebuilts) |
+| User surfaces | 7 (REPL, TUI, GUI, HTTP+WASM, Android APK/AAB, iOS scaffold, PWA) |
+| CLI subcommands | 36 with tokenized short forms |
 | Worker nodes | 4 (SSH orchestrated) |
 | LLMs evaluated | 42 (Micro Olympics tournament) |
 | Direct dependencies | 31 (all from crates.io) |
