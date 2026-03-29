@@ -17,3 +17,4 @@ android/build/
 android/app/src/main/jniLibs/
 android/upload-keystore.jks
 android/play-service-account.json
+release/
