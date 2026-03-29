@@ -1,0 +1,45 @@
+name: kova
+base: core22
+version: '0.7.0'
+summary: Augment engine — local LLM agentic tool loop, swarm orchestration
+description: |
+  Kova is a single-binary augment engine: local LLM inference, agentic tool loop
+  (read/write/edit/bash/glob/grep/memory), swarm orchestration across 4 worker
+  nodes, tokenized cargo/git commands, MoE code generation, TUI/GUI/HTTP surfaces.
+
+  Zero cloud. Runs on your hardware. Replaces fragmented AI tooling with one binary.
+
+  Part of the CochranBlock zero-cloud architecture. Unlicense (public domain).
+
+grade: stable
+confinement: classic
+
+architectures:
+  - build-on: [amd64, arm64]
+
+apps:
+  kova:
+    command: bin/kova
+  kova-test:
+    command: bin/kova-test
+
+parts:
+  kova:
+    plugin: rust
+    source: .
+    rust-channel: stable
+    rust-features:
+      - serve
+      - inference
+      - rag
+      - tui
+    build-packages:
+      - pkg-config
+      - libssl-dev
+      - libsqlite3-dev
+    override-build: |
+      cargo build --release --bin kova --features serve,inference,rag,tui
+      cargo build --release --bin kova-test --features tests
+      mkdir -p $SNAPCRAFT_PART_INSTALL/bin
+      cp target/release/kova $SNAPCRAFT_PART_INSTALL/bin/
+      cp target/release/kova-test $SNAPCRAFT_PART_INSTALL/bin/
