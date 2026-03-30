@@ -417,6 +417,35 @@ enum C2Cmd {
     },
     /// Fleet overview: all projects, build status, binary sizes, last commit per node.
     Fleet,
+    /// Tmux dispatch: send message to one pane with retry, rate-limit handling.
+    TmuxSend {
+        /// Window index in tmux session.
+        window: String,
+        /// Message to send.
+        message: Vec<String>,
+        /// Tmux session name (default: kova-c2).
+        #[arg(long, default_value = "kova-c2")]
+        session: String,
+    },
+    /// Tmux broadcast: send to all panes with stagger to avoid rate-limit burst.
+    TmuxBroadcast {
+        /// Message to send to all panes.
+        message: Vec<String>,
+        /// Tmux session name (default: kova-c2).
+        #[arg(long, default_value = "kova-c2")]
+        session: String,
+        /// Stagger delay between panes in seconds (default: 5).
+        #[arg(long, default_value = "5")]
+        stagger: u64,
+    },
+    /// Tmux sponge mesh: fast first pass, skip rate-limited, retry with exponential backoff.
+    TmuxSponge {
+        /// Message to send.
+        message: Vec<String>,
+        /// Tmux session name (default: kova-c2).
+        #[arg(long, default_value = "kova-c2")]
+        session: String,
+    },
     /// Tokenized node commands (c1-c9, ci, ct). §13 compressed output.
     Ncmd {
         /// Command token: c1(nstat) c2(nspec) c3(nsvc) c4(nrust) c5(nsync) c6(nbuild) c7(nlog) c8(nkill) c9(ndeploy) ci(inspect) ct(ntest).
@@ -1261,6 +1290,27 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
                 println!("{:<20} {:<10} {:<12} {}", name, status, size, commit);
             }
             Ok(())
+        }
+        C2Cmd::TmuxSend { window, message, session } => {
+            let msg = message.join(" ");
+            if msg.is_empty() {
+                anyhow::bail!("no message specified");
+            }
+            kova::c2::f377(&session, &window, &msg).map_err(|e| anyhow::anyhow!("{}", e))
+        }
+        C2Cmd::TmuxBroadcast { message, session, stagger } => {
+            let msg = message.join(" ");
+            if msg.is_empty() {
+                anyhow::bail!("no message specified");
+            }
+            kova::c2::f378(&session, &msg, stagger).map_err(|e| anyhow::anyhow!("{}", e))
+        }
+        C2Cmd::TmuxSponge { message, session } => {
+            let msg = message.join(" ");
+            if msg.is_empty() {
+                anyhow::bail!("no message specified");
+            }
+            kova::c2::f379(&session, &msg).map_err(|e| anyhow::anyhow!("{}", e))
         }
         C2Cmd::SshCa { cmd } => match cmd {
             SshCaCmd::Init => kova::ssh_ca::f298(),

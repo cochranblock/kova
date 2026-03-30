@@ -1098,3 +1098,213 @@ pub fn f370(
     eprintln!("[deploy] done");
     Ok(())
 }
+
+// ── Tmux C2 Dispatch ─────────────────────────────────────────
+
+/// f377=tmux_dispatch. Send a message to a single tmux pane with retry and backoff.
+/// Handles: rate limits, pasted-text prompts, permission prompts.
+pub fn f377(session: &str, window: &str, message: &str) -> Result<(), String> {
+    let target = format!("{}:{}", session, window);
+    let max_retries = 10u32;
+    let base_delay = std::time::Duration::from_secs(3);
+
+    for attempt in 1..=max_retries {
+        // Send the message
+        let _ = std::process::Command::new("tmux")
+            .args(["send-keys", "-t", &target, message, "Enter"])
+            .output();
+        std::thread::sleep(base_delay);
+
+        // Capture pane state
+        let pane = capture_pane(&target);
+
+        // Flush "Pasted text" prompts
+        if pane.contains("Pasted text") {
+            let _ = std::process::Command::new("tmux")
+                .args(["send-keys", "-t", &target, "Enter"])
+                .output();
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+
+        let pane = capture_pane(&target);
+
+        // Rate limited — exponential backoff
+        if pane.contains("Rate limit") {
+            let backoff = base_delay * attempt;
+            eprintln!("[w{}] rate limited — backoff {}s (attempt {}/{})",
+                window, backoff.as_secs(), attempt, max_retries);
+            std::thread::sleep(backoff);
+            let _ = std::process::Command::new("tmux")
+                .args(["send-keys", "-t", &target, "Enter"])
+                .output();
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            continue;
+        }
+
+        // Permission prompt — approve
+        if pane.contains("Do you want to proceed") || pane.contains("Yes, and don't ask") {
+            if pane.contains("❯") {
+                let _ = std::process::Command::new("tmux")
+                    .args(["send-keys", "-t", &target, "Enter"])
+                    .output();
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+            continue;
+        }
+
+        // Active indicators — task accepted
+        let active_markers = ["✻", "✶", "✽", "✢", "✳", "·", "Bash", "Edit", "Read", "Write", "Searching", "Running"];
+        if active_markers.iter().any(|m| pane.contains(m)) {
+            eprintln!("[w{}] accepted on attempt {}", window, attempt);
+            return Ok(());
+        }
+
+        // Still at prompt — nudge
+        if pane.contains("❯") {
+            let _ = std::process::Command::new("tmux")
+                .args(["send-keys", "-t", &target, "Enter"])
+                .output();
+            std::thread::sleep(base_delay);
+        }
+    }
+
+    eprintln!("[w{}] sent after {} attempts", window, max_retries);
+    Ok(())
+}
+
+/// f378=tmux_broadcast. Send to all windows with stagger delay.
+pub fn f378(session: &str, message: &str, stagger_secs: u64) -> Result<(), String> {
+    let windows = list_windows(session);
+    if windows.is_empty() {
+        return Err(format!("no windows in session '{}'", session));
+    }
+
+    let stagger = std::time::Duration::from_secs(stagger_secs);
+    let mut handles = Vec::new();
+    for (i, w) in windows.iter().enumerate() {
+        let sess = session.to_string();
+        let win = w.clone();
+        let msg = message.to_string();
+        handles.push(std::thread::spawn(move || {
+            // Stagger: wait i * stagger before dispatching
+            std::thread::sleep(stagger * i as u32);
+            f377(&sess, &win, &msg)
+        }));
+    }
+
+    let mut failed = 0;
+    for h in handles {
+        if let Err(_) = h.join().unwrap_or(Err("thread panic".into())) {
+            failed += 1;
+        }
+    }
+
+    if failed > 0 {
+        eprintln!("[broadcast] {} window(s) failed", failed);
+    } else {
+        eprintln!("[broadcast] complete — {} windows", windows.len());
+    }
+    Ok(())
+}
+
+/// f379=tmux_sponge. Sponge mesh: fast first pass, skip rate-limited, retry with backoff.
+pub fn f379(session: &str, message: &str) -> Result<(), String> {
+    let windows = list_windows(session);
+    if windows.is_empty() {
+        return Err(format!("no windows in session '{}'", session));
+    }
+
+    eprintln!("[sponge] {} windows, fast pass...", windows.len());
+    let mut failed: Vec<String> = Vec::new();
+
+    // First pass — fast, 2s between each
+    for w in &windows {
+        let target = format!("{}:{}", session, w);
+        let _ = std::process::Command::new("tmux")
+            .args(["send-keys", "-t", &target, message, "Enter"])
+            .output();
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        let pane = capture_pane(&target);
+        // Flush pasted text
+        if pane.contains("Pasted text") {
+            let _ = std::process::Command::new("tmux")
+                .args(["send-keys", "-t", &target, "Enter"])
+                .output();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+
+        let pane = capture_pane(&target);
+        if pane.contains("Rate limit") {
+            failed.push(w.clone());
+            eprintln!("[w{}] rate limited — will retry", w);
+        } else {
+            eprintln!("[w{}] sent", w);
+        }
+    }
+
+    // Retry passes — exponential backoff
+    for retry in 1..=5u32 {
+        if failed.is_empty() { break; }
+        let backoff = 10 * retry as u64;
+        eprintln!("[sponge] retrying {} failed in {}s...", failed.len(), backoff);
+        std::thread::sleep(std::time::Duration::from_secs(backoff));
+
+        let mut still_failed = Vec::new();
+        for w in &failed {
+            let target = format!("{}:{}", session, w);
+            let _ = std::process::Command::new("tmux")
+                .args(["send-keys", "-t", &target, message, "Enter"])
+                .output();
+            std::thread::sleep(std::time::Duration::from_secs(3));
+
+            let pane = capture_pane(&target);
+            if pane.contains("Rate limit") {
+                still_failed.push(w.clone());
+            } else {
+                eprintln!("[w{}] recovered on retry {}", w, retry);
+            }
+        }
+        failed = still_failed;
+    }
+
+    if !failed.is_empty() {
+        eprintln!("[sponge] WARNING: {} panes still rate limited: {}",
+            failed.len(), failed.join(", "));
+    } else {
+        eprintln!("[sponge] complete — all panes accepted");
+    }
+    Ok(())
+}
+
+/// Capture the last 8 lines of a tmux pane.
+fn capture_pane(target: &str) -> String {
+    std::process::Command::new("tmux")
+        .args(["capture-pane", "-t", target, "-p"])
+        .output()
+        .ok()
+        .map(|o| {
+            let text = String::from_utf8_lossy(&o.stdout).to_string();
+            // Last 8 lines
+            let lines: Vec<&str> = text.lines().collect();
+            let start = lines.len().saturating_sub(8);
+            lines[start..].join("\n")
+        })
+        .unwrap_or_default()
+}
+
+/// List non-control windows in a tmux session (skip C2/unblock).
+fn list_windows(session: &str) -> Vec<String> {
+    std::process::Command::new("tmux")
+        .args(["list-windows", "-t", session, "-F", "#{window_index}:#{window_name}"])
+        .output()
+        .ok()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter(|l| !l.contains("C2") && !l.contains("unblock"))
+                .map(|l| l.split(':').next().unwrap_or("0").to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}

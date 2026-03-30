@@ -242,6 +242,9 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f374 | bits_per_weight | quantize | Compute effective bits per weight |
 | f375 | save_quantized | quantize | Save quantized model to binary |
 | f376 | load_quantized | quantize | Load quantized model from binary |
+| f377 | tmux_dispatch | c2 | Send message to one tmux pane with retry + backoff |
+| f378 | tmux_broadcast | c2 | Send to all tmux panes with stagger delay |
+| f379 | tmux_sponge | c2 | Sponge mesh: fast pass, retry rate-limited with backoff |
 
 ## Types (TN)
 
