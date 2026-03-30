@@ -18,3 +18,9 @@ android/app/src/main/jniLibs/
 android/upload-keystore.jks
 android/play-service-account.json
 release/
+# iOS build output
+ios/target/
+# Backup files
+*.bak
+*.orig
+*~
