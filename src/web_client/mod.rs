@@ -1,5 +1,7 @@
 //! Kova web client. Pure Rust (egui) compiled to WASM. Connects to kova serve API.
 
+#![allow(non_camel_case_types)]
+
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
@@ -16,6 +18,11 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct t134 {
     runner: eframe::WebRunner,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Default for t134 {
+    fn default() -> Self { Self::new() }
 }
 
 #[cfg(target_arch = "wasm32")]

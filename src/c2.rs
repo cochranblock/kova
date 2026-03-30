@@ -1194,7 +1194,7 @@ pub fn f378(session: &str, message: &str, stagger_secs: u64) -> Result<(), Strin
 
     let mut failed = 0;
     for h in handles {
-        if let Err(_) = h.join().unwrap_or(Err("thread panic".into())) {
+        if h.join().unwrap_or(Err("thread panic".into())).is_err() {
             failed += 1;
         }
     }

@@ -1268,7 +1268,7 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
         }
         C2Cmd::Fleet => {
             let projects = kova::discover_projects();
-            println!("{:<20} {:<10} {:<12} {}", "project", "status", "binary", "last commit");
+            println!("{:<20} {:<10} {:<12} last commit", "project", "status", "binary");
             println!("{}", "-".repeat(60));
             for p in &projects {
                 let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("?");
