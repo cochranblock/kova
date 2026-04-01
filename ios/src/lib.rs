@@ -32,6 +32,10 @@ pub extern "C" fn kova_ios_main() {
     }
 
     let options = eframe::NativeOptions {
+        // CRITICAL: run_and_return must be false on iOS.
+        // If true, eframe returns after first frame, the caller re-invokes
+        // kova_ios_main, and the app enters infinite recursion → stack overflow on M1.
+        run_and_return: false,
         ..Default::default()
     };
 
