@@ -314,7 +314,7 @@ mod tests {
         assert!(names.contains(&"read_file"), "missing read_file");
         assert!(names.contains(&"write_file"), "missing write_file");
         assert!(names.contains(&"edit_file"), "missing edit_file");
-        assert!(names.contains(&"bash"), "missing bash");
+        assert!(names.contains(&"exec"), "missing exec");
         assert!(names.contains(&"glob"), "missing glob");
         assert!(names.contains(&"grep"), "missing grep");
         assert!(names.contains(&"memory_write"), "missing memory_write");

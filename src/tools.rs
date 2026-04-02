@@ -112,8 +112,8 @@ pub static TOOLS: &[t101] = &[
         ],
     },
     t101 {
-        name: "bash",
-        description: "Execute a shell command. Returns stdout+stderr and exit code.",
+        name: "exec",
+        description: "Execute a shell command. Uses $SHELL (default /bin/sh). Returns stdout+stderr and exit code.",
         params: &[
             t102 {
                 name: "command",
@@ -444,7 +444,31 @@ fn parse_tool_call_array(json_str: &str) -> Vec<t103> {
 
 // ── Tool Dispatch (f141) ─────────────────────────────────
 
+/// Check if guarded permission mode is active. KOVA_PERMS=guarded enables gates.
+fn is_guarded() -> bool {
+    std::env::var("KOVA_PERMS").as_deref() == Ok("guarded")
+}
+
+/// Permission gate: prompt user on stderr, read y/n from stdin.
+/// Returns true if approved (or if not in guarded mode).
+fn perm_gate(action: &str, detail: &str) -> bool {
+    if !is_guarded() {
+        return true;
+    }
+    eprint!(
+        "\x1b[33m[perm] {} — {}\x1b[0m\n\x1b[33m  approve? (y/n): \x1b[0m",
+        action, detail
+    );
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+    let mut input = String::new();
+    if std::io::BufRead::read_line(&mut std::io::stdin().lock(), &mut input).is_err() {
+        return false;
+    }
+    matches!(input.trim(), "y" | "Y" | "yes")
+}
+
 /// f141=dispatch_tool. Execute a tool call, return result.
+/// When KOVA_PERMS=guarded, gates exec and git commit/push with user prompt.
 pub fn f141(call: &t103, project_dir: &Path) -> t104 {
     match call.tool.as_str() {
         "read_file" => f142(call, project_dir),
@@ -462,7 +486,45 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
             }
             f144(call, project_dir)
         }
-        "bash" => f145(call, project_dir),
+        "exec" => {
+            // Gate 1: shell execution requires approval in guarded mode.
+            let cmd_preview = get_arg(call, "command").unwrap_or("(no command)");
+            if !perm_gate("exec", cmd_preview) {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: "denied by user".into(),
+                };
+            }
+            // Gate 2: git commit/push gets a second specific gate.
+            if is_git_mutation(cmd_preview) && !perm_gate("git mutation", cmd_preview) {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: "git operation denied by user".into(),
+                };
+            }
+            f145(call, project_dir)
+        }
+        // Backward compat: accept "bash" as alias for "exec".
+        "bash" => {
+            let cmd_preview = get_arg(call, "command").unwrap_or("(no command)");
+            if !perm_gate("exec", cmd_preview) {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: "denied by user".into(),
+                };
+            }
+            if is_git_mutation(cmd_preview) && !perm_gate("git mutation", cmd_preview) {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: "git operation denied by user".into(),
+                };
+            }
+            f145(call, project_dir)
+        }
         "glob" => f146(call, project_dir),
         "grep" => f150(call, project_dir),
         "memory_write" => f155(call),
@@ -493,6 +555,19 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
             output: format!("Unknown tool: {}", call.tool),
         },
     }
+}
+
+/// Check if a shell command is a git mutation (commit, push, force operations).
+fn is_git_mutation(cmd: &str) -> bool {
+    let trimmed = cmd.trim();
+    // Match git commit, git push, git reset --hard, git checkout --, etc.
+    trimmed.starts_with("git commit")
+        || trimmed.starts_with("git push")
+        || trimmed.contains("git reset --hard")
+        || trimmed.contains("git checkout --")
+        || trimmed.contains("git clean -f")
+        || trimmed.contains("--force")
+        || trimmed.contains("--no-verify")
 }
 
 fn resolve_path(raw: &str, project_dir: &Path) -> PathBuf {
@@ -688,7 +763,8 @@ fn f145(call: &t103, project_dir: &Path) -> t104 {
         .and_then(|s| s.parse().ok())
         .unwrap_or(120);
 
-    let child = Command::new("sh")
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+    let child = Command::new(&shell)
         .args(["-c", cmd])
         .current_dir(&cwd)
         .stdout(std::process::Stdio::piped())
