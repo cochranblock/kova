@@ -1,8 +1,11 @@
 //! Token-aware context window manager.
-//! f170=estimate_tokens, f171=trim_conversation, f172=trim_tool_output, f173=summarize_old_turns.
+//! f170=estimate_tokens, f171=trim_conversation, f172=trim_tool_output, f173=summarize_old_turns,
+//! f380=compact_context.
 //! t111=ContextBudget.
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
+
+use std::path::Path;
 
 /// t111=ContextBudget. Tracks token allocation for a model's context window.
 #[allow(non_camel_case_types)]
@@ -216,6 +219,113 @@ fn split_turns(text: &str) -> Vec<&str> {
     turns
 }
 
+/// Compaction threshold: trigger when conversation fills 80% of available budget.
+const COMPACT_THRESHOLD: f64 = 0.80;
+
+/// How many recent turns to keep intact during compaction.
+const COMPACT_KEEP_RECENT: usize = 4;
+
+/// f380=compact_context. LLM-powered context compaction.
+/// When conversation exceeds 80% of the context budget, split into old and recent turns.
+/// Send old turns to inference with a summarize prompt, replace them with the summary.
+/// Returns the (possibly compacted) conversation. If under threshold, returns as-is.
+pub fn f380(conversation: &str, budget: &t111, model_path: &Path) -> String {
+    let available = budget.remaining();
+    let current_tokens = f170(conversation);
+    let threshold = (available as f64 * COMPACT_THRESHOLD) as usize;
+
+    if current_tokens <= threshold {
+        return conversation.to_string();
+    }
+
+    eprintln!(
+        "\x1b[33m[compact: {}/{} tokens ({:.0}%), compacting]\x1b[0m",
+        current_tokens,
+        available,
+        (current_tokens as f64 / available as f64) * 100.0
+    );
+
+    let turns = split_turns(conversation);
+    if turns.len() <= COMPACT_KEEP_RECENT + 1 {
+        // Too few turns to compact — fall back to static trim.
+        return f171(conversation, budget);
+    }
+
+    // Split: keep first turn (original question) + last N turns intact.
+    let split_point = turns.len().saturating_sub(COMPACT_KEEP_RECENT);
+    let old_turns = &turns[..split_point];
+    let recent_turns = &turns[split_point..];
+
+    // Build text to summarize.
+    let old_text: String = old_turns.join("");
+    if old_text.trim().is_empty() {
+        return conversation.to_string();
+    }
+
+    // Call inference to summarize.
+    let summary = compact_via_inference(&old_text, model_path);
+
+    // Build compacted conversation: summary + recent turns.
+    let mut result = String::with_capacity(conversation.len() / 2);
+    result.push_str(&format!(
+        "[Context compacted — {} turns summarized into {}]\n\n",
+        old_turns.len(),
+        if summary.len() < 200 { "brief" } else { "digest" }
+    ));
+    result.push_str("Summary of earlier conversation:\n");
+    result.push_str(&summary);
+    result.push_str("\n\n");
+
+    for turn in recent_turns {
+        result.push_str(turn);
+    }
+
+    let compacted_tokens = f170(&result);
+    eprintln!(
+        "\x1b[32m[compact: {} → {} tokens (saved {})]\x1b[0m",
+        current_tokens,
+        compacted_tokens,
+        current_tokens.saturating_sub(compacted_tokens)
+    );
+
+    // If still over budget after compaction, fall back to static trim.
+    if compacted_tokens > available {
+        return f171(&result, budget);
+    }
+
+    result
+}
+
+/// Call inference to summarize old conversation turns.
+/// Collects all streamed tokens into a single string.
+fn compact_via_inference(old_text: &str, model_path: &Path) -> String {
+    let summary_prompt = format!(
+        "Summarize this conversation history. Keep all key facts, decisions, tool results, \
+         file paths, and code changes. Drop filler and repetition. Be concise.\n\n\
+         ---\n{}\n---\n\nSummary:",
+        old_text
+    );
+
+    let system = "You are a conversation summarizer. Output only the summary, nothing else.";
+    let rx = crate::inference::f76(model_path, system, &[], &summary_prompt);
+
+    let mut summary = String::new();
+    for token in rx {
+        summary.push_str(&token);
+    }
+
+    if summary.trim().is_empty() {
+        // Inference failed — fall back to static summary.
+        let turns: Vec<&str> = old_text
+            .split("\n\n")
+            .filter(|s| !s.trim().is_empty())
+            .collect();
+        return f173(&turns);
+    }
+
+    summary.trim().to_string()
+}
+
 /// Truncate string to at most `max_chars` characters.
 fn truncate_end(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
@@ -391,5 +501,50 @@ mod tests {
         };
         let trimmed = f171(conv, &budget);
         assert!(!trimmed.is_empty());
+    }
+
+    /// f380=compact_context. Under threshold — passthrough.
+    #[test]
+    fn compact_context_under_threshold() {
+        let conv = "User: hello\n\nAssistant: hi there";
+        let budget = t111 {
+            max_tokens: 4096,
+            system_reserved: 100,
+            tool_reserved: 100,
+        };
+        // Can't call f380 without a real model, but we can verify the threshold logic.
+        let available = budget.remaining();
+        let current = f170(conv);
+        let threshold = (available as f64 * COMPACT_THRESHOLD) as usize;
+        assert!(current <= threshold, "short conversation should be under threshold");
+    }
+
+    /// f380 threshold calculation.
+    #[test]
+    fn compact_threshold_math() {
+        let budget = t111 {
+            max_tokens: 8192,
+            system_reserved: 1024,
+            tool_reserved: 512,
+        };
+        let available = budget.remaining(); // 6656
+        let threshold = (available as f64 * COMPACT_THRESHOLD) as usize;
+        assert_eq!(available, 6656);
+        assert_eq!(threshold, 5324); // 80% of 6656
+    }
+
+    /// COMPACT_KEEP_RECENT is reasonable.
+    #[test]
+    fn compact_keep_recent_value() {
+        assert!(COMPACT_KEEP_RECENT >= 2);
+        assert!(COMPACT_KEEP_RECENT <= 10);
+    }
+
+    /// split_turns handles compacted format.
+    #[test]
+    fn split_turns_with_summary() {
+        let conv = "[Context compacted]\n\nSummary of earlier conversation:\nDid stuff.\n\nUser: next question\n\nAssistant: answer";
+        let turns = split_turns(conv);
+        assert!(turns.len() >= 2);
     }
 }

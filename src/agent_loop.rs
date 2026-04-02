@@ -94,8 +94,10 @@ pub fn f148(
     conversation.push_str(&format!("User: {}\n\nAssistant: ", user_input));
 
     for i in 0..max_iterations {
-        // Trim conversation to fit context window before each inference call.
-        conversation = context_mgr::f171(&conversation, &AGENT_BUDGET);
+        // Auto-compact conversation when nearing context limit (80% threshold).
+        // Uses LLM to summarize older turns, keeping recent ones intact.
+        // Falls back to static trim if compaction still exceeds budget.
+        conversation = context_mgr::f380(&conversation, &AGENT_BUDGET, model_path);
 
         let action = f147(model_path, system_prompt, &conversation, project_dir);
 
