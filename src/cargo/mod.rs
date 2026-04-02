@@ -135,6 +135,11 @@ pub fn f311(wants_binary: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::extract_rust_block;
+
+    fn truncate(s: &str, max: usize) -> String {
+        if s.len() <= max { s.to_string() } else { format!("{}...", &s[..max]) }
+    }
 
     #[test]
     fn extract_rust_block_basic() {

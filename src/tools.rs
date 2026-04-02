@@ -1296,6 +1296,17 @@ fn find_pixel_forge() -> Option<PathBuf> {
 /// Sled tree name for file checkpoints.
 const CHECKPOINT_TREE: &str = "checkpoints";
 
+/// Checkpoint DB path. Tests override via CHECKPOINT_DB thread-local.
+fn checkpoint_db_path() -> std::path::PathBuf {
+    CHECKPOINT_DB.with(|cell| {
+        cell.borrow().clone().unwrap_or_else(crate::config::sled_path)
+    })
+}
+
+std::thread_local! {
+    static CHECKPOINT_DB: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
 /// f383=checkpoint. Snapshot file contents into sled before write/edit.
 /// Key format: checkpoint:{filepath}:{unix_timestamp_ms}
 /// Also stores latest checkpoint pointer: checkpoint_latest:{filepath}
@@ -1306,7 +1317,7 @@ fn f383(path: &Path) {
         Err(_) => return,
     };
 
-    let store_path = crate::config::sled_path();
+    let store_path = checkpoint_db_path();
     let db = match sled::open(&store_path) {
         Ok(db) => db,
         Err(_) => return,
@@ -1341,7 +1352,7 @@ fn f384(call: &t103, project_dir: &Path) -> t104 {
         Err(e) => return e,
     };
 
-    let store_path = crate::config::sled_path();
+    let store_path = checkpoint_db_path();
     let db = match sled::open(&store_path) {
         Ok(db) => db,
         Err(e) => {
@@ -1835,5 +1846,173 @@ This JSON is missing a closing brace — should be skipped.
         };
         let result = f208(&call, tmp.path());
         assert!(!result.success);
+    }
+
+    // ── Checkpoint/Undo tests ──────────────────────────────
+
+    /// Helper: set up an isolated sled DB for checkpoint tests.
+    fn with_test_sled<F: FnOnce(&Path)>(f: F) {
+        let sled_tmp = tempfile::TempDir::new().unwrap();
+        let sled_path = sled_tmp.path().join("test_sled.db");
+        CHECKPOINT_DB.with(|cell| {
+            *cell.borrow_mut() = Some(sled_path.clone());
+        });
+        f(&sled_path);
+        CHECKPOINT_DB.with(|cell| {
+            *cell.borrow_mut() = None;
+        });
+    }
+
+    #[test]
+    fn f383_checkpoint_stores_content() {
+        with_test_sled(|sled_path| {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let file = tmp.path().join("test.txt");
+            std::fs::write(&file, "original content").unwrap();
+
+            f383(&file);
+
+            let db = sled::open(sled_path).unwrap();
+            let tree = db.open_tree(CHECKPOINT_TREE).unwrap();
+
+            let latest_key = format!("checkpoint_latest:{}", file.to_string_lossy());
+            let checkpoint_key = tree.get(latest_key.as_bytes()).unwrap();
+            assert!(checkpoint_key.is_some(), "latest checkpoint pointer should exist");
+
+            let data = tree.get(&checkpoint_key.unwrap()).unwrap();
+            assert!(data.is_some(), "checkpoint data should exist");
+            assert_eq!(data.unwrap().as_ref(), b"original content");
+        });
+    }
+
+    #[test]
+    fn f384_undo_restores_file() {
+        with_test_sled(|_| {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let project = tmp.path().canonicalize().unwrap();
+            let file = project.join("undo_test.txt");
+            std::fs::write(&file, "before edit").unwrap();
+
+            f383(&file);
+            std::fs::write(&file, "after edit").unwrap();
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), "after edit");
+
+            let call = t103 {
+                tool: "undo_edit".into(),
+                args: [("path".into(), "undo_test.txt".into())].into(),
+            };
+            let result = f384(&call, &project);
+            assert!(result.success, "undo should succeed: {}", result.output);
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), "before edit");
+        });
+    }
+
+    #[test]
+    fn f384_undo_no_checkpoint() {
+        with_test_sled(|_| {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let call = t103 {
+                tool: "undo_edit".into(),
+                args: [("path".into(), "never_checkpointed.txt".into())].into(),
+            };
+            let result = f384(&call, tmp.path());
+            assert!(!result.success);
+            assert!(result.output.contains("no checkpoint"));
+        });
+    }
+
+    // ── Exec tool tests ────────────────────────────────────
+
+    #[test]
+    fn f141_dispatch_exec() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let call = t103 {
+            tool: "exec".into(),
+            args: [("command".into(), "echo exec-test".into())].into(),
+        };
+        let result = f141(&call, tmp.path());
+        assert!(result.success);
+        assert!(result.output.contains("exec-test"));
+    }
+
+    #[test]
+    fn exec_tool_in_registry() {
+        assert!(TOOLS.iter().any(|t| t.name == "exec"), "exec tool missing from registry");
+    }
+
+    #[test]
+    fn undo_edit_tool_in_registry() {
+        assert!(TOOLS.iter().any(|t| t.name == "undo_edit"), "undo_edit tool missing from registry");
+    }
+
+    // ── Permission gate tests ──────────────────────────────
+
+    #[test]
+    fn is_git_mutation_detects_commit() {
+        assert!(is_git_mutation("git commit -m 'test'"));
+        assert!(is_git_mutation("git push origin main"));
+        assert!(is_git_mutation("git reset --hard HEAD~1"));
+        assert!(is_git_mutation("git checkout -- ."));
+        assert!(is_git_mutation("git push --force"));
+    }
+
+    #[test]
+    fn is_git_mutation_allows_safe_ops() {
+        assert!(!is_git_mutation("git status"));
+        assert!(!is_git_mutation("git diff"));
+        assert!(!is_git_mutation("git log --oneline"));
+        assert!(!is_git_mutation("git branch -a"));
+        assert!(!is_git_mutation("git stash list"));
+    }
+
+    #[test]
+    fn is_guarded_reads_env() {
+        // SAFETY: test runs single-threaded, no concurrent env access.
+        unsafe {
+            // Default (no env) = not guarded.
+            std::env::remove_var("KOVA_PERMS");
+            assert!(!is_guarded());
+
+            // Explicit open = not guarded.
+            std::env::set_var("KOVA_PERMS", "open");
+            assert!(!is_guarded());
+
+            // Guarded = guarded.
+            std::env::set_var("KOVA_PERMS", "guarded");
+            assert!(is_guarded());
+
+            // Cleanup.
+            std::env::remove_var("KOVA_PERMS");
+        }
+    }
+
+    #[test]
+    fn f141_write_creates_checkpoint() {
+        with_test_sled(|sled_path| {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let project = tmp.path().canonicalize().unwrap();
+            let file = project.join("cp_test.txt");
+            std::fs::write(&file, "checkpoint me").unwrap();
+
+            let call = t103 {
+                tool: "write_file".into(),
+                args: [
+                    ("path".into(), "cp_test.txt".into()),
+                    ("content".into(), "new content".into()),
+                ]
+                .into(),
+            };
+            let result = f141(&call, &project);
+            assert!(result.success);
+
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), "new content");
+
+            let db = sled::open(sled_path).unwrap();
+            let tree = db.open_tree(CHECKPOINT_TREE).unwrap();
+            let latest_key = format!("checkpoint_latest:{}", file.to_string_lossy());
+            let ck = tree.get(latest_key.as_bytes()).unwrap().unwrap();
+            let data = tree.get(&ck).unwrap().unwrap();
+            assert_eq!(data.as_ref(), b"checkpoint me");
+        });
     }
 }

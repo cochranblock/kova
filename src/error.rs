@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn from_io_error() {
-        let io_err = std::io::Error::new(std::io::T95::NotFound, "missing");
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
         let e: T176 = io_err.into();
         assert!(e.to_string().contains("missing"));
     }
