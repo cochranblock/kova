@@ -1,6 +1,7 @@
 //! Tool definitions and dispatch for agentic mode.
 //! t101=ToolDef, t102=ToolParam, t103=ToolCall, t104=ToolResult, t105=ToolRegistry.
 //! f140=parse_tool_calls, f141=dispatch_tool, f142-f146,f150,f155=individual tools.
+//! f383=checkpoint, f384=undo_edit.
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
@@ -296,6 +297,18 @@ pub static TOOLS: &[t101] = &[
             },
         ],
     },
+    t101 {
+        name: "undo_edit",
+        description: "Restore a file to its last checkpoint (taken before any write/edit). Returns the restored content preview.",
+        params: &[
+            t102 {
+                name: "path",
+                param_type: "string",
+                required: true,
+                description: "File path to restore.",
+            },
+        ],
+    },
 ];
 
 // ── Tool Call Parsing (f140) ─────────────────────────────
@@ -435,8 +448,20 @@ fn parse_tool_call_array(json_str: &str) -> Vec<t103> {
 pub fn f141(call: &t103, project_dir: &Path) -> t104 {
     match call.tool.as_str() {
         "read_file" => f142(call, project_dir),
-        "write_file" => f143(call, project_dir),
-        "edit_file" => f144(call, project_dir),
+        "write_file" => {
+            // Checkpoint before write.
+            if let Ok(p) = require_arg(call, "path") {
+                f383(&resolve_path(p, project_dir));
+            }
+            f143(call, project_dir)
+        }
+        "edit_file" => {
+            // Checkpoint before edit.
+            if let Ok(p) = require_arg(call, "path") {
+                f383(&resolve_path(p, project_dir));
+            }
+            f144(call, project_dir)
+        }
         "bash" => f145(call, project_dir),
         "glob" => f146(call, project_dir),
         "grep" => f150(call, project_dir),
@@ -461,6 +486,7 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
         #[cfg(feature = "rag")]
         "rag_search" => f166(call),
         "pixel_forge" => f220(call),
+        "undo_edit" => f384(call, project_dir),
         _ => t104 {
             tool: call.tool.clone(),
             success: false,
@@ -1187,6 +1213,130 @@ fn find_pixel_forge() -> Option<PathBuf> {
         }
     }
     None
+}
+
+// ── f383: checkpoint, f384: undo_edit ───────────────────
+
+/// Sled tree name for file checkpoints.
+const CHECKPOINT_TREE: &str = "checkpoints";
+
+/// f383=checkpoint. Snapshot file contents into sled before write/edit.
+/// Key format: checkpoint:{filepath}:{unix_timestamp_ms}
+/// Also stores latest checkpoint pointer: checkpoint_latest:{filepath}
+fn f383(path: &Path) {
+    // Only checkpoint if file exists (new files have nothing to restore).
+    let content = match std::fs::read(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let store_path = crate::config::sled_path();
+    let db = match sled::open(&store_path) {
+        Ok(db) => db,
+        Err(_) => return,
+    };
+    let tree = match db.open_tree(CHECKPOINT_TREE) {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+
+    let path_str = path.to_string_lossy();
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    let key = format!("checkpoint:{}:{}", path_str, ts);
+    let latest_key = format!("checkpoint_latest:{}", path_str);
+
+    let _ = tree.insert(key.as_bytes(), content);
+    let _ = tree.insert(latest_key.as_bytes(), key.as_bytes());
+
+    eprintln!(
+        "\x1b[90m[checkpoint: {}]\x1b[0m",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    );
+}
+
+/// f384=undo_edit. Restore file from last checkpoint.
+fn f384(call: &t103, project_dir: &Path) -> t104 {
+    let path = match require_arg(call, "path") {
+        Ok(p) => resolve_path(p, project_dir),
+        Err(e) => return e,
+    };
+
+    let store_path = crate::config::sled_path();
+    let db = match sled::open(&store_path) {
+        Ok(db) => db,
+        Err(e) => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("sled open: {}", e),
+            }
+        }
+    };
+    let tree = match db.open_tree(CHECKPOINT_TREE) {
+        Ok(t) => t,
+        Err(e) => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("tree open: {}", e),
+            }
+        }
+    };
+
+    let path_str = path.to_string_lossy();
+    let latest_key = format!("checkpoint_latest:{}", path_str);
+
+    // Look up the latest checkpoint key.
+    let checkpoint_key = match tree.get(latest_key.as_bytes()) {
+        Ok(Some(key_bytes)) => key_bytes,
+        _ => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("no checkpoint for {}", path.display()),
+            }
+        }
+    };
+
+    // Retrieve the checkpoint content.
+    let content = match tree.get(&checkpoint_key) {
+        Ok(Some(data)) => data,
+        _ => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: "checkpoint data missing".into(),
+            }
+        }
+    };
+
+    // Restore the file.
+    match std::fs::write(&path, content.as_ref()) {
+        Ok(_) => {
+            let preview_len = content.len().min(200);
+            let preview = String::from_utf8_lossy(&content[..preview_len]);
+            t104 {
+                tool: call.tool.clone(),
+                success: true,
+                output: format!(
+                    "restored {} ({} bytes)\n{}{}",
+                    path.display(),
+                    content.len(),
+                    preview,
+                    if content.len() > 200 { "..." } else { "" }
+                ),
+            }
+        }
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("restore write: {}", e),
+        },
+    }
 }
 
 #[cfg(test)]

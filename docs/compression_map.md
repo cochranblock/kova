@@ -248,6 +248,8 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f380 | compact_context | context_mgr | LLM-powered context compaction at 80% threshold |
 | f381 | anthropic_stream | providers | Anthropic Messages API SSE streaming |
 | f382 | dual_stream | inference/mod | Unified dispatcher: local/remote/auto via KOVA_INFERENCE |
+| f383 | checkpoint | tools | Snapshot file to sled before write/edit |
+| f384 | undo_edit | tools | Restore file from last sled checkpoint |
 
 ## Types (TN)
 
