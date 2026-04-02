@@ -307,7 +307,7 @@ fn compact_via_inference(old_text: &str, model_path: &Path) -> String {
     );
 
     let system = "You are a conversation summarizer. Output only the summary, nothing else.";
-    let rx = crate::inference::f76(model_path, system, &[], &summary_prompt);
+    let rx = crate::inference::f382(model_path, system, &[], &summary_prompt);
 
     let mut summary = String::new();
     for token in rx {

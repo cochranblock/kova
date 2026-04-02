@@ -246,6 +246,8 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f378 | tmux_broadcast | c2 | Send to all tmux panes with stagger delay |
 | f379 | tmux_sponge | c2 | Sponge mesh: fast pass, retry rate-limited with backoff |
 | f380 | compact_context | context_mgr | LLM-powered context compaction at 80% threshold |
+| f381 | anthropic_stream | providers | Anthropic Messages API SSE streaming |
+| f382 | dual_stream | inference/mod | Unified dispatcher: local/remote/auto via KOVA_INFERENCE |
 
 ## Types (TN)
 

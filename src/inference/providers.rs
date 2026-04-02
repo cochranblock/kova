@@ -2,7 +2,7 @@
 //! Pure Rust local inference is the default. No ollama dependency.
 //! f199=f199, f200=f200, f210=f333.
 //! f211=f334, f212=f335, f213=f336.
-//! f214=f337.
+//! f214=f337, f381=anthropic_stream.
 //! t129=T129, t130=T130, t131=T131, t134=T188.
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
@@ -393,7 +393,15 @@ pub fn f337(
             });
             rx
         }
-        T129::OpenAiCompat { .. } | T129::Anthropic { .. } => {
+        T129::Anthropic { api_key, model: default_model } => {
+            let use_model = if model.is_empty() {
+                default_model.clone()
+            } else {
+                model.to_string()
+            };
+            f381(api_key, &use_model, system, prompt)
+        }
+        T129::OpenAiCompat { .. } => {
             // Non-streaming fallback: generate full response and send as one chunk.
             let (tx, rx) = mpsc::channel();
             let provider = provider.clone();
@@ -710,6 +718,127 @@ fn default_providers() -> Vec<T130> {
         provider,
         default_model: model_name,
     }]
+}
+
+// ── Anthropic SSE Streaming ──────────────────────────────────────
+
+/// f381=anthropic_stream. Anthropic Messages API with SSE streaming.
+/// Returns receiver for token chunks, same pattern as f76.
+/// Parses content_block_delta events for incremental text.
+pub fn f381(
+    api_key: &str,
+    model: &str,
+    system: &str,
+    prompt: &str,
+) -> mpsc::Receiver<Arc<str>> {
+    let (tx, rx) = mpsc::channel();
+    let api_key = api_key.to_string();
+    let model = model.to_string();
+    let system = system.to_string();
+    let prompt = prompt.to_string();
+
+    std::thread::spawn(move || {
+        if let Err(e) = anthropic_stream_inner(&api_key, &model, &system, &prompt, &tx) {
+            let _ = tx.send(Arc::from(format!("Error: {}", e)));
+        }
+    });
+
+    rx
+}
+
+fn anthropic_stream_inner(
+    api_key: &str,
+    model: &str,
+    system: &str,
+    prompt: &str,
+    tx: &mpsc::Sender<Arc<str>>,
+) -> Result<(), String> {
+    let body = serde_json::json!({
+        "model": model,
+        "max_tokens": 8192,
+        "stream": true,
+        "system": system,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    });
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| format!("http client: {}", e))?;
+
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2024-10-22")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| format!("anthropic request: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "anthropic http {}: {}",
+            resp.status(),
+            resp.text().unwrap_or_default()
+        ));
+    }
+
+    // Parse SSE stream: lines starting with "data: " contain JSON events.
+    let reader = std::io::BufReader::new(resp);
+    use std::io::BufRead;
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+
+        // SSE format: "data: {json}" or empty lines or "event: ..." lines.
+        let Some(data) = line.strip_prefix("data: ") else {
+            continue;
+        };
+
+        if data == "[DONE]" {
+            break;
+        }
+
+        // Parse the SSE event JSON.
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(data) else {
+            continue;
+        };
+
+        let event_type = event.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+        match event_type {
+            "content_block_delta" => {
+                // Extract text from delta.text field.
+                if let Some(text) = event
+                    .get("delta")
+                    .and_then(|d| d.get("text"))
+                    .and_then(|t| t.as_str())
+                    && !text.is_empty()
+                    && tx.send(Arc::from(text)).is_err()
+                {
+                    break; // Receiver dropped.
+                }
+            }
+            "message_stop" => break,
+            "error" => {
+                let msg = event
+                    .get("error")
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown error");
+                let _ = tx.send(Arc::from(format!("Error: {}", msg)));
+                break;
+            }
+            _ => {} // message_start, content_block_start, ping, etc.
+        }
+    }
+
+    Ok(())
 }
 
 // ── Tests ────────────────────────────────────────────────────────

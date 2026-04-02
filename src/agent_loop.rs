@@ -26,8 +26,8 @@ pub fn f147(
     conversation: &str,
     project_dir: &Path,
 ) -> t106 {
-    // Run inference with streaming.
-    let rx = crate::inference::f76(model_path, system_prompt, &[], conversation);
+    // Run inference with streaming. f382 picks local/remote/auto.
+    let rx = crate::inference::f382(model_path, system_prompt, &[], conversation);
 
     let mut full_response = String::new();
     let mut stdout = std::io::stdout();
