@@ -18,6 +18,12 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-04-03 — Subatomic Models Trained + NanoSign + P23 + Blueprint
+
+**What:** Trained first 3 subatomic models on bt's AMD RX 5700 XT via any-gpu Vulkan: slop_detector (514 params, 89.4%), code_vs_english (514 params, 94.2%), lang_detector (1,285 params, 97.0%). Built swarm training infrastructure ([`src/swarm/train.rs`](src/swarm/train.rs), f389-f392). Harvested 240,596 crates from crates.io to bt `/mnt/data/crates/` (34GB). Published NanoSign spec ([`docs/NANOSIGN.md`](docs/NANOSIGN.md)) — universal AI model signing (36 bytes, BLAKE3, any format). Created P23 Triple Lens Research Protocol. Published 66-model subatomic catalog ([`docs/SUBATOMIC_CATALOG.md`](docs/SUBATOMIC_CATALOG.md)). Consolidated full blueprint ([`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md)). Added C2 fleet commands: status (f385), peek (f386), unblock daemon (f387), QA sweep (f388).
+**Commits:** `a4da3f6`, `80965f6`, `2c6d647`, `f244483`, `5671ca3`, `c36064c`, `96f8245`, `329c7cd`
+**AI Role:** AI implemented training pipeline, ran GPU training on bt, designed NanoSign spec, wrote P23 protocol, consolidated blueprint. Human directed model selection, architecture principles (sled priority queue, intent-driven priority, shared models, one-document consolidation), NanoSign as open standard.
+
 ### 2026-04-02 — Pyramid Architecture + Docs Audit
 
 **What:** Designed full Pyramid Architecture ([`docs/PYRAMID_ARCHITECTURE.md`](docs/PYRAMID_ARCHITECTURE.md)): subatomic/molecular/cellular model tiers with shared mmap'd nanobyte weight blob. Named Noodle the penguin as companion AI (inspired by Claude Code's buddy system). Added shitty_test_detector (REAL/SMOKE/MISSING classifier), claim_verifier (README-as-test), 11-model starter nanobyte pack. Cross-referenced every README claim to source file. Full docs audit.

@@ -7,6 +7,19 @@ All notable changes to Kova are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-04-03
+
+### Added
+- **Swarm training** ([`src/swarm/train.rs`](src/swarm/train.rs)): Trigram hash → linear classifier training (f389-f392). Sub-10K param models with microsecond inference.
+- **3 proven subatomic models** ([`assets/models/`](assets/models/)): slop_detector (514 params, 89.4%), code_vs_english (514 params, 94.2%), lang_detector (1,285 params, 97.0%). Trained on AMD RX 5700 XT via any-gpu Vulkan.
+- **C2 fleet commands** ([`src/c2.rs`](src/c2.rs)): status (f385), peek (f386), unblock daemon (f387), QA sweep (f388). Unblock auto-approves prompts, flushes pasted text, retries rate limits with 60s cooldown.
+- **NanoSign spec** ([`docs/NANOSIGN.md`](docs/NANOSIGN.md)): Universal AI model signing. 36 bytes (NSIG + BLAKE3 hash) appended to any model file. Self-verifying. Format-agnostic.
+- **P23 Triple Lens Research Protocol**: 3 opposing perspectives (optimist/pessimist/paranoia) + synthesis. All architecture decisions go through P23.
+- **Subatomic model catalog** ([`docs/SUBATOMIC_CATALOG.md`](docs/SUBATOMIC_CATALOG.md)): 66 unique models across 12 Rust construct categories + 6 shared universals.
+- **Consolidated blueprint** ([`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md)): One document covering the full pyramid architecture.
+- **Crates.io harvest**: 240,596 crates (34GB) downloaded to bt `/mnt/data/crates/`. Extraction scripts for training data.
+- **Sled priority queue** design: Intent-driven model caching. Human input drives which models are hot. OS page cache handles memory hierarchy.
+
 ## [0.7.1] - 2026-04-02
 
 ### Added

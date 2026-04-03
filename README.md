@@ -142,20 +142,46 @@ Local LLM tournament system. Models compete across weight classes and event type
 
 ## Planned: Pyramid Architecture
 
-> **Status: Design complete, not yet implemented.** Full plan: [`docs/PYRAMID_ARCHITECTURE.md`](docs/PYRAMID_ARCHITECTURE.md)
+> **Consolidated blueprint:** [`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md). Full model catalog: [`docs/SUBATOMIC_CATALOG.md`](docs/SUBATOMIC_CATALOG.md).
 
-The next major initiative: replace external API dependency with a pyramid of locally-trained models.
+Replace external AI APIs with a pyramid of locally-trained models. Not competing on model size — competing on SPEED and SPECIALIZATION.
 
-- **Tier 1 — Subatomic** (sub-100K params): Hundreds of single-task specialists. Typo fix, binary classify, flag expand, token tag. Microsecond inference. First proof-of-concept: **Noodle the penguin** — kova's companion AI (inspired by [Claude Code](https://claude.com/claude-code)'s buddy system). 30K param personality model that reacts to session events with short quips. ([plan](docs/PYRAMID_ARCHITECTURE.md#noodle-the-penguin-first-demo-subatomic))
-- **Tier 2 — Molecular** (100K-1M params): Coordinators with learned routing weights to subatomics. Intent routing, context summarization, tool selection. ([plan](docs/PYRAMID_ARCHITECTURE.md#molecular-model-registry-tier-2))
-- **Tier 3 — Cellular** (1M-10M params): Domain specialists. Code generation, conversation, planning. ([plan](docs/PYRAMID_ARCHITECTURE.md#cellular-model-registry-tier-3))
-- **Starter Nanobyte**: 10 subatomic models ship embedded in the binary — working pyramid on first run, zero setup. ([plan](docs/PYRAMID_ARCHITECTURE.md#starter-nanobyte--ships-with-the-binary))
+- **Tier 1 — Subatomic** (sub-100K params): 66 unique single-task classifiers + 6 shared universals. ~55K total params. Fits in L2 cache. Microsecond inference. Full catalog: [`docs/SUBATOMIC_CATALOG.md`](docs/SUBATOMIC_CATALOG.md). First proof-of-concept: **Noodle the penguin** — companion AI inspired by [Claude Code](https://claude.com/claude-code)'s buddy system.
+- **Tier 2 — Molecular** (100K-1M params): Coordinators with learned routing weights to subatomics. Intent routing, context summarization, tool selection.
+- **Tier 3 — Cellular** (1M-10M params): Domain specialists. Code generation, conversation, planning.
+- **Starter Nanobyte**: 11 subatomic models ship embedded in the binary — working pyramid on first run, zero setup (~370K params, <2MB quantized).
 
-All tiers share a single mmap'd weight blob called a **nanobyte** ([plan](docs/PYRAMID_ARCHITECTURE.md#nanobyte-file-format)). Each model is a Rust function reading from different byte offsets. Cross-tier routing weights are trained, not hardcoded. Confidence gating means most requests never get past tier 1.
+All tiers share a single mmap'd weight blob called a **nanobyte**. Each model is a Rust function reading from different byte offsets. Cross-tier routing weights are trained, not hardcoded. Confidence gating — most requests never get past T1.
 
-Claude trains its own replacement at every level via PTY bridge logging ([plan](docs/PYRAMID_ARCHITECTURE.md#claude-migration-timeline)). End state: fully closed pyramid, zero external API dependency.
+### Proven
 
-**What exists toward this goal:** candle training ([`candle_train.rs`](src/micro/candle_train.rs)), tournament scoring ([`tournament.rs`](src/micro/tournament.rs)), DPO/SFT export ([`train.rs`](src/micro/train.rs)), TurboQuant quantization ([`quantize.rs`](src/micro/quantize.rs)), epsilon-greedy routing ([`router.rs`](src/micro/router.rs)), validation gates ([`validate.rs`](src/micro/validate.rs)), circuit breakers ([`runner.rs`](src/micro/runner.rs)). **What's not built yet:** nanobyte format, swarm.rs pyramid orchestrator, PTY bridge, discovery module, the trained models themselves.
+3 subatomic models trained on bt's AMD RX 5700 XT via [any-gpu](https://github.com/cochranblock/any-gpu) Vulkan ([`assets/models/`](assets/models/)):
+
+| Model | Params | Accuracy | Inference |
+|-------|--------|----------|-----------|
+| slop_detector | 514 | 89.4% | ~5us |
+| code_vs_english | 514 | 94.2% | ~4us |
+| lang_detector | 1,285 | 97.0% | ~6us |
+
+Training infrastructure: [`src/swarm/train.rs`](src/swarm/train.rs) (f389-f392). Architecture: trigram hash → 256-dim features → linear classifier.
+
+### Training Corpus
+
+240,596 crates from crates.io (34GB, latest versions). Harvested to bt `/mnt/data/crates/` (870GB dedicated storage). Extraction: [`scripts/extract_corpus.sh`](scripts/extract_corpus.sh). Training data: [`scripts/build_training_data.sh`](scripts/build_training_data.sh).
+
+### Key Concepts
+
+- **Sled priority queue** — one sled DB, priority scores per model, OS page cache handles memory hierarchy. No manual zones. ([blueprint](docs/KOVA_BLUEPRINT.md#3-memory-architecture-one-sled-one-priority-queue))
+- **Intent-driven priority** — human input drives which models are hot. The human is the cache controller. ([blueprint](docs/KOVA_BLUEPRINT.md#4-intent-driven-priority-engine))
+- **Shared models** — 6 universal models (visibility, doc-needed, lifetime-needed, naming, complexity, deprecated) work across all Rust constructs. ([catalog](docs/SUBATOMIC_CATALOG.md#shared-models-across-constructs))
+- **NanoSign** — universal AI model signing. 36 bytes (NSIG + BLAKE3 hash) appended to any model file. Self-verifying. Format-agnostic. ([spec](docs/NANOSIGN.md))
+- **P23 Triple Lens** — all architecture decisions use 3 opposing perspectives (optimist/pessimist/paranoia) + synthesis. ([blueprint](docs/KOVA_BLUEPRINT.md#10-p23-triple-lens-research-protocol))
+
+### Claude Migration
+
+Claude trains its own replacement at every level via PTY bridge logging. Phase 1: subatomics online. Phase 2: molecular replaces Claude T2. Phase 3: cellular replaces T3. **Phase 4: pyramid seals shut, API key deleted, zero dependency.** ([blueprint](docs/KOVA_BLUEPRINT.md#8-claude-migration-path))
+
+**What exists:** swarm training infra ([`src/swarm/`](src/swarm/)), 3 proven models ([`assets/models/`](assets/models/)), 240K crate corpus, candle training ([`src/micro/candle_train.rs`](src/micro/candle_train.rs)), tournament scoring, quantization, routing, validation. **What's not built yet:** nanobyte format, pyramid orchestrator, PTY bridge, discovery module.
 
 ---
 

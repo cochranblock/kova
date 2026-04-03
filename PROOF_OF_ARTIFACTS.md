@@ -78,14 +78,32 @@ flowchart TD
 | WASM Client | Pure Rust egui compiled to WASM, embedded at build | [`src/web_client/`](src/web_client/) |
 | RAG | fastembed vectors + sled index for codebase retrieval | [`src/rag.rs`](src/rag.rs) |
 | Tokenization | 100% coverage — every public symbol compressed | [`src/tokenization.rs`](src/tokenization.rs) |
+| Swarm Training | Trigram hash → linear classifier, GPU-accelerated | [`f389`-`f392` in `src/swarm/train.rs`](src/swarm/train.rs) |
+| C2 Fleet | Status, peek, unblock daemon, QA sweep | [`f385`-`f388` in `src/c2.rs`](src/c2.rs) |
+| NanoSign | Universal AI model signing (36 bytes, BLAKE3) | [`docs/NANOSIGN.md`](docs/NANOSIGN.md) |
 
-## Planned: Pyramid Architecture
+## Proven: Subatomic Models on AMD GPU
 
-> **Not yet implemented.** Design complete: [`docs/PYRAMID_ARCHITECTURE.md`](docs/PYRAMID_ARCHITECTURE.md)
+3 models trained on bt's RX 5700 XT via [any-gpu](https://github.com/cochranblock/any-gpu) Vulkan. Weights in [`assets/models/`](assets/models/).
 
-- Subatomic models (sub-100K params) in shared mmap'd nanobyte blob
-- 11-model starter pack ships embedded in binary
+| Model | Params | Accuracy | Train Time | Inference | Source |
+|-------|--------|----------|-----------|-----------|--------|
+| slop_detector | 514 | 89.4% | 18.4s | ~5us | [`assets/models/slop_detector/`](assets/models/slop_detector/) |
+| code_vs_english | 514 | 94.2% | 4.2s | ~4us | [`assets/models/code_vs_english/`](assets/models/code_vs_english/) |
+| lang_detector | 1,285 | 97.0% | 12.9s | ~6us | [`assets/models/lang_detector/`](assets/models/lang_detector/) |
+
+Training corpus: 240,596 crates from crates.io (34GB) on bt `/mnt/data/crates/`.
+
+## Planned: Full Pyramid
+
+> Blueprint: [`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md). Model catalog: [`docs/SUBATOMIC_CATALOG.md`](docs/SUBATOMIC_CATALOG.md).
+
+- 66 unique subatomic models + 6 shared universals (~55K params, fits in L2 cache)
+- 11-model starter nanobyte ships embedded in binary (<2MB)
 - Noodle the penguin — companion AI (inspired by [Claude Code](https://claude.com/claude-code)'s buddy system)
+- Sled priority queue driven by human intent — the human is the cache controller
+- NanoSign model integrity ([`docs/NANOSIGN.md`](docs/NANOSIGN.md))
+- P23 Triple Lens Research Protocol — 3 opposing perspectives + synthesis
 - Claude migration path: pyramid seals shut, zero external API dependency
 
 ## How to Verify
