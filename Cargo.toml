@@ -61,6 +61,7 @@ fastembed = { version = "5", optional = true }
 ordered-float = { version = "4", optional = true }
 dirs = "5"
 glob = "0.3"
+regex = "1"
 enigo = { version = "0.2", optional = true, default-features = false, features = ["x11rb"] }
 capnp = { version = "0.25", optional = true }
 candle-core = { version = "0.9", optional = true }

@@ -300,3 +300,8 @@ sshallp() {
     wait
     echo -e "\033[38;5;135m[ ok ] done\033[0m"
 }
+
+# squeeze aliases
+alias ksq='kova squeeze'
+alias ksqa='kova squeeze --apply'
+alias ksqr='kova squeeze --remote'

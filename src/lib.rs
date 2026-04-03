@@ -62,6 +62,7 @@ pub mod output;
 #[cfg(feature = "inference")]
 pub mod pipeline;
 pub mod recent_changes;
+pub mod squeeze;
 #[cfg(feature = "inference")]
 pub mod router;
 #[cfg(feature = "serve")]

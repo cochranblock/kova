@@ -97,6 +97,9 @@ enum Cmd {
     /// Tokenization validator. Check compression protocol coverage.
     #[command(name = "tokens")]
     Tokens,
+    /// Squeeze: mine history + AI rules for unaliased command patterns. f393.
+    #[command(name = "squeeze")]
+    Squeeze(SqueezeArgs),
     /// Deploy: sync + build --release on all worker nodes. Shortcut for c2 build --broadcast --release.
     #[command(name = "deploy")]
     Deploy {
@@ -988,6 +991,25 @@ struct RecentArgs {
     /// Files modified in last N minutes (default: 30)
     #[arg(short, long, default_value = "30")]
     minutes: u64,
+}
+
+#[derive(clap::Args)]
+struct SqueezeArgs {
+    /// Project directory (default: cwd)
+    #[arg(short, long)]
+    project: Option<std::path::PathBuf>,
+    /// Also scan remote node histories via SSH (slower)
+    #[arg(long)]
+    remote: bool,
+    /// Show top N suggestions (default: 20)
+    #[arg(short, long, default_value = "20")]
+    top: usize,
+    /// Auto-append suggested aliases to ~/.kova-aliases
+    #[arg(long)]
+    apply: bool,
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    format: String,
 }
 
 #[derive(clap::Args)]
@@ -2484,6 +2506,24 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
                 eprintln!("No files modified in last {} minutes.", args.minutes);
             } else {
                 print!("{}", out);
+            }
+            Ok(())
+        }
+        Some(Cmd::Squeeze(args)) => {
+            let project = args
+                .project
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let cfg = kova::squeeze::t177 {
+                project,
+                remote: args.remote,
+                top: args.top,
+                apply: args.apply,
+                json: args.format == "json",
+            };
+            let report = kova::squeeze::f393(&cfg)?;
+            print!("{}", kova::squeeze::f398(&report));
+            if cfg.apply {
+                kova::squeeze::f399(&report)?;
             }
             Ok(())
         }
