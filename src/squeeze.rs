@@ -18,6 +18,37 @@ pub struct t177 {
     pub json: bool,
 }
 
+// Known node tokens: hostname → short token (from node_cmd.rs)
+const NODE_MAP: &[(&str, &str)] = &[
+    ("gd", "g"), ("lf", "l"), ("bt", "b"), ("st", "s"),
+    ("kova-tunnel-god", "g"), ("kova-legion-forge", "l"),
+    ("kova-thick-beast", "b"), ("kova-elite-support", "s"),
+];
+// IP last-octet → node token
+const IP_NODE_MAP: &[(&str, &str)] = &[
+    ("47", "g"), ("51", "g"),  // gd IPs
+    ("50", "b"),               // bt IP
+    ("45", "l"),               // lf IP
+    ("53", "s"), ("52", "s"),  // st IPs
+];
+
+// Blocklist: never use these as alias names (shell builtins, common tools, confusing)
+const ALIAS_BLOCKLIST: &[&str] = &[
+    "c", "s", "l", "b", "g", "t", "r", "p", "x", "n", "e", "f", "d", "w", "m",
+    "if", "do", "in", "fi", "cd", "ls", "rm", "cp", "mv", "sh", "su",
+    "test", "true", "false", "echo", "read", "eval", "exec", "exit",
+    "set", "env", "pwd", "let", "for", "while", "case", "then", "else",
+    "alias", "export", "source", "return", "break", "continue",
+    "ssh", "scp", "git", "cargo", "make", "curl", "grep", "find", "cat",
+    "k", "ka", "ks", "kg", "kc", "kt", "kb", "kr", "km", "kp", "kx", "kn",
+];
+
+// Regex for lines that may contain secrets — strip from history
+fn is_secret_line(line: &str) -> bool {
+    let re = Regex::new(r"(?i)(TOKEN|SECRET|KEY|PASSWORD|PASS|API_KEY|CREDENTIALS|AUTH)[\s=:]").unwrap();
+    re.is_match(line)
+}
+
 /// t178 = CommandEntry
 struct t178 {
     cmd: String,
@@ -134,7 +165,7 @@ pub fn f393(cfg: &t177) -> anyhow::Result<t182> {
                         } else {
                             line.trim().to_string()
                         };
-                        if !cmd.is_empty() {
+                        if !cmd.is_empty() && !is_secret_line(&cmd) {
                             commands.push(t178 {
                                 cmd,
                                 source: format!("ssh:{node}"),
@@ -252,7 +283,7 @@ fn f394(path: &Path) -> Vec<t178> {
         } else {
             line.trim().to_string()
         };
-        if !cmd.is_empty() && !cmd.starts_with('#') {
+        if !cmd.is_empty() && !cmd.starts_with('#') && !is_secret_line(&cmd) {
             out.push(t178 {
                 cmd,
                 source: source.clone(),
@@ -521,11 +552,22 @@ pub fn f398(report: &t182) -> String {
     out
 }
 
-/// f399 — append suggestions to ~/.kova-aliases
+/// f399 — append suggestions to ~/.kova-aliases (with preview)
 pub fn f399(report: &t182) -> anyhow::Result<()> {
     use std::io::Write;
+    if report.suggestions.is_empty() {
+        eprintln!("squeeze: nothing to apply");
+        return Ok(());
+    }
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
     let path = home.join("kova/.kova-aliases");
+
+    // Preview what will be written
+    eprintln!("== applying {} aliases to {} ==", report.suggestions.len(), path.display());
+    for s in &report.suggestions {
+        eprintln!("  + {}", s.alias_body);
+    }
+
     let mut file = std::fs::OpenOptions::new()
         .append(true)
         .open(&path)?;
@@ -535,7 +577,7 @@ pub fn f399(report: &t182) -> anyhow::Result<()> {
     for s in &report.suggestions {
         writeln!(file, "{}", s.alias_body)?;
     }
-    eprintln!("squeeze: {} aliases appended to {}", report.suggestions.len(), path.display());
+    eprintln!("squeeze: done. Run `source ~/.kova-aliases` or `ka` to reload.");
     Ok(())
 }
 
@@ -568,27 +610,37 @@ fn generate_alias(
     let re_source = Regex::new(r"^source\s+(\S+)").unwrap();
     let re_export_path = Regex::new(r#"^export\s+PATH="#).unwrap();
 
-    // SSH to short hostname: sg, sl, sb, ss
+    // SSH to short hostname: use node token map (gd→rg, lf→rl, bt→rb, st→rs)
     if let Some(caps) = re_ssh_simple.captures(raw) {
         let host = caps.get(1).unwrap().as_str();
-        let name = format!("s{}", host);
+        let token = NODE_MAP.iter()
+            .find(|(h, _)| *h == host)
+            .map(|(_, t)| *t)
+            .unwrap_or(&host[..1.min(host.len())]);
+        let name = format!("r{}", token); // r = remote + node token
         let name = dedup_name(&name, used);
         let body = format!("{}() {{ ssh {} \"$@\"; }}", name, host);
         return (name, body);
     }
 
-    // SSH with long options (IP-based)
+    // SSH with long options (IP-based) — map IP to node token
     if let Some(caps) = re_ssh_long.captures(raw) {
         let target = caps.get(1).unwrap().as_str();
-        // Extract last octet or hostname
-        let re_ip = Regex::new(r"(\d+)$").unwrap();
-        let suffix = if let Some(m) = re_ip.find(target) {
-            m.as_str()
+        let re_ip = Regex::new(r"\.(\d+)$").unwrap();
+        let token = if let Some(ip_caps) = re_ip.captures(target) {
+            let octet = ip_caps.get(1).unwrap().as_str();
+            IP_NODE_MAP.iter()
+                .find(|(o, _)| *o == octet)
+                .map(|(_, t)| format!("r{}", t))
+                .unwrap_or_else(|| format!("r{}", octet))
         } else {
-            &target[..2.min(target.len())]
+            // Try hostname match
+            NODE_MAP.iter()
+                .find(|(h, _)| target.contains(*h))
+                .map(|(_, t)| format!("r{}", t))
+                .unwrap_or_else(|| format!("r{}", &target[..2.min(target.len())]))
         };
-        let name = format!("ss{}", suffix);
-        let name = dedup_name(&name, used);
+        let name = dedup_name(&token, used);
         let body = format!("{}() {{ ssh -o ConnectTimeout=5 {} \"$@\"; }}", name, target);
         return (name, body);
     }
@@ -656,12 +708,14 @@ fn generate_alias(
 }
 
 fn dedup_name(base: &str, used: &std::collections::HashSet<String>) -> String {
-    if !used.contains(base) {
+    let blocked = ALIAS_BLOCKLIST.contains(&base);
+    if !blocked && !used.contains(base) {
         return base.to_string();
     }
+    // If blocklisted or taken, start numbering from 2
     for i in 2..=99 {
         let candidate = format!("{}{}", base, i);
-        if !used.contains(&candidate) {
+        if !ALIAS_BLOCKLIST.contains(&candidate.as_str()) && !used.contains(&candidate) {
             return candidate;
         }
     }
