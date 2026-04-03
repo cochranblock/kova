@@ -2,6 +2,17 @@
 
 > Prioritized stack. Top item = next work. Max 20 items. Stale items (2+ weeks untouched) get dropped. Re-read on idle.
 
+## Interrupt Protocol
+
+The backlog is the interrupt handler. When a pane gets interrupted mid-task:
+
+1. **New task arrives** → Escape interrupts current work
+2. **Auto-push** → Current work description prepended as item #1, tagged `[interrupted]`
+3. **New task executes** → Runs to completion
+4. **Auto-pop** → When done, pop BACKLOG.md #1 (`[interrupted]` item) and resume where left off
+
+Nothing gets lost. Interrupted work always goes on top of the stack. Context switches are lossless. This is standard for all panes.
+
 1. [build] **Extract crates.io corpus on bt** — Run `scripts/extract_corpus.sh` on bt `/mnt/data/crates/` (240K crates, 34GB harvested). Extract .rs files to `/mnt/data/corpus/`. This unlocks real training data for all subatomic models. Depends: harvest complete (done).
 
 2. [build] **Build training JSONL from corpus** — Run `scripts/build_training_data.sh` on extracted corpus. Generate rust_kinds, slop_detector, code_vs_english JSONL. Retrain 3 proven models on real data instead of synthetic. Measure accuracy improvement.
