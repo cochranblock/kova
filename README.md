@@ -23,128 +23,139 @@ Augment engine. Local-first agentic tool loop with dual-mode inference, swarm or
 
 ## What Works Today
 
-### Agent Loop (`src/agent_loop.rs`)
+### Agent Loop ([`src/agent_loop.rs`](src/agent_loop.rs))
 
-Streaming agentic tool loop. LLM calls tools, gets results, repeats until done. Dual-mode inference via `KOVA_INFERENCE` env — local Kalosm GGUF or Anthropic API with SSE streaming. Context auto-compacts at 80% of budget using LLM-powered summarization. File checkpoints taken before every write/edit for undo support.
+Streaming agentic tool loop. LLM calls tools, gets results, repeats until done. Dual-mode inference via `KOVA_INFERENCE` env — local Kalosm GGUF or Anthropic API with SSE streaming ([`f382`](src/inference/mod.rs)). Context auto-compacts at 80% of budget via LLM-powered summarization ([`f380`](src/context_mgr.rs)). File checkpoints taken before every write/edit for undo support ([`f383`/`f384`](src/tools.rs)).
 
-### Tools (`src/tools.rs`, 2,017 lines)
+- [`f147`](src/agent_loop.rs) — single agent turn: inference, parse tool calls, execute, return action
+- [`f148`](src/agent_loop.rs) — agent loop: run turns until done or max iterations
 
-13 tools available to the agent:
+### Tools ([`src/tools.rs`](src/tools.rs), 2,017 lines)
 
-| Tool | Purpose |
-|------|---------|
-| `read_file` | Read file contents with optional offset/limit |
-| `write_file` | Write content to file, auto-creates dirs |
-| `edit_file` | Find-and-replace exact text (must be unique match) |
-| `exec` | Shell command execution via `$SHELL` (default `/bin/sh`) |
-| `glob` | Find files matching glob patterns |
-| `grep` | Search file contents for text patterns |
-| `memory_write` | Append to persistent memory (`~/.kova/memory.md`) |
-| `code_review` | LLM-powered code review with severity scoring |
-| `code_outline` | Extract functions, structs, enums from Rust source |
-| `record_failure` | Record challenge failure for training feedback loop |
-| `undo_edit` | Restore file from last checkpoint (sled-backed) |
-| `rag_search` | Semantic search over indexed codebase (requires `rag` feature) |
-| `pixel_forge` | Generate pixel art sprites via Pixel Forge plugin |
+13 tools available to the agent. Registered in [`TOOLS`](src/tools.rs) array, dispatched by [`f141`](src/tools.rs):
 
-Permission gates: `KOVA_PERMS=guarded` prompts before shell execution and git mutations. Default is `open` (no prompts).
+| Tool | Implementation | Purpose |
+|------|---------------|---------|
+| `read_file` | [`f142`](src/tools.rs) | Read file contents with optional offset/limit |
+| `write_file` | [`f143`](src/tools.rs) | Write content to file, auto-creates dirs |
+| `edit_file` | [`f144`](src/tools.rs) | Find-and-replace exact text (must be unique match) |
+| `exec` | [`f145`](src/tools.rs) | Shell command execution via `$SHELL` (default `/bin/sh`) |
+| `glob` | [`f146`](src/tools.rs) | Find files matching glob patterns |
+| `grep` | [`f150`](src/tools.rs) | Search file contents for text patterns |
+| `memory_write` | [`f155`](src/tools.rs) | Append to persistent memory (`~/.kova/memory.md`) |
+| `code_review` | [`f207`](src/tools.rs) | LLM-powered code review with severity scoring |
+| `code_outline` | [`f208`](src/tools.rs) | Extract functions, structs, enums from Rust source |
+| `record_failure` | [`f209`](src/tools.rs) | Record challenge failure for training feedback loop |
+| `undo_edit` | [`f384`](src/tools.rs) | Restore file from last checkpoint (sled-backed) |
+| `rag_search` | [`f166`](src/rag.rs) | Semantic search over indexed codebase (requires `rag` feature) |
+| `pixel_forge` | [`f220`](src/tools.rs) | Generate pixel art sprites via Pixel Forge plugin |
 
-### REPL (`src/repl.rs`)
+Permission gates ([`is_guarded`/`perm_gate`](src/tools.rs)): `KOVA_PERMS=guarded` prompts before shell execution and git mutations ([`is_git_mutation`](src/tools.rs)). Default is `open` (no prompts).
 
-Interactive chat. `kova` with no args starts the REPL. Loads system prompt from persona, project context, memory, and tool definitions. Routes through `f382` (local/remote/auto inference). Commands: `/exit`, `/clear`, `/project <path>`, `/tools`.
+### REPL ([`src/repl.rs`](src/repl.rs))
 
-### C2 Swarm Orchestration (`src/c2.rs`, 1,309 lines)
+Interactive chat. `kova` with no args starts the REPL ([`f137`](src/repl.rs)). System prompt assembled by [`f139`](src/repl.rs) from persona, project context, memory, and tool definitions. Routes through [`f382`](src/inference/mod.rs) (local/remote/auto inference). Commands: `/exit`, `/clear`, `/project <path>`, `/tools`.
 
-Distributed build and command execution across 4 worker nodes:
+### C2 Swarm Orchestration ([`src/c2.rs`](src/c2.rs), 1,309 lines)
 
-- **Broadcast build**: One-command sync + `cargo build --release` on all nodes
-- **tmux dispatch** (`f377`): Send to tmux pane with retry + exponential backoff
-- **tmux broadcast** (`f378`): Send to all windows with stagger delay
-- **sponge mesh** (`f379`): Fast pass + rate-limit-aware retry with backoff
-- **Node commands** (`c1-c9`, `ci`): Tokenized SSH commands (status, specs, services, sync, build, deploy)
-- **Wake-on-LAN**: Wake sleeping nodes
-- **SSH host certificates**: Zero-churn host key management
-- **Binary deploy**: rsync kova + models to nodes, restart services
+Distributed build and command execution across 4 worker nodes ([`f350`](src/c2.rs)):
 
-### Inference (`src/inference/`)
+- **Broadcast build** ([`f356`](src/c2.rs)): One-command sync + `cargo build --release` on all nodes
+- **Parallel sync** ([`f357`](src/c2.rs)): Tar-stream or rsync to all nodes
+- **tmux dispatch** ([`f377`](src/c2.rs)): Send to tmux pane with retry + exponential backoff
+- **tmux broadcast** ([`f378`](src/c2.rs)): Send to all windows with stagger delay
+- **sponge mesh** ([`f379`](src/c2.rs)): Fast pass + rate-limit-aware retry with backoff
+- **Node commands** ([`src/node_cmd.rs`](src/node_cmd.rs)): Tokenized SSH commands `c1-c9`, `ci` (status, specs, services, sync, build, deploy)
+- **Wake-on-LAN** ([`f352`](src/c2.rs)): Wake sleeping nodes via MAC address
+- **SSH host certificates** ([`src/ssh_ca.rs`](src/ssh_ca.rs)): Zero-churn host key management
+- **Binary deploy** ([`f370`](src/c2.rs)): rsync kova + models to nodes, restart services
+- **Hardware inspection** ([`src/inspect.rs`](src/inspect.rs)): CPU, RAM, GPU, disk detection via SSH ([`f359`](src/inspect.rs))
+
+### Inference ([`src/inference/`](src/inference/))
 
 Three backends, one dispatcher:
 
-| Backend | Module | Method |
-|---------|--------|--------|
-| Local GGUF | `inference/local.rs` | Kalosm + candle, LRU model cache, streaming |
-| Anthropic API | `inference/providers.rs` | SSE streaming, `content_block_delta` parsing |
-| IRONHIVE cluster | `inference/cluster.rs` | Distributed dispatch across worker nodes |
+| Backend | Module | Key Function | Method |
+|---------|--------|-------------|--------|
+| Local GGUF | [`inference/local.rs`](src/inference/local.rs) | [`f76`](src/inference/local.rs) | Kalosm + candle, LRU model cache, streaming |
+| Anthropic API | [`inference/providers.rs`](src/inference/providers.rs) | [`f381`](src/inference/providers.rs) | SSE streaming, `content_block_delta` parsing |
+| IRONHIVE cluster | [`inference/cluster.rs`](src/inference/cluster.rs) | [`T193.dispatch`](src/inference/cluster.rs) | Distributed dispatch across worker nodes |
+| Multi-provider | [`inference/providers.rs`](src/inference/providers.rs) | [`f199`](src/inference/providers.rs) | Ollama, OpenAI-compat, Anthropic (non-streaming) |
 
-`f382` (dual_stream) reads `KOVA_INFERENCE` env: `local`, `remote`, or `auto` (default — local if model exists, else Anthropic API). `KOVA_MODEL` overrides the remote model.
+[`f382`](src/inference/mod.rs) (dual_stream) reads `KOVA_INFERENCE` env: `local`, `remote`, or `auto` (default — local if model exists, else Anthropic API). `KOVA_MODEL` overrides the remote model.
 
-### Context Management (`src/context_mgr.rs`, 549 lines)
+### Context Management ([`src/context_mgr.rs`](src/context_mgr.rs), 549 lines)
 
-- Token estimation: chars/4 rough count
-- Context compaction (`f380`): When conversation hits 80% of budget, older turns are sent to inference for LLM-powered summarization. Recent 4 turns kept intact. Falls back to static trim if needed.
-- Tool output trimming: Head/tail with `[truncated]` marker
-- File checkpointing (`f383`/`f384`): Snapshots file contents to sled before write/edit. `undo_edit` tool restores from last checkpoint.
+- **Token estimation** ([`f170`](src/context_mgr.rs)): chars/4 rough count
+- **Context compaction** ([`f380`](src/context_mgr.rs)): When conversation hits 80% of budget, older turns are sent to inference for LLM-powered summarization. Recent 4 turns kept intact. Falls back to static trim ([`f171`](src/context_mgr.rs)) if needed.
+- **Tool output trimming** ([`f172`](src/context_mgr.rs)): Head/tail with `[truncated]` marker
+- **File checkpointing** ([`f383`](src/tools.rs)/[`f384`](src/tools.rs)): Snapshots file contents to sled before write/edit. `undo_edit` tool restores from last checkpoint.
 
-### Micro Olympics (`src/micro/`)
+### Micro Olympics ([`src/micro/`](src/micro/))
 
 Local LLM tournament system. Models compete across weight classes and event types.
 
-- **Tournament** (`tournament.rs`): 6 event types (sprint, technical, freestyle, judged, endurance, anti-slop), weight class brackets, DQ mechanism
-- **Training** (`candle_train.rs`): Pure Rust transformer training via candle. Three tiers (Spark 50K, Flame 500K, Blaze 2M). BPE tokenizer trained from scratch.
-- **Quantization** (`quantize.rs`): TurboQuant — FWHT + mixed-precision 2/4-bit + QJL residual recovery
-- **Routing** (`router.rs`): Epsilon-greedy bandit for template selection
-- **Validation** (`validate.rs`): Completeness, coherence, format, confidence checks
-- **Pipeline** (`pipe.rs`): Classify -> route -> run -> validate
+- **Tournament** ([`src/micro/tournament.rs`](src/micro/tournament.rs)): 6 event types (sprint, technical, freestyle, judged, endurance, anti-slop), weight class brackets, DQ mechanism ([`f250`](src/micro/tournament.rs))
+- **Training** ([`src/micro/candle_train.rs`](src/micro/candle_train.rs)): Pure Rust transformer training via candle. Three tiers — Spark 50K, Flame 500K, Blaze 2M ([`KovaClassifier`](src/micro/kova_model.rs))
+- **Quantization** ([`src/micro/quantize.rs`](src/micro/quantize.rs)): TurboQuant — FWHT ([`f366`](src/micro/quantize.rs)) + mixed-precision 2/4-bit ([`f371`](src/micro/quantize.rs)) + QJL residual recovery
+- **Routing** ([`src/micro/router.rs`](src/micro/router.rs)): Epsilon-greedy bandit for template selection ([`T153`](src/micro/router.rs))
+- **Validation** ([`src/micro/validate.rs`](src/micro/validate.rs)): Completeness, coherence, format, confidence checks ([`f263`](src/micro/validate.rs))
+- **Pipeline** ([`src/micro/pipe.rs`](src/micro/pipe.rs)): Classify -> route -> run -> validate ([`f240`](src/micro/pipe.rs))
+- **Training data** ([`src/micro/train.rs`](src/micro/train.rs)): Tournament results -> DPO pairs ([`f255`](src/micro/train.rs)) and SFT examples ([`f256`](src/micro/train.rs))
 
-### Code Generation Pipeline (`src/factory.rs`, `src/moe.rs`, `src/academy.rs`)
+### Code Generation Pipeline
 
-- **Factory** (`factory.rs`): 6-stage pipeline — classify, generate, compile, review, fix loop, output
-- **MoE** (`moe.rs`): Fan-out to N expert nodes, compile all variants, score, pick winner
-- **Academy** (`academy.rs`): Autonomous dev agent — task breakdown, code gen, test, commit
-- **Gauntlet** (`gauntlet.rs`): 5-phase stress test (crawl, walk, run, fight, survive)
+- **Factory** ([`src/factory.rs`](src/factory.rs)): 6-stage pipeline — classify, generate, compile, review, fix loop, output ([`T181`](src/factory.rs))
+- **MoE** ([`src/moe.rs`](src/moe.rs)): Fan-out to N expert nodes, compile all variants, score, pick winner ([`f341`](src/moe.rs))
+- **Academy** ([`src/academy.rs`](src/academy.rs)): Autonomous dev agent — task breakdown, code gen, test, commit ([`f301`](src/academy.rs))
+- **Gauntlet** ([`src/gauntlet.rs`](src/gauntlet.rs)): 5-phase stress test — crawl, walk, run, fight, survive ([`T187`](src/gauntlet.rs))
 
 ### Surfaces
 
 | Surface | Module | Status |
 |---------|--------|--------|
-| TUI | `src/tui.rs` (1,672 lines) | Ratatui terminal UI — agent chat, visual QC |
-| Native GUI | `src/gui.rs` (1,660 lines) | egui desktop — REPL, backlog, sprite QC |
-| HTTP API | `src/serve.rs` (1,351 lines) | Axum + WebSocket streaming + embedded WASM client |
-| MCP Server | `src/mcp.rs` (508 lines) | Model Context Protocol via JSON-RPC stdio |
-| WASM Client | `src/web_client/` | egui in browser via `kova s` |
+| TUI | [`src/tui.rs`](src/tui.rs) (1,672 lines) | Ratatui terminal UI — agent chat, visual QC |
+| Native GUI | [`src/gui.rs`](src/gui.rs) (1,660 lines) | egui desktop — REPL, backlog, sprite QC |
+| HTTP API | [`src/serve.rs`](src/serve.rs) (1,351 lines) | Axum + WebSocket streaming + embedded WASM client |
+| MCP Server | [`src/mcp.rs`](src/mcp.rs) (508 lines) | Model Context Protocol via JSON-RPC stdio |
+| WASM Client | [`src/web_client/`](src/web_client/) | egui in browser via `kova s` |
 
 ### Other Working Modules
 
 | Module | Lines | Purpose |
 |--------|-------|---------|
-| `config.rs` | 791 | Config, paths, feature detection, model resolution |
-| `rag.rs` | 749 | fastembed vectors, sled index, chunk + search Rust files |
-| `feedback.rs` | 702 | Failure recording, harder challenge generation, DPO loop |
-| `syntax.rs` | 636 | Symbol extraction from Rust source files |
-| `review.rs` | 477 | LLM code review: staged, branch diff, severity scoring |
-| `git_cmd.rs` | 450 | Tokenized git commands (g0-g9), compressed output |
-| `ci.rs` | 387 | CI mode: headless quality gate, watch for changes |
-| `imagegen.rs` | 383 | Image generation: Stable Diffusion, DALL-E dispatch |
-| `training_data.rs` | 375 | Trace -> DPO/SFT/CSV export for fine-tuning |
-| `tokenization.rs` | 308 | Compression protocol validator |
+| [`config.rs`](src/config.rs) | 791 | Config, paths, feature detection, model resolution |
+| [`rag.rs`](src/rag.rs) | 749 | fastembed vectors, sled index, chunk + search Rust files |
+| [`feedback.rs`](src/feedback.rs) | 702 | Failure recording ([`f194`](src/feedback.rs)), harder challenge generation ([`f196`](src/feedback.rs)), DPO loop |
+| [`syntax.rs`](src/syntax.rs) | 636 | Symbol extraction from Rust source files |
+| [`review.rs`](src/review.rs) | 477 | LLM code review: staged ([`f186`](src/review.rs)), branch diff ([`f187`](src/review.rs)), severity scoring |
+| [`git_cmd.rs`](src/git_cmd.rs) | 450 | Tokenized git commands g0-g9 ([`f156`-`f160`](src/git_cmd.rs)), compressed output |
+| [`ci.rs`](src/ci.rs) | 387 | CI mode: headless quality gate ([`f177`](src/ci.rs)), watch for changes ([`f178`](src/ci.rs)) |
+| [`imagegen.rs`](src/imagegen.rs) | 383 | Image generation: Stable Diffusion ([`f190`](src/imagegen.rs)), DALL-E dispatch ([`f191`](src/imagegen.rs)) |
+| [`training_data.rs`](src/training_data.rs) | 375 | Trace -> DPO/SFT/CSV export ([`f181`](src/training_data.rs)) for fine-tuning |
+| [`trace.rs`](src/trace.rs) | — | LLM call logging ([`T109`](src/trace.rs), [`f161`](src/trace.rs)) |
+| [`tokenization.rs`](src/tokenization.rs) | 308 | Compression protocol validator |
+| [`cargo_cmd.rs`](src/cargo_cmd.rs) | 887 | Tokenized cargo wrapper x0-x9 ([`f133`-`f136`](src/cargo_cmd.rs)) |
+| [`storage.rs`](src/storage.rs) | 123 | Sled-backed key-value storage ([`t12`](src/storage.rs)) |
 
 ---
 
 ## Planned: Pyramid Architecture
 
-> **Status: Design complete, not yet implemented.** See [`docs/PYRAMID_ARCHITECTURE.md`](docs/PYRAMID_ARCHITECTURE.md) for the full plan.
+> **Status: Design complete, not yet implemented.** Full plan: [`docs/PYRAMID_ARCHITECTURE.md`](docs/PYRAMID_ARCHITECTURE.md)
 
 The next major initiative: replace external API dependency with a pyramid of locally-trained models.
 
-- **Tier 1 — Subatomic** (sub-100K params): Hundreds of single-task specialists. Typo fix, binary classify, flag expand, token tag. Microsecond inference. First proof-of-concept: **Noodle the penguin** — kova's companion AI (inspired by [Claude Code](https://claude.com/claude-code)'s buddy system). 30K param personality model that reacts to session events with short quips.
-- **Tier 2 — Molecular** (100K-1M params): Coordinators with learned routing weights to subatomics. Intent routing, context summarization, tool selection.
-- **Tier 3 — Cellular** (1M-10M params): Domain specialists. Code generation, conversation, planning.
+- **Tier 1 — Subatomic** (sub-100K params): Hundreds of single-task specialists. Typo fix, binary classify, flag expand, token tag. Microsecond inference. First proof-of-concept: **Noodle the penguin** — kova's companion AI (inspired by [Claude Code](https://claude.com/claude-code)'s buddy system). 30K param personality model that reacts to session events with short quips. ([plan](docs/PYRAMID_ARCHITECTURE.md#noodle-the-penguin-first-demo-subatomic))
+- **Tier 2 — Molecular** (100K-1M params): Coordinators with learned routing weights to subatomics. Intent routing, context summarization, tool selection. ([plan](docs/PYRAMID_ARCHITECTURE.md#molecular-model-registry-tier-2))
+- **Tier 3 — Cellular** (1M-10M params): Domain specialists. Code generation, conversation, planning. ([plan](docs/PYRAMID_ARCHITECTURE.md#cellular-model-registry-tier-3))
+- **Starter Nanobyte**: 10 subatomic models ship embedded in the binary — working pyramid on first run, zero setup. ([plan](docs/PYRAMID_ARCHITECTURE.md#starter-nanobyte--ships-with-the-binary))
 
-All tiers share a single mmap'd weight blob called a **nanobyte**. Each model is a Rust function reading from different byte offsets. Cross-tier routing weights are trained, not hardcoded. Confidence gating means most requests never get past tier 1.
+All tiers share a single mmap'd weight blob called a **nanobyte** ([plan](docs/PYRAMID_ARCHITECTURE.md#nanobyte-file-format)). Each model is a Rust function reading from different byte offsets. Cross-tier routing weights are trained, not hardcoded. Confidence gating means most requests never get past tier 1.
 
-Claude trains its own replacement at every level via PTY bridge logging. End state: fully closed pyramid, zero external API dependency.
+Claude trains its own replacement at every level via PTY bridge logging ([plan](docs/PYRAMID_ARCHITECTURE.md#claude-migration-timeline)). End state: fully closed pyramid, zero external API dependency.
 
-**What exists toward this goal:** candle training pipeline, tournament scoring, DPO/SFT export, TurboQuant quantization, epsilon-greedy routing, validation gates, circuit breakers. **What's not built yet:** nanobyte format, swarm.rs pyramid orchestrator, PTY bridge, discovery module, the trained models themselves.
+**What exists toward this goal:** candle training ([`candle_train.rs`](src/micro/candle_train.rs)), tournament scoring ([`tournament.rs`](src/micro/tournament.rs)), DPO/SFT export ([`train.rs`](src/micro/train.rs)), TurboQuant quantization ([`quantize.rs`](src/micro/quantize.rs)), epsilon-greedy routing ([`router.rs`](src/micro/router.rs)), validation gates ([`validate.rs`](src/micro/validate.rs)), circuit breakers ([`runner.rs`](src/micro/runner.rs)). **What's not built yet:** nanobyte format, swarm.rs pyramid orchestrator, PTY bridge, discovery module, the trained models themselves.
 
 ---
 
@@ -158,7 +169,7 @@ exopack/          — test augmentation library (separate crate)
 wasm/             — WASM build manifest
 ```
 
-## Tokenization
+## Tokenization ([`src/tokenization.rs`](src/tokenization.rs))
 
 100% compression protocol coverage. Every public function and type is tokenized.
 
@@ -171,7 +182,7 @@ tokenization: 100.0% (368/368)
 
 Canonical map: [`docs/compression_map.md`](docs/compression_map.md)
 
-## Worker Nodes
+## Worker Nodes ([`f350`](src/c2.rs))
 
 | Token | Host | Role |
 |-------|------|------|
@@ -192,12 +203,12 @@ Canonical map: [`docs/compression_map.md`](docs/compression_map.md)
 | Web (PWA) | WASM + service worker | ~2.5 MB | Offline-first, installable |
 | Snap (Linux) | `snap/snapcraft.yaml` | — | core22, classic confinement |
 
-## Binaries
+## Binaries ([`Cargo.toml`](Cargo.toml))
 
 | Binary | Features | Purpose |
 |--------|----------|---------|
 | `kova` | serve, inference, rag, tui | All-inclusive: TUI, GUI, HTTP, LLM, swarm, tools |
-| `kova-test` | tests (exopack) | Quality gate: clippy, TRIPLE SIMS 3x, release build |
+| `kova-test` | tests ([`exopack`](exopack/)) | Quality gate: clippy, TRIPLE SIMS 3x, release build ([`f315`](src/lib.rs)) |
 
 ## Build
 
@@ -209,7 +220,7 @@ cargo test --release -p kova                 # 314 unit/integration tests
 kova tokens                          # validate tokenization coverage
 ```
 
-## Features
+## Features ([`Cargo.toml`](Cargo.toml))
 
 ```toml
 default    = ["serve", "inference", "rag", "tui"]
@@ -226,18 +237,18 @@ rag        = fastembed + ordered-float
 
 ## Environment Variables
 
-| Variable | Values | Purpose |
-|----------|--------|---------|
-| `KOVA_INFERENCE` | `local`, `remote`, `auto` | Inference backend selection (default: auto) |
-| `KOVA_MODEL` | model name | Override remote model (default: claude-sonnet-4-6) |
-| `KOVA_PERMS` | `open`, `guarded` | Permission mode (default: open) |
-| `ANTHROPIC_API_KEY` | API key | Required for remote inference |
+| Variable | Values | Where It's Read | Purpose |
+|----------|--------|----------------|---------|
+| `KOVA_INFERENCE` | `local`, `remote`, `auto` | [`f382`](src/inference/mod.rs) | Inference backend selection (default: auto) |
+| `KOVA_MODEL` | model name | [`remote_stream`](src/inference/mod.rs) | Override remote model (default: claude-sonnet-4-6) |
+| `KOVA_PERMS` | `open`, `guarded` | [`is_guarded`](src/tools.rs) | Permission mode (default: open) |
+| `ANTHROPIC_API_KEY` | API key | [`remote_stream`](src/inference/mod.rs) | Required for remote inference |
 
 ## Tests
 
 314 tests passing. Run with `cargo test --release -p kova`.
 
-Coverage includes: tool dispatch, context compaction thresholds, checkpoint/undo roundtrips, permission gate logic, git mutation detection, tool parsing, code outline, file operations, CI pipeline, integration tests.
+Coverage includes: tool dispatch ([`f141`](src/tools.rs)), context compaction thresholds ([`context_mgr::tests`](src/context_mgr.rs)), checkpoint/undo roundtrips ([`f383`/`f384` tests](src/tools.rs)), permission gate logic ([`is_guarded` tests](src/tools.rs)), git mutation detection ([`is_git_mutation` tests](src/tools.rs)), tool parsing ([`f140` tests](src/tools.rs)), code outline, file operations, CI pipeline ([`ci::tests`](src/ci.rs)), integration tests ([`tests/integration.rs`](tests/integration.rs)).
 
 ---
 
