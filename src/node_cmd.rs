@@ -896,4 +896,65 @@ mod tests {
     fn node_map_has_four_entries() {
         assert_eq!(NODE_MAP.len(), 4);
     }
+
+    #[test]
+    fn compress_uptime_days_hours_mins() {
+        assert_eq!(compress_uptime("up 3 days, 2 hours, 15 minutes"), "3d2h15m");
+    }
+
+    #[test]
+    fn compress_uptime_days_only() {
+        assert_eq!(compress_uptime("up 5 days"), "5d");
+    }
+
+    #[test]
+    fn compress_uptime_hours_mins() {
+        assert_eq!(compress_uptime("2 hours, 30 minutes"), "2h30m");
+    }
+
+    #[test]
+    fn compress_uptime_short_units() {
+        // uptime may use "min" abbreviation
+        assert_eq!(compress_uptime("45 mins"), "45m");
+    }
+
+    #[test]
+    fn compress_uptime_passthrough_unparsed() {
+        // If format is unrecognized, returns raw trimmed string
+        let raw = "just now";
+        let out = compress_uptime(raw);
+        assert_eq!(out, "just now");
+    }
+
+    #[test]
+    fn compress_uptime_seconds() {
+        // "0 hours" matches the regex and produces "0h", so it appears in output
+        assert_eq!(compress_uptime("1 day, 0 hours, 45 seconds"), "1d0h45s");
+    }
+
+    #[test]
+    fn nci_regex_parses_valid_line() {
+        let re = regex::Regex::new(r"^(\d+)\s+(\d+G?)\s+([\d.]+)\s+(\S+)$").unwrap();
+        let line = "8 4G 0.42 kova-thick-beast";
+        let caps = re.captures(line).expect("should match");
+        assert_eq!(&caps[1], "8");
+        assert_eq!(&caps[2], "4G");
+        assert_eq!(&caps[3], "0.42");
+        assert_eq!(&caps[4], "kova-thick-beast");
+    }
+
+    #[test]
+    fn nci_regex_rejects_bad_line() {
+        let re = regex::Regex::new(r"^(\d+)\s+(\d+G?)\s+([\d.]+)\s+(\S+)$").unwrap();
+        assert!(re.captures("not a valid line").is_none());
+        assert!(re.captures("").is_none());
+    }
+
+    #[test]
+    fn nci_regex_numeric_mem_no_suffix() {
+        // free -g can output "4" instead of "4G" depending on format
+        let re = regex::Regex::new(r"^(\d+)\s+(\d+G?)\s+([\d.]+)\s+(\S+)$").unwrap();
+        let line = "4 2 1.00 lf";
+        assert!(re.captures(line).is_some());
+    }
 }

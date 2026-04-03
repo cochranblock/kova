@@ -722,6 +722,279 @@ fn dedup_name(base: &str, used: &std::collections::HashSet<String>) -> String {
     format!("{}_sq", base)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::io::Write;
+
+    // ── normalize_cmd ──────────────────────────────────────
+
+    #[test]
+    fn normalize_cmd_collapses_whitespace() {
+        assert_eq!(normalize_cmd("  cargo   build  "), "cargo build");
+    }
+
+    #[test]
+    fn normalize_cmd_redacts_single_quotes() {
+        let out = normalize_cmd("git commit -m 'fix the bug'");
+        assert!(out.contains("<arg>"), "got: {}", out);
+    }
+
+    #[test]
+    fn normalize_cmd_redacts_double_quotes() {
+        let out = normalize_cmd(r#"echo "hello world""#);
+        assert!(out.contains("<arg>"), "got: {}", out);
+    }
+
+    #[test]
+    fn normalize_cmd_passthrough_plain() {
+        assert_eq!(normalize_cmd("cargo check"), "cargo check");
+    }
+
+    // ── is_secret_line ────────────────────────────────────
+
+    #[test]
+    fn is_secret_line_detects_token() {
+        assert!(is_secret_line("export TOKEN=abc123"));
+        assert!(is_secret_line("API_KEY=xyz"));
+        assert!(is_secret_line("PASSWORD: hunter2"));
+    }
+
+    #[test]
+    fn is_secret_line_clean_line() {
+        assert!(!is_secret_line("cargo build -p kova"));
+        assert!(!is_secret_line("git status"));
+    }
+
+    #[test]
+    fn is_secret_line_case_insensitive() {
+        assert!(is_secret_line("secret=value"));
+        assert!(is_secret_line("credentials: whatever"));
+    }
+
+    // ── dedup_name ────────────────────────────────────────
+
+    #[test]
+    fn dedup_name_returns_base_when_available() {
+        let used: HashSet<String> = HashSet::new();
+        assert_eq!(dedup_name("zz", &used), "zz");
+    }
+
+    #[test]
+    fn dedup_name_increments_when_taken() {
+        let mut used: HashSet<String> = HashSet::new();
+        used.insert("zz".to_string());
+        assert_eq!(dedup_name("zz", &used), "zz2");
+    }
+
+    #[test]
+    fn dedup_name_skips_blocklist() {
+        // Single-char names like "g" are on the blocklist
+        let used: HashSet<String> = HashSet::new();
+        let out = dedup_name("g", &used);
+        assert_ne!(out, "g", "blocked name should be renamed");
+    }
+
+    #[test]
+    fn dedup_name_continues_past_taken_numbers() {
+        let mut used: HashSet<String> = HashSet::new();
+        used.insert("zz2".to_string());
+        used.insert("zz3".to_string());
+        let out = dedup_name("zz", &used);
+        // zz is free (not in used, not blocked)
+        assert_eq!(out, "zz");
+    }
+
+    // ── generate_alias ────────────────────────────────────
+
+    #[test]
+    fn generate_alias_ssh_simple() {
+        let mut used = HashSet::new();
+        let (name, body) = generate_alias("ssh gd somecmd", "ssh gd somecmd", &mut used);
+        // Name should use node token "g" for "gd"
+        assert!(name.starts_with('r'), "got name: {}", name);
+        assert!(body.contains("ssh gd"), "got body: {}", body);
+    }
+
+    #[test]
+    fn generate_alias_git_pattern() {
+        let mut used = HashSet::new();
+        let (name, body) = generate_alias("git status", "git status", &mut used);
+        assert!(name.starts_with('g'), "got name: {}", name);
+        assert!(body.contains("git"), "got body: {}", body);
+    }
+
+    #[test]
+    fn generate_alias_cargo_pattern() {
+        let mut used = HashSet::new();
+        let (name, body) = generate_alias("cargo build", "cargo build", &mut used);
+        assert!(name.starts_with("cx"), "got name: {}", name);
+        assert!(body.contains("cargo build"), "got body: {}", body);
+    }
+
+    #[test]
+    fn generate_alias_generic_fallback() {
+        let mut used = HashSet::new();
+        let (name, body) = generate_alias("kubectl apply -f foo.yaml", "kubectl apply -f foo.yaml", &mut used);
+        // Generic: first letters of words
+        assert!(!name.is_empty());
+        assert!(body.contains("kubectl"), "got body: {}", body);
+    }
+
+    // ── f394 (parse_history) ─────────────────────────────
+
+    #[test]
+    fn f394_parses_zsh_extended_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".zsh_history");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, ": 1700000000:0;cargo build -p kova").unwrap();
+            writeln!(f, ": 1700000001:0;git status").unwrap();
+        }
+        let cmds = f394(&path);
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(cmds[0].cmd, "cargo build -p kova");
+        assert_eq!(cmds[1].cmd, "git status");
+    }
+
+    #[test]
+    fn f394_parses_bash_raw_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".bash_history");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "cargo check").unwrap();
+            writeln!(f, "ls -la").unwrap();
+        }
+        let cmds = f394(&path);
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(cmds[0].cmd, "cargo check");
+    }
+
+    #[test]
+    fn f394_strips_secret_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".bash_history");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "export TOKEN=abc").unwrap();
+            writeln!(f, "cargo build").unwrap();
+        }
+        let cmds = f394(&path);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].cmd, "cargo build");
+    }
+
+    #[test]
+    fn f394_skips_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".zsh_history");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "# This is a comment").unwrap();
+            writeln!(f, "cargo test").unwrap();
+        }
+        let cmds = f394(&path);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].cmd, "cargo test");
+    }
+
+    // ── f395 (parse_jsonl) ────────────────────────────────
+
+    #[test]
+    fn f395_extracts_bash_command_from_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, r#"{{"type":"tool_use","name":"Bash","input":{{"command":"cargo build -p kova"}}}}"#).unwrap();
+        }
+        let cmds = f395(&path);
+        // The regex matches "command":"<value>" anywhere in the line
+        assert!(!cmds.is_empty(), "should extract at least one command");
+        assert!(cmds.iter().any(|c| c.cmd.contains("cargo build")));
+    }
+
+    #[test]
+    fn f395_skips_lines_without_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, r#"{{"type":"message","content":"hello"}}"#).unwrap();
+        }
+        let cmds = f395(&path);
+        assert!(cmds.is_empty());
+    }
+
+    // ── f398 (format_report) ─────────────────────────────
+
+    #[test]
+    fn f398_empty_report() {
+        let report = t182 {
+            hist_sources: 1,
+            jsonl_sources: 2,
+            rule_sources: 0,
+            existing_aliases: 10,
+            suggestions: vec![],
+            rule_mentions: vec![],
+        };
+        let out = f398(&report);
+        assert!(out.contains("squeeze"));
+        assert!(out.contains("1 hist"));
+        assert!(out.contains("2 jsonl"));
+        assert!(out.contains("10"));
+    }
+
+    #[test]
+    fn f398_with_suggestion() {
+        let report = t182 {
+            hist_sources: 1,
+            jsonl_sources: 0,
+            rule_sources: 0,
+            existing_aliases: 5,
+            suggestions: vec![t180 {
+                rank: 1,
+                pattern: "cargo build -p kova".to_string(),
+                freq: 15,
+                tok_cost: 5,
+                savings: 75,
+                alias_name: "cxbu".to_string(),
+                alias_body: "alias cxbu='cargo build'".to_string(),
+            }],
+            rule_mentions: vec![],
+        };
+        let out = f398(&report);
+        assert!(out.contains("top unaliased"));
+        assert!(out.contains("cxbu"));
+        assert!(out.contains("suggested additions"));
+    }
+
+    #[test]
+    fn f398_savings_over_1k_uses_k_suffix() {
+        let report = t182 {
+            hist_sources: 1,
+            jsonl_sources: 0,
+            rule_sources: 0,
+            existing_aliases: 0,
+            suggestions: vec![t180 {
+                rank: 1,
+                pattern: "cargo build".to_string(),
+                freq: 1000,
+                tok_cost: 2,
+                savings: 2000,
+                alias_name: "cb".to_string(),
+                alias_body: "alias cb='cargo build'".to_string(),
+            }],
+            rule_mentions: vec![],
+        };
+        let out = f398(&report);
+        assert!(out.contains("2.0k"), "got: {}", out);
+    }
+}
+
 fn chrono_stub() -> String {
     // Simple date without chrono dep
     let epoch = std::time::SystemTime::now()
