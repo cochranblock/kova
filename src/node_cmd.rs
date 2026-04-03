@@ -7,6 +7,7 @@
 #![allow(non_camel_case_types)]
 
 use clap::ValueEnum;
+use regex::Regex;
 use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
@@ -149,19 +150,7 @@ fn f122(nodes: &[String]) -> Vec<t97> {
                 if ok {
                     let lines: Vec<&str> = out.lines().collect();
                     let host = lines.first().unwrap_or(&"—").to_string();
-                    let up = lines
-                        .get(1)
-                        .unwrap_or(&"—")
-                        .to_string()
-                        .replace(" days", "d")
-                        .replace(" day", "d")
-                        .replace(" hours", "h")
-                        .replace(" hour", "h")
-                        .replace(" minutes", "m")
-                        .replace(" minute", "m")
-                        .replace("up ", "")
-                        .replace(", ", "")
-                        .replace(' ', "");
+                    let up = compress_uptime(lines.get(1).unwrap_or(&"—"));
                     let load = lines.get(2).unwrap_or(&"—").to_string();
                     let _ = tx.send(t97 {
                         s14: token,
@@ -200,11 +189,16 @@ fn f123(nodes: &[String]) -> Vec<t97> {
                 let token = to_token(&node).to_string();
                 let (ok, out) = ssh_exec(&node, &cmd);
                 if ok {
-                    let lines: Vec<&str> = out.lines().collect();
-                    let cpu = lines.first().unwrap_or(&"—").to_string();
-                    let ram = lines.get(1).unwrap_or(&"—").to_string();
-                    let disk = lines.get(2).unwrap_or(&"—").to_string();
-                    let rust = lines.get(3).unwrap_or(&"—").to_string();
+                    let re_spec = Regex::new(r"^(\d+)\n(\d+)\n(\d+)\n(.+)$").unwrap();
+                    let (cpu, ram, disk, rust) = if let Some(caps) = re_spec.captures(out.trim()) {
+                        (caps[1].to_string(), caps[2].to_string(), caps[3].to_string(), caps[4].to_string())
+                    } else {
+                        let lines: Vec<&str> = out.lines().collect();
+                        (lines.first().unwrap_or(&"—").to_string(),
+                         lines.get(1).unwrap_or(&"—").to_string(),
+                         lines.get(2).unwrap_or(&"—").to_string(),
+                         lines.get(3).unwrap_or(&"—").to_string())
+                    };
                     let _ = tx.send(t97 {
                         s14: token,
                         s15: true,
@@ -284,9 +278,14 @@ fn f125(nodes: &[String], install: bool) -> Vec<t97> {
             thread::spawn(move || {
                 let token = to_token(&node).to_string();
                 let (ok, out) = ssh_exec(&node, &cmd);
+                let re_ver = Regex::new(r"(\S+)$").unwrap();
                 let lines: Vec<&str> = out.lines().collect();
-                let rust_v = lines.first().unwrap_or(&"—").to_string();
-                let cargo_v = lines.get(1).unwrap_or(&"—").to_string();
+                let rust_v = lines.first()
+                    .and_then(|l| re_ver.find(l).map(|m| m.as_str().to_string()))
+                    .unwrap_or_else(|| "—".to_string());
+                let cargo_v = lines.get(1)
+                    .and_then(|l| re_ver.find(l).map(|m| m.as_str().to_string()))
+                    .unwrap_or_else(|| "—".to_string());
                 let _ = tx.send(t97 {
                     s14: token,
                     s15: ok,
@@ -598,11 +597,16 @@ fn f131(nodes: &[String]) -> Vec<t97> {
                 let token = to_token(&node).to_string();
                 let (ok, out) = ssh_exec(&node, &cmd);
                 if ok {
-                    let parts: Vec<&str> = out.split_whitespace().collect();
-                    let cpu = parts.first().unwrap_or(&"—").to_string();
-                    let mem = parts.get(1).unwrap_or(&"—").to_string();
-                    let load = parts.get(2).unwrap_or(&"—").to_string();
-                    let host = parts.get(3).unwrap_or(&"—").to_string();
+                    let re_ci = Regex::new(r"^(\d+)\s+(\d+G?)\s+([\d.]+)\s+(\S+)$").unwrap();
+                    let (cpu, mem, load, host) = if let Some(caps) = re_ci.captures(out.trim()) {
+                        (caps[1].to_string(), caps[2].to_string(), caps[3].to_string(), caps[4].to_string())
+                    } else {
+                        let parts: Vec<&str> = out.split_whitespace().collect();
+                        (parts.first().unwrap_or(&"—").to_string(),
+                         parts.get(1).unwrap_or(&"—").to_string(),
+                         parts.get(2).unwrap_or(&"—").to_string(),
+                         parts.get(3).unwrap_or(&"—").to_string())
+                    };
                     let _ = tx.send(t97 {
                         s14: token,
                         s15: true,
@@ -692,6 +696,22 @@ fn print_oneline(results: &[t97]) {
         })
         .collect();
     eprintln!("{}", parts.join(" "));
+}
+
+/// Compress uptime string: "up 3 days, 2 hours, 15 minutes" → "3d2h15m"
+fn compress_uptime(raw: &str) -> String {
+    let re = Regex::new(r"(\d+)\s*(days?|hours?|minutes?|mins?|seconds?|secs?)").unwrap();
+    let mut out = String::new();
+    for caps in re.captures_iter(raw) {
+        let n = &caps[1];
+        let unit = &caps[2];
+        let u = match unit.chars().next().unwrap_or('?') {
+            'd' => "d", 'h' => "h", 'm' => "m", 's' => "s", _ => "?",
+        };
+        out.push_str(n);
+        out.push_str(u);
+    }
+    if out.is_empty() { raw.trim().to_string() } else { out }
 }
 
 /// Print compressed table output.

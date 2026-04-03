@@ -7,6 +7,7 @@
 //! f156=git_exec, f157=compress_status, f158=compress_diff, f159=compress_log, f160=git_cmd_dispatch.
 
 use clap::ValueEnum;
+use regex::Regex;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -102,6 +103,12 @@ fn f157(raw: &str) -> String {
 
 /// f158=compress_diff. Strip headers, keep only +/- lines with file:line context.
 fn f158(raw: &str) -> String {
+    let re_file = Regex::new(r"^\+\+\+ b/(.+)$").unwrap();
+    let re_hunk = Regex::new(r"^@@ -\d+(?:,\d+)? \+(\d+)").unwrap();
+    let re_skip = Regex::new(r"^(---|diff --git|index |new file|deleted file)").unwrap();
+    let re_add = Regex::new(r"^\+(?!\+\+)(.*)$").unwrap();
+    let re_del = Regex::new(r"^-(?!--)(.*)$").unwrap();
+
     let mut lines: Vec<String> = Vec::new();
     let mut current_file = String::new();
     let mut hunk_line: u32 = 0;
@@ -109,53 +116,35 @@ fn f158(raw: &str) -> String {
     let mut removed: u32 = 0;
 
     for line in raw.lines() {
-        // Track current file.
-        if let Some(rest) = line.strip_prefix("+++ b/") {
-            current_file = compress_path(rest);
+        if let Some(caps) = re_file.captures(line) {
+            current_file = compress_path(&caps[1]);
             continue;
         }
-        if line.starts_with("--- ") || line.starts_with("+++ ") || line.starts_with("diff --git") {
+        if re_skip.is_match(line) {
             continue;
         }
-        if line.starts_with("index ")
-            || line.starts_with("new file")
-            || line.starts_with("deleted file")
-        {
+        if let Some(caps) = re_hunk.captures(line) {
+            hunk_line = caps[1].parse().unwrap_or(0);
             continue;
         }
-        // Hunk header: @@ -old,count +new,count @@
-        if line.starts_with("@@ ") {
-            if let Some(plus_idx) = line.find('+') {
-                let after_plus = &line[plus_idx + 1..];
-                if let Some(comma_or_space) = after_plus.find([',', ' ']) {
-                    hunk_line = after_plus[..comma_or_space].parse().unwrap_or(0);
-                }
-            }
-            continue;
-        }
-        // Actual changes.
-        if line.starts_with('+') && !line.starts_with("+++") {
-            let content = &line[1..];
-            let trimmed = content.trim();
+        if let Some(caps) = re_add.captures(line) {
+            let trimmed = caps[1].trim();
             if !trimmed.is_empty() {
                 lines.push(format!("{}:{} +{}", current_file, hunk_line, trimmed));
                 added += 1;
             }
             hunk_line += 1;
-        } else if line.starts_with('-') && !line.starts_with("---") {
-            let content = &line[1..];
-            let trimmed = content.trim();
+        } else if let Some(caps) = re_del.captures(line) {
+            let trimmed = caps[1].trim();
             if !trimmed.is_empty() {
                 lines.push(format!("{}:{} -{}", current_file, hunk_line, trimmed));
                 removed += 1;
             }
-            // Don't increment hunk_line for removed lines.
         } else {
             hunk_line += 1;
         }
     }
 
-    // Cap output.
     if lines.len() > 30 {
         let total = lines.len();
         lines.truncate(30);
@@ -165,7 +154,6 @@ fn f158(raw: &str) -> String {
     if lines.is_empty() {
         "no changes".to_string()
     } else {
-        // Summary line first.
         let mut out = format!("+{}/-{}\n", added, removed);
         out.push_str(&lines.join("\n"));
         out
@@ -174,16 +162,12 @@ fn f158(raw: &str) -> String {
 
 /// f159=compress_log. Already oneline, just strip hashes to 7 chars.
 fn f159(raw: &str) -> String {
+    let re_hash = Regex::new(r"^([a-f0-9]{7})[a-f0-9]*\s+(.*)$").unwrap();
     raw.lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| {
-            // oneline format: hash<space>message. Truncate hash to 7 chars.
-            if l.len() > 7 && l.chars().take(7).all(|c| c.is_ascii_hexdigit()) {
-                if let Some(space) = l.find(' ') {
-                    format!("{} {}", &l[..7], l[space + 1..].trim_start())
-                } else {
-                    l[..7].to_string()
-                }
+            if let Some(caps) = re_hash.captures(l) {
+                format!("{} {}", &caps[1], caps[2].trim())
             } else {
                 l.to_string()
             }
@@ -194,10 +178,12 @@ fn f159(raw: &str) -> String {
 
 /// Strip paths: /Users/foo/kova/src/lib.rs → src/lib.rs
 fn compress_path(p: &str) -> String {
-    if let Some(idx) = p.find("/src/") {
-        p[idx + 1..].to_string()
-    } else if let Some(idx) = p.find("kova/") {
-        p[idx + 5..].to_string()
+    let re = Regex::new(r".*?(/src/.+)$").unwrap();
+    let re_kova = Regex::new(r".*?kova/(.+)$").unwrap();
+    if let Some(caps) = re.captures(p) {
+        caps[1][1..].to_string() // strip leading /
+    } else if let Some(caps) = re_kova.captures(p) {
+        caps[1].to_string()
     } else {
         p.to_string()
     }

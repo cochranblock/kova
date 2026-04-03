@@ -7,6 +7,7 @@
 #![allow(non_camel_case_types)]
 
 use clap::ValueEnum;
+use regex::Regex;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::Instant;
@@ -240,22 +241,23 @@ fn parse_test_line(
     compressed: &mut Vec<String>,
     test_summary: &mut Option<String>,
 ) {
-    if trimmed.starts_with("test result:") {
-        let pass = extract_test_count(trimmed, "passed").unwrap_or(0);
-        let fail = extract_test_count(trimmed, "failed").unwrap_or(0);
-        let ign = extract_test_count(trimmed, "ignored").unwrap_or(0);
+    let re_result = Regex::new(r"^test result:.*?(\d+) passed.*?(\d+) failed.*?(\d+) ignored").unwrap();
+    let re_fail = Regex::new(r"^---- (.+) ----$").unwrap();
+    let re_panic = Regex::new(r"^thread '.*' panicked at").unwrap();
+
+    if let Some(caps) = re_result.captures(trimmed) {
+        let pass: u32 = caps[1].parse().unwrap_or(0);
+        let fail: u32 = caps[2].parse().unwrap_or(0);
+        let ign: u32 = caps[3].parse().unwrap_or(0);
         *test_summary = Some(format!("{}/{}/{}", pass, fail, ign));
         if fail > 0 {
             *errors += fail;
         }
     }
-    if trimmed.starts_with("---- ") && trimmed.ends_with(" ----") {
-        let test_name = trimmed
-            .trim_start_matches("---- ")
-            .trim_end_matches(" ----");
-        compressed.push(format!("FAIL:{}", test_name));
+    if let Some(caps) = re_fail.captures(trimmed) {
+        compressed.push(format!("FAIL:{}", &caps[1]));
     }
-    if trimmed.starts_with("thread '") && trimmed.contains("panicked at") {
+    if re_panic.is_match(trimmed) {
         compressed.push(compress_path(trimmed));
     }
 }
@@ -267,16 +269,17 @@ fn compress_output_text(stderr: &str, stdout: &str) -> (u32, u32, String, Option
     let mut compressed: Vec<String> = Vec::new();
     let mut test_summary: Option<String> = None;
 
+    let re_error = Regex::new(r"^error[\[:]").unwrap();
+    let re_warn_gen = Regex::new(r"(\d+)\s+warning.*generated").unwrap();
+
     for line in stderr.lines().chain(stdout.lines()) {
         let trimmed = line.trim();
-        if trimmed.starts_with("error[") || trimmed.starts_with("error:") {
+        if re_error.is_match(trimmed) {
             errors += 1;
             compressed.push(compress_path(trimmed));
         }
-        if trimmed.contains("generated") && trimmed.contains("warning")
-            && let Some(n) = extract_count(trimmed)
-        {
-            warnings = n;
+        if let Some(caps) = re_warn_gen.captures(trimmed) {
+            warnings = caps[1].parse().unwrap_or(0);
         }
         parse_test_line(trimmed, &mut errors, &mut compressed, &mut test_summary);
     }
@@ -291,27 +294,20 @@ fn compress_output_text(stderr: &str, stdout: &str) -> (u32, u32, String, Option
 }
 
 /// Strip paths: /Users/foo/bar/src/lib.rs → src/lib.rs
+/// Keeps error/warning prefixes intact.
 fn compress_path(p: &str) -> String {
-    let mut out = p.to_string();
-    if let Some(idx) = out.find("/src/") {
-        let prefix_end = idx + 1; // keep "src/"
-        if out.starts_with("error") || out.starts_with("E[") || out.starts_with("W[") {
-            // Keep the error prefix.
+    let re = Regex::new(r"^((?:error|E\[|W\[)[^/]*)?.*?(/src/.+)$").unwrap();
+    if let Some(caps) = re.captures(p) {
+        let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let path = &caps[2];
+        if prefix.is_empty() {
+            path[1..].to_string() // strip leading /
         } else {
-            out = out[prefix_end..].to_string();
+            format!("{}{}", prefix, path)
         }
+    } else {
+        p.to_string()
     }
-    out
-}
-
-fn extract_count(line: &str) -> Option<u32> {
-    line.split_whitespace().find_map(|w| w.parse::<u32>().ok())
-}
-
-fn extract_test_count(line: &str, label: &str) -> Option<u32> {
-    let idx = line.find(label)?;
-    let before = &line[..idx];
-    before.split_whitespace().last()?.parse::<u32>().ok()
 }
 
 /// Commands that support --message-format=json.
