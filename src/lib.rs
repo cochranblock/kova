@@ -16,6 +16,7 @@ pub mod kernel;
 pub mod plan;
 pub mod storage;
 pub mod surface;
+pub mod swarm;
 pub mod trace;
 
 pub use backlog::f25;
