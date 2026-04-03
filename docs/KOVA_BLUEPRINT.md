@@ -114,11 +114,35 @@ One contiguous file. One `mmap()` call. Every model reads from different byte of
 
 [WEIGHTS: contiguous f32 blob]
   All model weights packed sequentially.
+
+[SIGNATURE: 32 bytes]
+  BLAKE3 hash of everything above (header + manifest + weights).
+  Last 32 bytes of the file. Always present.
 ```
+
+### Model Signing
+
+BLAKE3 hash. 32 bytes. Faster than reading the file from disk — the check is free.
+
+**On bake:** `blake3::hash(header + manifest + weights)` → append 32 bytes to end of `.nanobyte` file.
+
+**On load:**
+1. mmap the file
+2. Hash everything except the last 32 bytes
+3. Compare to the last 32 bytes
+4. Mismatch → reject, don't load, don't infer
+5. Match → also check sled: `model_hashes` tree, key = nanobyte filename, value = 32-byte hash
+6. sled mismatch → file was replaced since last known-good load → warn
+
+**Total cost:** 32 bytes per nanobyte file + one sled lookup. No PKI, no certificates, no GPG. BLAKE3 processes at memory bandwidth speed (~6 GB/s on modern CPUs). A 2MB starter nanobyte hashes in ~0.3 microseconds.
+
+**sled backup:** On first successful load, store the hash in sled `model_hashes` tree. On subsequent loads, verify the file hash matches sled's record. If it doesn't, the file changed — either an update (re-verify and update sled) or tampering (reject).
+
+Dependency: `blake3` crate (~150KB, pure Rust, no C, no OpenSSL).
 
 ### Key Operations
 
-- `load(path)` — mmap the file. One syscall. Zero copy.
+- `load(path)` — mmap the file, verify BLAKE3 signature, check sled record. One syscall + one hash + one sled lookup.
 - `weights(model_name)` — return `&[f32]` slice at the model's offset.
 - `routing(model_name)` — return routing weight slice for T2/T3 models.
 - `consolidate(models, output)` — pack individual trained models into one nanobyte.
