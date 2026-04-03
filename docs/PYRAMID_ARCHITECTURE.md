@@ -224,6 +224,7 @@ Same pattern from T3 -> T2.
 | slop_detector | 20K | sentence | binary | P12 banned word detection |
 | urgency_scorer | 20K | sentence | float | Priority 0.0-1.0 |
 | **noodle** | **30K** | **session context** | **short string** | **Noodle the penguin — companion AI, personality quips** |
+| **shitty_test_detector** | **30K** | **test source** | **3-class logits** | **Classify tests as REAL/SMOKE/MISSING — anti-self-licking-ice-cream-cone** |
 
 #### Noodle the Penguin (First Demo Subatomic)
 
@@ -252,6 +253,32 @@ Same pattern from T3 -> T2.
 **Training data:** Generated from session logs — label each (context_vector, appropriate_quip) pair. Augment with synthetic pairs. 30K params is more than enough for a lookup-with-personality.
 
 **Why Noodle is first:** Trivially small, no downstream dependencies, immediately visible to the user, and exercises every part of the nanobyte pipeline (mmap, offset read, forward pass, output decode) without any risk to the agentic loop. If the penguin can quip, the pyramid works.
+
+#### Shitty Test Detector (Anti-Self-Licking-Ice-Cream-Cone)
+
+Reads test source code and classifies it into three buckets:
+
+- **REAL** — Verifies numerical correctness, checks edge cases, has assertions on output values. The test would catch a regression.
+- **SMOKE** — Only checks it didn't crash. No output verification. `assert!(result.is_ok())` with no check on what `result` contains.
+- **MISSING** — Code path exists with no test coverage at all.
+
+**Input features:**
+- Assertion count and types (`assert_eq!` vs `assert!` vs none)
+- Whether output values are compared against expected constants
+- Presence of edge case inputs (empty, zero, negative, max, boundary)
+- Ratio of setup code to assertion code
+- Whether the test name describes behavior or just says "test_foo"
+- Import depth — does it test public API or reach into internals
+
+**Training data:** Label tests from kova, pixel-forge, and cochranblock test suites. Each `#[test]` function gets a REAL/SMOKE label. MISSING labels come from scanning `pub fn` signatures that have no corresponding test. Augment with synthetic examples of each class.
+
+**Use cases:**
+- CI gate: warn when a PR adds only SMOKE tests
+- Gauntlet integration: factory/MoE code gen must produce REAL tests to pass
+- Academy: when academy auto-generates tests, shitty_test_detector validates them before commit
+- Tournament scoring: penalize models that produce SMOKE tests
+
+This is the quality enforcement model. It prevents the pyramid from generating tests that test nothing.
 
 ### Molecular Model Registry (Tier 2)
 
