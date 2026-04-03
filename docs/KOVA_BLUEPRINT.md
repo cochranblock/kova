@@ -140,6 +140,8 @@ BLAKE3 hash. 32 bytes. Faster than reading the file from disk — the check is f
 
 Dependency: `blake3` crate (~150KB, pure Rust, no C, no OpenSSL).
 
+This is an instance of **NanoSign** — a universal AI model signing standard. Full spec: [`docs/NANOSIGN.md`](NANOSIGN.md). Works with any model format (safetensors, GGUF, ONNX, nanobyte). Published as the `nanosign` crate: `cargo add nanosign`.
+
 ### Key Operations
 
 - `load(path)` — mmap the file, verify BLAKE3 signature, check sled record. One syscall + one hash + one sled lookup.
