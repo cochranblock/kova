@@ -210,7 +210,53 @@ The models the human needs are already warm by the time the pyramid runs. Zero-w
 
 ---
 
-## 5. Training Corpus: Every Rust Crate
+## 5. Memory Efficiency: zstd + bincode + sled
+
+Every byte saved on context is a byte available for model weights in RAM. Three compression layers, one storage engine.
+
+### What Gets Compressed
+
+| Data | Serialization | Compression | Storage | Expansion |
+|------|--------------|-------------|---------|-----------|
+| Conversation turns | bincode | zstd | sled `context` tree | On read for inference |
+| Bridge logs | bincode | zstd | sled `bridge_logs` tree | On export for training |
+| Model weights (nanobyte) | raw f32 | zstd + quantization | `.nanobyte` on disk | Into RAM on mmap page-in |
+| Training data (corpus) | JSONL | zstd | `/mnt/data/training/` | On read for training |
+| Checkpoints | raw bytes | zstd | sled `checkpoints` tree | On undo |
+| Priority scores | raw u64 | none (tiny) | sled `model_priority` tree | Always hot |
+
+### Why These Three
+
+- **bincode** — fastest Rust serializer. Zero-copy deserialization. Already a kova dependency ([`Cargo.toml`](Cargo.toml)).
+- **zstd** — best compression ratio at speed. 3-10x compression on text/weights. Already a kova dependency.
+- **sled** — embedded B-tree. Ordered iteration. OS page cache integration. Already the primary store.
+
+### Savings Math
+
+Conversation context: ~4 bytes/char uncompressed. zstd compresses natural language ~4:1, code ~3:1. A 10K-token conversation (~40KB raw) stores as ~10KB in sled. That's 30KB freed for model weights — enough for 60 subatomic models.
+
+Nanobyte on disk: quantized (2-4 bits/weight via TurboQuant) + zstd. A 55K-param pyramid (220KB raw f32) compresses to ~15KB on disk. Decompresses into RAM only when the model's sled priority score triggers a page-in.
+
+### Auto-Training Trigger
+
+sled tracks a counter: `training_trigger:{model_name}` incremented on every new context entry. When counter hits threshold (default 1000):
+
+1. Export recent context from sled as training JSONL
+2. Kick off retraining for relevant subatomic models
+3. Pack retrained weights into updated nanobyte
+4. Reset counter
+
+The compressed context IS the training data. sled is the training data store. New prompts accumulate, models retrain, the pyramid improves — automatically. No manual export step.
+
+```
+context entry → bincode+zstd → sled → counter++ → threshold?
+  yes → export JSONL → retrain subatomic → pack nanobyte → reset
+  no  → continue
+```
+
+---
+
+## 6. Training Corpus: Every Rust Crate
 
 **240,596 crates from crates.io.** 34GB of `.crate` tarballs. Latest version of every crate. Harvested to bt at `/mnt/data/crates/` (870GB dedicated drive).
 
@@ -259,7 +305,7 @@ Scripts: [`scripts/extract_corpus.sh`](scripts/extract_corpus.sh), [`scripts/bui
 
 ---
 
-## 6. Shared Models Principle
+## 7. Shared Models Principle
 
 A visibility-classifier works for functions AND structs AND enums AND traits. Train ONE model across all constructs, not N duplicates.
 
@@ -276,7 +322,7 @@ A visibility-classifier works for functions AND structs AND enums AND traits. Tr
 
 ---
 
-## 7. any-gpu Integration
+## 8. any-gpu Integration
 
 Training on AMD/NVIDIA/Intel GPUs via any-gpu's wgpu tensor ops. Proven on bt's AMD RX 5700 XT (RADV Vulkan).
 
@@ -296,7 +342,7 @@ Results: [`assets/models/`](assets/models/) — 3 trained models, 2,313 total pa
 
 ---
 
-## 8. Claude Migration Path
+## 9. Claude Migration Path
 
 Claude occupies all tiers above T1 on day one. As each tier's models train (using Claude's own outputs as training data), Claude retreats up one tier.
 
@@ -330,7 +376,7 @@ Bridge logging: every Claude interaction = labeled training data for the tier be
 
 ---
 
-## 9. Infrastructure
+## 10. Infrastructure
 
 ### What Exists (built this session)
 
@@ -391,7 +437,7 @@ Bridge logging: every Claude interaction = labeled training data for the tier be
 
 ---
 
-## 10. P23: Triple Lens Research Protocol
+## 11. P23: Triple Lens Research Protocol
 
 All architecture decisions, feature plans, and risk assessments use three opposing perspectives, then a fourth synthesizes. No single-perspective analysis ever again.
 
@@ -446,7 +492,7 @@ Uses existing C2 infrastructure: `f377` (dispatch), `f385` (status), `f386` (pee
 
 ---
 
-## 11. Implementation Order
+## 12. Implementation Order
 
 ### Sprint 1: Nanobyte Format
 
