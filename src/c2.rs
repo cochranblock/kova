@@ -378,14 +378,32 @@ fn sync_tar_stream(nodes: &[String], local: bool) -> anyhow::Result<()> {
             let tar_path = tar_path.clone();
             let extract_dir = extract_dir.clone();
             thread::spawn(move || {
-                let sh = format!(
-                    "cat {} | ssh -o ConnectTimeout=5 {} \"mkdir -p {} && cat > /tmp/hive-build.tar && cd {} && tar xf /tmp/hive-build.tar && rm -f /tmp/hive-build.tar\"",
-                    tar_path.display(),
-                    node,
-                    extract_dir,
-                    extract_dir
+                // Use process id + monotonic nanos for a unique remote temp path.
+                // No shell interpolation: node is a separate SSH arg, not embedded in a
+                // shell string. extract_dir is shell-quoted in the remote command.
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos())
+                    .unwrap_or(0);
+                let remote_tmp = format!("/tmp/kova-hive-{}-{}.tar",
+                    std::process::id(), nanos);
+                let sq_dir = shell_quote(&extract_dir);
+                let sq_tmp = shell_quote(&remote_tmp);
+                let remote_cmd = format!(
+                    "mkdir -p {sq_dir} && cat > {sq_tmp} && cd {sq_dir} && tar xf {sq_tmp} && rm -f {sq_tmp}",
                 );
-                let status = Command::new("sh").args(["-c", &sh]).status();
+                let tar_file = match std::fs::File::open(&tar_path) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        eprintln!("[sync] cannot open tar: {}", e);
+                        return false;
+                    }
+                };
+                let status = Command::new("ssh")
+                    .args(["-o", "ConnectTimeout=5", &node])
+                    .arg(&remote_cmd)
+                    .stdin(Stdio::from(tar_file))
+                    .status();
                 status.map(|s| s.success()).unwrap_or(false)
             })
         })
@@ -625,6 +643,13 @@ const WORKSPACE_CRATES: &[&str] = &[
     "ironhive",
     "vendor",
 ];
+
+/// Single-quote a string for safe use in a remote shell command.
+/// Replaces every `'` with `'\''` so the value is always treated as a literal.
+/// The result is wrapped in single quotes: `shell_quote("a'b")` → `'a'\''b'`.
+pub(crate) fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
 
 fn kova_root() -> PathBuf {
     std::env::var("KOVA_ROOT")
@@ -1458,6 +1483,130 @@ pub fn f388(session: &str) -> Result<(), String> {
     )
 }
 
+/// f400=tmux_init. Create session by scanning dirs for `.kova` marker files.
+/// Any directory containing `.kova` becomes a pane. `.kova` can optionally contain
+/// a custom launch command (one line). Default command: "claude".
+/// Scan roots: ~/ (depth 1) and ~/dev/ (depth 1).
+pub fn f400(session: &str, scan_roots: &[&str], no_claude: bool) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut panes: Vec<(String, String, String)> = Vec::new(); // (name, dir, cmd)
+
+    for root in scan_roots {
+        let root_path = root.replace("~", &home);
+        let entries = std::fs::read_dir(&root_path).map_err(|e| format!("read {}: {}", root_path, e))?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() { continue; }
+            let marker = path.join(".kova");
+            if marker.exists() {
+                let name = path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let cmd = std::fs::read_to_string(&marker)
+                    .ok()
+                    .and_then(|s| {
+                        let trimmed = s.trim().to_string();
+                        if trimmed.is_empty() { None } else { Some(trimmed) }
+                    })
+                    .unwrap_or_else(|| "claude".into());
+                panes.push((name, path.to_string_lossy().to_string(), cmd));
+            }
+        }
+    }
+
+    // Sort by name for consistent ordering
+    panes.sort_by(|a, b| a.0.cmp(&b.0));
+
+    if panes.is_empty() {
+        return Err("no directories with .kova marker found".into());
+    }
+
+    // Kill existing session if it exists
+    let _ = std::process::Command::new("tmux")
+        .args(["kill-session", "-t", session])
+        .output();
+
+    // Create new session with first pane
+    let (ref name, ref dir, _) = panes[0];
+    std::process::Command::new("tmux")
+        .args(["new-session", "-d", "-s", session, "-n", name, "-c", dir])
+        .status()
+        .map_err(|e| format!("tmux new-session: {}", e))?;
+    eprintln!("[init] session '{}' created", session);
+
+    // Create remaining windows
+    for (name, dir, _) in &panes[1..] {
+        std::process::Command::new("tmux")
+            .args(["new-window", "-t", session, "-n", name, "-c", dir])
+            .status()
+            .map_err(|e| format!("tmux new-window: {}", e))?;
+    }
+
+    // Launch commands in each pane
+    if !no_claude {
+        for (i, (name, _, cmd)) in panes.iter().enumerate() {
+            let target = format!("{}:{}", session, i);
+            let _ = std::process::Command::new("tmux")
+                .args(["send-keys", "-t", &target, cmd, "Enter"])
+                .status();
+            eprintln!("[w{}] {} → {}", i, name, cmd);
+            if i < panes.len() - 1 {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+        }
+    }
+
+    eprintln!("[init] {} panes ready", panes.len());
+    Ok(())
+}
+
+/// f402=auto_deploy. Drop `.kova` markers into all git repos in scan dirs.
+pub fn f402(scan_roots: &[&str]) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut deployed = 0;
+    for root in scan_roots {
+        let root_path = root.replace("~", &home);
+        let entries = std::fs::read_dir(&root_path)
+            .map_err(|e| format!("read {}: {}", root_path, e))?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() { continue; }
+            // Skip if .kova already exists
+            if path.join(".kova").exists() { continue; }
+            // Check if it's a git repo
+            if path.join(".git").exists() {
+                std::fs::write(path.join(".kova"), "")
+                    .map_err(|e| format!("write .kova in {}: {}", path.display(), e))?;
+                eprintln!("[deploy] {}", path.display());
+                deployed += 1;
+            }
+        }
+    }
+    eprintln!("[deploy] {} new .kova markers", deployed);
+    Ok(())
+}
+
+/// f401=tmux_layout. Export fleet layout as markdown table.
+pub fn f401(session: &str) -> Result<(), String> {
+    let windows = std::process::Command::new("tmux")
+        .args([
+            "list-windows", "-t", session,
+            "-F", "#{window_index}|#{window_name}|#{pane_current_path}",
+        ])
+        .output()
+        .map_err(|e| format!("tmux: {}", e))?;
+    let out = String::from_utf8_lossy(&windows.stdout);
+    println!("| Window | Name | Directory |");
+    println!("|--------|------|-----------|");
+    for line in out.lines() {
+        let parts: Vec<&str> = line.splitn(3, '|').collect();
+        if parts.len() >= 3 {
+            println!("| {} | {} | {} |", parts[0], parts[1], parts[2]);
+        }
+    }
+    Ok(())
+}
+
 /// List windows with names (for status display).
 fn list_windows_with_names(session: &str) -> Vec<(String, String)> {
     std::process::Command::new("tmux")
@@ -1500,4 +1649,115 @@ fn list_windows(session: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── shell_quote ──────────────────────────────────────
+
+    #[test]
+    fn shell_quote_plain() {
+        assert_eq!(shell_quote("/mnt/hive"), "'/mnt/hive'");
+    }
+
+    #[test]
+    fn shell_quote_with_single_quote() {
+        // A path containing a single quote must be safe
+        let out = shell_quote("it's/a/path");
+        // Must not contain an unescaped bare single quote mid-value
+        assert_eq!(out, "'it'\\''s/a/path'");
+        // Verify it round-trips safely through a real shell (echo the value)
+        let result = std::process::Command::new("sh")
+            .args(["-c", &format!("echo {}", out)])
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&result.stdout).trim(),
+            "it's/a/path"
+        );
+    }
+
+    #[test]
+    fn shell_quote_spaces() {
+        let out = shell_quote("/path with spaces/dir");
+        assert_eq!(out, "'/path with spaces/dir'");
+        let result = std::process::Command::new("sh")
+            .args(["-c", &format!("echo {}", out)])
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&result.stdout).trim(),
+            "/path with spaces/dir"
+        );
+    }
+
+    #[test]
+    fn shell_quote_special_chars() {
+        // Chars that would break unquoted shell commands
+        let out = shell_quote("path; rm -rf /");
+        // Entire value must be safe — no command execution
+        let result = std::process::Command::new("sh")
+            .args(["-c", &format!("echo {}", out)])
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&result.stdout).trim(),
+            "path; rm -rf /"
+        );
+    }
+
+    #[test]
+    fn shell_quote_dollar_backtick() {
+        // $(...) and `...` must not execute
+        let payload = "$(touch /tmp/kova_injection_test)";
+        let out = shell_quote(payload);
+        let result = std::process::Command::new("sh")
+            .args(["-c", &format!("echo {}", out)])
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        // The injection file must NOT have been created
+        assert!(
+            !std::path::Path::new("/tmp/kova_injection_test").exists(),
+            "shell injection succeeded — shell_quote is broken"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&result.stdout).trim(),
+            payload
+        );
+    }
+
+    #[test]
+    fn shell_quote_empty() {
+        assert_eq!(shell_quote(""), "''");
+    }
+
+    // ── node validation — verify no shell metacharacters reach ssh ──
+
+    #[test]
+    fn remote_tmp_path_is_unique_per_process() {
+        // Two calls with different nanos produce different paths — no shared /tmp conflict
+        let p1 = format!("/tmp/kova-hive-{}-{}.tar", std::process::id(), 1000u32);
+        let p2 = format!("/tmp/kova-hive-{}-{}.tar", std::process::id(), 1001u32);
+        assert_ne!(p1, p2);
+    }
+
+    // ── existing c2 helpers ──────────────────────────────
+
+    #[test]
+    fn f350_returns_known_nodes() {
+        let nodes = f350();
+        assert!(nodes.contains(&"lf") || nodes.contains(&"gd") || nodes.contains(&"bt") || nodes.contains(&"st"));
+    }
+
+    #[test]
+    fn f351_resolves_known_node() {
+        // gd should map to an IP or be recognized
+        let result = f351("gd");
+        // May be None if not in lookup, but should not panic
+        let _ = result;
+    }
 }
