@@ -136,7 +136,7 @@ Local LLM tournament system. Models compete across weight classes and event type
 
 The next major initiative: replace external API dependency with a pyramid of locally-trained models.
 
-- **Tier 1 — Subatomic** (sub-100K params): Hundreds of single-task specialists. Typo fix, binary classify, flag expand, token tag. Microsecond inference.
+- **Tier 1 — Subatomic** (sub-100K params): Hundreds of single-task specialists. Typo fix, binary classify, flag expand, token tag. Microsecond inference. First proof-of-concept: **Noodle the penguin** — kova's companion AI (inspired by [Claude Code](https://claude.com/claude-code)'s buddy system). 30K param personality model that reacts to session events with short quips.
 - **Tier 2 — Molecular** (100K-1M params): Coordinators with learned routing weights to subatomics. Intent routing, context summarization, tool selection.
 - **Tier 3 — Cellular** (1M-10M params): Domain specialists. Code generation, conversation, planning.
 

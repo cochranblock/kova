@@ -223,13 +223,15 @@ Same pattern from T3 -> T2.
 | commit_classifier | 30K | diff summary | commit type | feat/fix/refactor/docs/test |
 | slop_detector | 20K | sentence | binary | P12 banned word detection |
 | urgency_scorer | 20K | sentence | float | Priority 0.0-1.0 |
-| **companion** | **30K** | **session context** | **short string** | **Personality quips, status reactions, encouragement** |
+| **noodle** | **30K** | **session context** | **short string** | **Noodle the penguin — companion AI, personality quips** |
 
-#### Companion Model (First Demo Subatomic)
+#### Noodle the Penguin (First Demo Subatomic)
 
-The companion model is the proof-of-concept that validates the entire T1 pipeline end-to-end: train a model, pack it into the nanobyte, run inference in microseconds, output a short string.
+> Inspired by Claude Code's companion/buddy system. Credit: the concept of a small personality model reacting to session events originates from Claude Code's design.
 
-**What it does:** Watches session context — what tools ran, did tests pass/fail, is a build running, how long has the user been working — and produces one-liner personality-driven reactions. Not intelligence, just personality.
+**Noodle** is kova's mascot and the first subatomic model proof-of-concept. A tiny penguin personality that validates the entire T1 pipeline end-to-end: train a model, pack it into the nanobyte, run inference in microseconds, output a short string.
+
+**What it does:** Watches session context — what tools ran, did tests pass/fail, is a build running, how long has the user been working — and produces one-liner personality-driven reactions. Not intelligence, just personality. Noodle is a penguin. Penguins are concise.
 
 **Input features (context vector):**
 - Last tool name (one-hot encoded across tool registry)
@@ -249,7 +251,7 @@ The companion model is the proof-of-concept that validates the entire T1 pipelin
 
 **Training data:** Generated from session logs — label each (context_vector, appropriate_quip) pair. Augment with synthetic pairs. 30K params is more than enough for a lookup-with-personality.
 
-**Why this is first:** It's trivially small, has no downstream dependencies, is immediately visible to the user, and exercises every part of the nanobyte pipeline (mmap, offset read, forward pass, output decode) without any risk to the agentic loop.
+**Why Noodle is first:** Trivially small, no downstream dependencies, immediately visible to the user, and exercises every part of the nanobyte pipeline (mmap, offset read, forward pass, output decode) without any risk to the agentic loop. If the penguin can quip, the pyramid works.
 
 ### Molecular Model Registry (Tier 2)
 
@@ -478,15 +480,15 @@ For requests that need distributed inference:
 
 ### Sprint 2: Subatomic Models (src/swarm/subatomic.rs)
 
-1. **Companion model first** — train 30K param quip generator on synthetic session context data
-2. Pack companion into first `.nanobyte` via consolidate()
-3. Wire companion into REPL loop — after each tool result, run companion forward(), print quip
+1. **Noodle first** — train 30K param penguin personality on synthetic session context data
+2. Pack Noodle into first `.nanobyte` via consolidate()
+3. Wire Noodle into REPL loop — after each tool result, run forward(), print quip
 4. Validate full pipeline: train -> safetensors -> nanobyte -> mmap -> forward() -> output string
 5. Then implement: intent_classify, code_vs_english, slop_detector
 6. Train all using existing candle_train.rs pipeline, consolidate into combined nanobyte
 7. Wire classifiers into REPL preprocessing (before inference)
 8. **Files**: `src/swarm/subatomic.rs`
-9. **Test**: Companion produces quip in <100us. Classifiers: 100 inputs, <1ms each
+9. **Test**: Noodle produces quip in <100us. Classifiers: 100 inputs, <1ms each
 
 ### Sprint 3: Discovery + Bridge (src/discovery.rs + src/bridge.rs)
 
