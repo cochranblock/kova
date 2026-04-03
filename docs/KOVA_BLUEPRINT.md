@@ -363,6 +363,7 @@ Bridge logging: every Claude interaction = labeled training data for the tier be
 | Corpus extraction | expand `scripts/extract_corpus.sh` | crates.io harvest |
 | Static carving (syn) | `scripts/carve_static.rs` | syn crate |
 | Dynamic carving | `scripts/carve_dynamic.sh` | rustc, clippy |
+| P23 triple lens | `src/c2.rs` (f393) | f377, f385, f386 |
 
 ### Existing Modules to Reuse
 
@@ -390,7 +391,62 @@ Bridge logging: every Claude interaction = labeled training data for the tier be
 
 ---
 
-## 10. Implementation Order
+## 10. P23: Triple Lens Research Protocol
+
+All architecture decisions, feature plans, and risk assessments use three opposing perspectives, then a fourth synthesizes. No single-perspective analysis ever again.
+
+### The Lenses
+
+| Pane | Perspective | Directive |
+|------|------------|-----------|
+| **Optimist** | Best case. What works, what's novel, competitive advantages. | Bullish but factual. No hype without evidence. |
+| **Pessimist** | What fails. Gaps. Handwaving. Hardest unsolved problems. | Brutal but fair. No nihilism without reason. |
+| **Paranoia** | Security risks. Attack vectors. Failure modes nobody's talking about. | Red team mindset. Assume the adversary is smart. |
+| **Synthesis** | Waits for all three. Combines into one honest assessment. | Where lenses agree = high confidence. Where they conflict = needs investigation. |
+
+### Output
+
+Synthesis produces:
+1. **High confidence** — all three lenses agree (build it)
+2. **Needs investigation** — lenses conflict (research more before deciding)
+3. **Red flags** — paranoia lens found something optimist/pessimist missed (address before proceeding)
+4. **Priority-ordered action items** — what to do next, ranked by confidence
+
+### Implementation
+
+```
+kova c2 research <topic>
+```
+
+1. Find 3 idle panes via `kova c2 status` ([`f385`](src/c2.rs))
+2. Dispatch to pane 1: `"OPTIMIST LENS: Analyze <topic>. Best case, advantages, what works. Be bullish but factual."`
+3. Dispatch to pane 2: `"PESSIMIST LENS: Analyze <topic>. What fails, gaps, hardest problems. Be brutal but fair."`
+4. Dispatch to pane 3: `"PARANOIA LENS: Analyze <topic>. Security risks, attack vectors, failure modes. Red team mindset."`
+5. Wait for all three to complete (poll via `kova c2 status`)
+6. Capture outputs via `kova c2 peek` ([`f386`](src/c2.rs))
+7. Dispatch to pane 4: `"SYNTHESIS: Given these three analyses, produce one honest assessment with priority-ordered action items. Where they agree = high confidence. Where they conflict = needs investigation."`
+
+Uses existing C2 infrastructure: `f377` (dispatch), `f385` (status), `f386` (peek). New function `f393` wraps the full protocol.
+
+### When to Use P23
+
+- Architecture decisions (pyramid design, nanobyte format, memory model)
+- New feature evaluation (is this worth building?)
+- Risk assessment (NanoSign security model, Claude migration risks)
+- Technology selection (any-gpu vs candle vs custom, sled vs rocksdb)
+- Incident response (what happened, what do we do, what did we miss)
+
+### Protocol Rules
+
+1. All three lenses run in parallel — no lens sees another's output
+2. Synthesis ONLY runs after all three complete — no premature conclusions
+3. Each lens must cite evidence — no unsupported claims
+4. Synthesis must explicitly state where lenses conflict — don't paper over disagreement
+5. Action items must be actionable — "investigate X" not "think about X"
+
+---
+
+## 11. Implementation Order
 
 ### Sprint 1: Nanobyte Format
 

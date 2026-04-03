@@ -254,6 +254,11 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f386 | tmux_peek | c2 | Peek at pane's recent output |
 | f387 | tmux_unblock | c2 | Unblock daemon: auto-approve, flush, retry rate limits |
 | f388 | tmux_qa | c2 | QA sweep: broadcast build+clippy+status to all panes |
+| f389 | train_subatomic | swarm/train | Train trigram-hash linear classifier, save weights |
+| f390 | generate_slop_data | swarm/train | P12 banned words vs clean sentences |
+| f391 | generate_code_vs_english_data | swarm/train | Scrape .rs/.md from repo for code vs english |
+| f392 | generate_lang_data | swarm/train | Rust/Python/JS/Go/Shell training examples |
+| f393 | triple_lens_research | c2 | P23: dispatch optimist/pessimist/paranoia/synthesis to fleet |
 
 ## Types (TN)
 
