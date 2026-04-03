@@ -1483,17 +1483,21 @@ pub fn f388(session: &str) -> Result<(), String> {
     )
 }
 
-/// f400=tmux_init. Create session by scanning dirs for `.kova` marker files.
-/// Any directory containing `.kova` becomes a pane. `.kova` can optionally contain
-/// a custom launch command (one line). Default command: "claude".
-/// Scan roots: ~/ (depth 1) and ~/dev/ (depth 1).
-pub fn f400(session: &str, scan_roots: &[&str], no_claude: bool) -> Result<(), String> {
+/// f400=tmux_init. Device-agnostic swarm bootloader.
+/// Scans directories (depth 1) for `.kova` marker files. Each marked dir becomes a pane.
+/// `.kova` file content (if any) overrides the launch command.
+/// Default agent: auto-detected (claude, copilot, or shell).
+pub fn f400(session: &str, scan_roots: &[&str], no_agent: bool) -> Result<(), String> {
     let home = std::env::var("HOME").unwrap_or_default();
+    let default_agent = detect_agent();
     let mut panes: Vec<(String, String, String)> = Vec::new(); // (name, dir, cmd)
 
     for root in scan_roots {
         let root_path = root.replace("~", &home);
-        let entries = std::fs::read_dir(&root_path).map_err(|e| format!("read {}: {}", root_path, e))?;
+        let entries = match std::fs::read_dir(&root_path) {
+            Ok(e) => e,
+            Err(_) => continue, // skip missing dirs silently
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() { continue; }
@@ -1508,14 +1512,15 @@ pub fn f400(session: &str, scan_roots: &[&str], no_claude: bool) -> Result<(), S
                         let trimmed = s.trim().to_string();
                         if trimmed.is_empty() { None } else { Some(trimmed) }
                     })
-                    .unwrap_or_else(|| "claude".into());
+                    .unwrap_or_else(|| default_agent.clone());
                 panes.push((name, path.to_string_lossy().to_string(), cmd));
             }
         }
     }
 
-    // Sort by name for consistent ordering
     panes.sort_by(|a, b| a.0.cmp(&b.0));
+    // Dedup by dir path (in case ~/ and ~/dev/ overlap)
+    panes.dedup_by(|a, b| a.1 == b.1);
 
     if panes.is_empty() {
         return Err("no directories with .kova marker found".into());
@@ -1532,7 +1537,7 @@ pub fn f400(session: &str, scan_roots: &[&str], no_claude: bool) -> Result<(), S
         .args(["new-session", "-d", "-s", session, "-n", name, "-c", dir])
         .status()
         .map_err(|e| format!("tmux new-session: {}", e))?;
-    eprintln!("[init] session '{}' created", session);
+    eprintln!("[init] session '{}' — agent: {}", session, default_agent);
 
     // Create remaining windows
     for (name, dir, _) in &panes[1..] {
@@ -1542,8 +1547,8 @@ pub fn f400(session: &str, scan_roots: &[&str], no_claude: bool) -> Result<(), S
             .map_err(|e| format!("tmux new-window: {}", e))?;
     }
 
-    // Launch commands in each pane
-    if !no_claude {
+    // Launch agent in each pane
+    if !no_agent {
         for (i, (name, _, cmd)) in panes.iter().enumerate() {
             let target = format!("{}:{}", session, i);
             let _ = std::process::Command::new("tmux")
@@ -1558,6 +1563,21 @@ pub fn f400(session: &str, scan_roots: &[&str], no_claude: bool) -> Result<(), S
 
     eprintln!("[init] {} panes ready", panes.len());
     Ok(())
+}
+
+/// Detect available AI agent on this machine. Prefers claude > copilot > shell.
+fn detect_agent() -> String {
+    for agent in ["claude", "copilot"] {
+        if std::process::Command::new("which")
+            .arg(agent)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return agent.to_string();
+        }
+    }
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
 }
 
 /// f402=auto_deploy. Drop `.kova` markers into all git repos in scan dirs.

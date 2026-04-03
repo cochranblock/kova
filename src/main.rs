@@ -429,9 +429,9 @@ enum C2Cmd {
         /// Tmux session name (default: kova-c2).
         #[arg(long, default_value = "kova-c2")]
         session: String,
-        /// Skip launching claude in panes (just create session + cd).
+        /// Skip launching agent in panes (just create session + cd).
         #[arg(long)]
-        no_claude: bool,
+        no_agent: bool,
         /// Auto-deploy: drop .kova markers into all git repos found in scan dirs.
         #[arg(long)]
         auto_deploy: bool,
@@ -1367,14 +1367,14 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        C2Cmd::TmuxInit { scan, session, no_claude, auto_deploy } => {
+        C2Cmd::TmuxInit { scan, session, no_agent, auto_deploy } => {
             let defaults = vec!["~/".to_string(), "~/dev/".to_string()];
             let roots = if scan.is_empty() { &defaults } else { &scan };
             let root_refs: Vec<&str> = roots.iter().map(|s| s.as_str()).collect();
             if auto_deploy {
                 kova::c2::f402(&root_refs).map_err(|e| anyhow::anyhow!("{}", e))?;
             }
-            kova::c2::f400(&session, &root_refs, no_claude).map_err(|e| anyhow::anyhow!("{}", e))
+            kova::c2::f400(&session, &root_refs, no_agent).map_err(|e| anyhow::anyhow!("{}", e))
         }
         C2Cmd::TmuxLayout { session } => {
             kova::c2::f401(&session).map_err(|e| anyhow::anyhow!("{}", e))

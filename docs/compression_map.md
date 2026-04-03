@@ -259,6 +259,9 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f391 | generate_code_vs_english_data | swarm/train | Scrape .rs/.md from repo for code vs english |
 | f392 | generate_lang_data | swarm/train | Rust/Python/JS/Go/Shell training examples |
 | f393 | triple_lens_research | c2 | P23: dispatch optimist/pessimist/paranoia/synthesis to fleet |
+| f400 | tmux_init | c2 | Swarm bootloader: scan .kova markers, create tmux session, launch agent |
+| f401 | tmux_layout | c2 | Export fleet layout as markdown table |
+| f402 | auto_deploy | c2 | Drop .kova markers into all git repos in scan dirs |
 
 ## Types (TN)
 
@@ -424,6 +427,19 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | g7 | — | stash |
 | g8 | — | add (files or -A) |
 | g9 | f158 | diff --staged |
+
+## Prompt Tokens (prN)
+
+Assets in `kova/assets/prompts/`. Loaded via `f110` (load_prompt). Any `prN` can be dispatched as a P23 research topic via `f393` (triple_lens_research).
+
+| Token | Filename | Protocol | Purpose |
+|-------|----------|----------|---------|
+| pr0 | tokenization.mdc | P13 | Compression map rules — fN/tN/sN/EN naming conventions |
+| pr1 | hosting-schematic.mdc | P22 | All products behind approuter + CF tunnel; port map |
+| pr2 | augment-not-intent.mdc | — | Terminology: "augment" not "intent" in user-facing text |
+| pr3 | community-grant.mdc | — | /community-grant form spec; routes, DB schema, webhook |
+| pr4 | blocking.mdc | P20 | No `--bg`; all tasks block until completion |
+| pr5 | header-writer.mdc | — | Unlicense + Contributors header injection (pre/post-AI) |
 
 ## Test Coverage by Module
 
