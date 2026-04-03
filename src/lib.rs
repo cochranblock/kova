@@ -62,6 +62,7 @@ pub mod output;
 #[cfg(feature = "inference")]
 pub mod pipeline;
 pub mod recent_changes;
+#[allow(non_camel_case_types)]
 pub mod squeeze;
 #[cfg(feature = "inference")]
 pub mod router;
