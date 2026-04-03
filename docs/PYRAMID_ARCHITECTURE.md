@@ -343,7 +343,7 @@ $ cargo install kova
 $ kova
 ╭─────────────────────────────╮
 │  Kova — augment engine      │
-│  pyramid: 10 subatomic (starter pack)
+│  pyramid: 11 subatomic (starter pack)
 │  nanobyte: 1.8MB (330K params)
 ╰─────────────────────────────╯
 kova>

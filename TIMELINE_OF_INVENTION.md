@@ -18,6 +18,18 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-04-02 — Pyramid Architecture + Docs Audit
+
+**What:** Designed full Pyramid Architecture ([`docs/PYRAMID_ARCHITECTURE.md`](docs/PYRAMID_ARCHITECTURE.md)): subatomic/molecular/cellular model tiers with shared mmap'd nanobyte weight blob. Named Noodle the penguin as companion AI (inspired by Claude Code's buddy system). Added shitty_test_detector (REAL/SMOKE/MISSING classifier), claim_verifier (README-as-test), 11-model starter nanobyte pack. Cross-referenced every README claim to source file. Full docs audit.
+**Commits:** `43a7c4d`, `373edd9`, `a24106d`, `558da7f`, `07dbc4a`, `8ec4709`, `c2e2e92`, `cda7462`
+**AI Role:** AI wrote architecture plan, model specs, README cross-references. Human directed pyramid vision, naming, and model selection.
+
+### 2026-04-01 — Claude Code Architecture Fusion
+
+**What:** Fused Claude Code patterns into kova. Context compaction ([`f380`](src/context_mgr.rs)): LLM-powered auto-summarize at 80% context threshold. Dual-mode inference ([`f381`](src/inference/providers.rs)/[`f382`](src/inference/mod.rs)): Anthropic SSE streaming + local/remote/auto dispatch via `KOVA_INFERENCE` env. Checkpoint/undo ([`f383`/`f384`](src/tools.rs)): sled snapshots before every file write/edit. Exec tool rename (bash->exec) + permission gates (`KOVA_PERMS=guarded`). Fixed pre-existing test compile errors. 314 tests passing.
+**Commits:** `6efab67`, `3fa3080`, `6091dad`, `e8a0cb0`, `a79be81`
+**AI Role:** AI implemented all features, fixed test infrastructure. Human directed priorities and architecture decisions.
+
 ### 2026-03-29 — Multi-Architecture Release
 
 **What:** Built for macOS ARM64 (27 MB), macOS x86_64 (13 MB), Android AAB (6.6 MB), Android APK (17 MB). iOS scaffold (staticlib crate). PWA manifest + service worker. build-all-targets.sh. All artifacts uploaded to GitHub Release v0.7.0.

@@ -8,7 +8,7 @@ Thank you for your interest in contributing to Kova. This guide outlines the pro
 ## Getting Started
 
 ### Prerequisites
-- Rust 1.70+
+- Rust (edition 2024, nightly recommended)
 - Tokio async runtime knowledge (helpful)
 - Git
 
@@ -16,8 +16,9 @@ Thank you for your interest in contributing to Kova. This guide outlines the pro
 ```bash
 git clone https://github.com/cochranblock/kova.git
 cd kova
-cargo build
-cargo test
+cargo build                          # default features: serve, inference, rag, tui
+cargo test --release -p kova         # 314 tests
+cargo build --release --features serve  # full release build
 ```
 
 ### Using Project Aliases
@@ -65,13 +66,13 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 - Start with a type: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`
 - Keep the first line under 50 characters
 - Include a body explaining why, not what (the diff shows what)
-- Always include the Copilot co-author trailer
+- Include AI co-author trailer when applicable
 
 ### 4. Test
 ```bash
-cargo test              # Unit and integration tests
-cargo clippy           # Linting
-cargo fmt --check      # Format check
+cargo test --release -p kova       # 314 unit and integration tests
+cargo clippy --release -p kova     # Linting
+cargo fmt --check                  # Format check
 ```
 
 All tests must pass before opening a PR.
@@ -103,8 +104,8 @@ In the PR description:
 
 ### Tokenization
 Kova uses compressed identifiers (e.g., `f0`, `t5`, `s12`) to reduce token consumption when feeding code to LLMs. See [docs/compression_map.md](docs/compression_map.md) for the canonical mapping. All tokens must be documented:
-- `f0-f160+` = functions
-- `t0-t108+` = types
+- `f0-f384` = functions
+- `t0-T215` = types
 - `s0-s*` = struct fields
 - `c1-c9, ci` = node commands
 - `x0-x9` = cargo commands

@@ -45,13 +45,15 @@ kova/                          # Single crate (+ exopack)
 ├── src/
 │   ├── main.rs               # CLI entrypoint, 15+ subcommands (1,778 lines)
 │   ├── tui.rs                # Ratatui TUI — agent chat, visual QC (1,672 lines)
-│   ├── tools.rs              # 7 tools: read/write/edit/bash/glob/grep/memory (1,412 lines)
-│   ├── serve.rs              # Axum HTTP + WebSocket + WASM client (1,240 lines)
-│   ├── academy.rs            # Recursive academy (1,022 lines)
-│   ├── gui.rs                # egui desktop GUI (912 lines)
-│   ├── node_cmd.rs           # Tokenized SSH commands c1-c9/ci (879 lines)
-│   ├── cargo_cmd.rs          # Tokenized cargo wrapper x0-x9 (786 lines)
-│   ├── c2.rs                 # Swarm orchestration (753 lines)
+│   ├── tools.rs              # 13 tools: read/write/edit/exec/glob/grep/memory + more (2,017 lines)
+│   ├── serve.rs              # Axum HTTP + WebSocket + WASM client (1,351 lines)
+│   ├── academy.rs            # Recursive academy (1,021 lines)
+│   ├── gui.rs                # egui desktop GUI (1,660 lines)
+│   ├── node_cmd.rs           # Tokenized SSH commands c1-c9/ci (878 lines)
+│   ├── cargo_cmd.rs          # Tokenized cargo wrapper x0-x9 (887 lines)
+│   ├── c2.rs                 # Swarm orchestration (1,309 lines)
+│   ├── agent_loop.rs         # Agentic tool loop with context compaction (227 lines)
+│   ├── context_mgr.rs        # Token-aware context window manager (549 lines)
 │   ├── config.rs             # Config & paths (697 lines)
 │   ├── tokenization.rs       # Compression protocol validator (305 lines)
 │   ├── web_client/           # WASM thin client source (egui in browser)
@@ -59,18 +61,18 @@ kova/                          # Single crate (+ exopack)
 │   ├── inference/            # Providers, cluster, local LLM
 │   ├── kernel/               # Kernel: stream, commands
 │   ├── surface/              # Surface adapters: serve, gui
-│   └── ...                   # 92 files total
+│   └── ...                   # 103 files total
 ├── exopack/                   # Test augmentation (screenshot, video, triple sims)
 ├── wasm/                      # Thin WASM build manifest (cross-compiles src/web_client/)
 ├── screenshots/               # GUI screenshots (Proof of Artifacts)
 ├── docs/                      # Documentation (35 files)
 └── README.md                  # Architecture overview
 
-Total: 32,305 lines Rust + 280 lines shell across 92 source files
+Total: 41,629 lines Rust + 280 lines shell across 103 source files
 ```
 
 ### Tech Stack
-- **Language:** Rust 1.70+
+- **Language:** Rust (edition 2024)
 - **Async Runtime:** Tokio
 - **Web Framework:** Axum (HTTP), egui (GUI)
 - **Storage:** sled (embedded k/v store)
@@ -269,7 +271,16 @@ kg
 
 **Default model:** Qwen2.5-Coder-0.5B (~1.5 GB, good for CPU inference)
 
-See `src/inference.rs` for details.
+See [`src/inference/`](../src/inference/) for details. Dual-mode: local Kalosm GGUF or Anthropic API via `KOVA_INFERENCE` env (local/remote/auto).
+
+### Environment Variables
+
+| Variable | Values | Purpose |
+|----------|--------|---------|
+| `KOVA_INFERENCE` | `local`, `remote`, `auto` | Inference backend ([`f382`](../src/inference/mod.rs)) |
+| `KOVA_MODEL` | model name | Override remote model (default: claude-sonnet-4-6) |
+| `KOVA_PERMS` | `open`, `guarded` | Permission gates ([`src/tools.rs`](../src/tools.rs)) |
+| `ANTHROPIC_API_KEY` | API key | Required for remote inference |
 
 ---
 
@@ -301,7 +312,7 @@ f160 = add_webhook_support
 t101 = WebhookConfig
 ```
 
-### 5. Commit with Copilot Trailer
+### 5. Commit
 ```bash
 git commit -m "feat: Add webhook support
 
@@ -309,7 +320,7 @@ git commit -m "feat: Add webhook support
 - Add config option for webhooks
 - Include unit and integration tests
 
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 ```
 
 ### 6. Push & Open PR
@@ -355,7 +366,7 @@ kova chat
 
 ### Run All Tests
 ```bash
-cargo test
+cargo test --release -p kova   # 314 tests
 ```
 
 ### Run Specific Test
@@ -423,10 +434,9 @@ kova ssh-ca init  # Initialize SSH CA
 
 - **README.md** — Project overview, architecture, tokenization map
 - **CONTRIBUTING.md** — PR process, commit conventions, code style
-- **docs/ARCHITECTURE.md** — Deep dive into architecture
-- **docs/compression_map.md** — Tokenization reference (MUST READ)
-- **docs/RUNBOOKS.md** — Common tasks & incident response
-- **docs/TOURNAMENT_RESULTS.md** — LLM performance benchmarks
+- **[docs/PYRAMID_ARCHITECTURE.md](PYRAMID_ARCHITECTURE.md)** — Planned pyramid of subatomic/molecular/cellular models
+- **[docs/compression_map.md](compression_map.md)** — Tokenization reference (MUST READ)
+- **[docs/TOURNAMENT_RESULTS.md](TOURNAMENT_RESULTS.md)** — LLM performance benchmarks
 
 ---
 
@@ -449,4 +459,4 @@ kova ssh-ca init  # Initialize SSH CA
 6. ⬜ Check out a simple issue and open a PR
 7. ⬜ Get added to the on-call rotation (after 2-3 PRs)
 
-Welcome to the team! 🚀
+Welcome to the team!
