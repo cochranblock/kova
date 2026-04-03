@@ -250,6 +250,10 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f382 | dual_stream | inference/mod | Unified dispatcher: local/remote/auto via KOVA_INFERENCE |
 | f383 | checkpoint | tools | Snapshot file to sled before write/edit |
 | f384 | undo_edit | tools | Restore file from last sled checkpoint |
+| f385 | tmux_status | c2 | Fleet status: working/idle/blocked/ratelimited per pane |
+| f386 | tmux_peek | c2 | Peek at pane's recent output |
+| f387 | tmux_unblock | c2 | Unblock daemon: auto-approve, flush, retry rate limits |
+| f388 | tmux_qa | c2 | QA sweep: broadcast build+clippy+status to all panes |
 
 ## Types (TN)
 

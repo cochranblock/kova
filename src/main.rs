@@ -446,6 +446,38 @@ enum C2Cmd {
         #[arg(long, default_value = "kova-c2")]
         session: String,
     },
+    /// Fleet status: show which panes are working, idle, blocked, or rate-limited.
+    #[command(name = "status")]
+    TmuxStatus {
+        #[arg(long, default_value = "kova-c2")]
+        session: String,
+    },
+    /// Peek at a pane's recent output.
+    #[command(name = "peek")]
+    TmuxPeek {
+        /// Window index.
+        window: String,
+        /// Lines to show (default: 20).
+        #[arg(short, long, default_value = "20")]
+        lines: usize,
+        #[arg(long, default_value = "kova-c2")]
+        session: String,
+    },
+    /// Unblock daemon: auto-approve prompts, flush pasted text, retry rate limits.
+    #[command(name = "unblock")]
+    TmuxUnblock {
+        #[arg(long, default_value = "kova-c2")]
+        session: String,
+        /// Poll interval in seconds (default: 3).
+        #[arg(short, long, default_value = "3")]
+        interval: u64,
+    },
+    /// QA sweep: broadcast build + clippy + status to all panes.
+    #[command(name = "qa")]
+    TmuxQa {
+        #[arg(long, default_value = "kova-c2")]
+        session: String,
+    },
     /// Tokenized node commands (c1-c9, ci, ct). §13 compressed output.
     Ncmd {
         /// Command token: c1(nstat) c2(nspec) c3(nsvc) c4(nrust) c5(nsync) c6(nbuild) c7(nlog) c8(nkill) c9(ndeploy) ci(inspect) ct(ntest).
@@ -1311,6 +1343,18 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
                 anyhow::bail!("no message specified");
             }
             kova::c2::f379(&session, &msg).map_err(|e| anyhow::anyhow!("{}", e))
+        }
+        C2Cmd::TmuxStatus { session } => {
+            kova::c2::f385(&session).map_err(|e| anyhow::anyhow!("{}", e))
+        }
+        C2Cmd::TmuxPeek { window, lines, session } => {
+            kova::c2::f386(&session, &window, lines).map_err(|e| anyhow::anyhow!("{}", e))
+        }
+        C2Cmd::TmuxUnblock { session, interval } => {
+            kova::c2::f387(&session, interval).map_err(|e| anyhow::anyhow!("{}", e))
+        }
+        C2Cmd::TmuxQa { session } => {
+            kova::c2::f388(&session).map_err(|e| anyhow::anyhow!("{}", e))
         }
         C2Cmd::SshCa { cmd } => match cmd {
             SshCaCmd::Init => kova::ssh_ca::f298(),
