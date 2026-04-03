@@ -13,6 +13,18 @@ The backlog is the interrupt handler. When a pane gets interrupted mid-task:
 
 Nothing gets lost. Interrupted work always goes on top of the stack. Context switches are lossless. This is standard for all panes.
 
+## Idle = Work the Stack
+
+When a pane finishes a task and has no new dispatch:
+
+1. **Read** BACKLOG.md
+2. **Pop** item #1
+3. **Work it** to completion
+4. **Loop** — pop next item, keep going
+5. **Stop** only when backlog is empty or a new dispatch interrupts
+
+The fleet is never idle. If there's work on the stack, do it. No waiting for orders.
+
 1. [build] **Extract crates.io corpus on bt** — Run `scripts/extract_corpus.sh` on bt `/mnt/data/crates/` (240K crates, 34GB harvested). Extract .rs files to `/mnt/data/corpus/`. This unlocks real training data for all subatomic models. Depends: harvest complete (done).
 
 2. [build] **Build training JSONL from corpus** — Run `scripts/build_training_data.sh` on extracted corpus. Generate rust_kinds, slop_detector, code_vs_english JSONL. Retrain 3 proven models on real data instead of synthetic. Measure accuracy improvement.
