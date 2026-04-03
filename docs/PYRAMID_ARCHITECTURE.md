@@ -229,6 +229,7 @@ Same pattern from T3 -> T2.
 | filename_predictor | 50K | content snippet | token logits | Suggest filename from content |
 | **noodle** | **30K** | **session context** | **short string** | **Noodle the penguin — companion AI, personality quips** |
 | **shitty_test_detector** | **30K** | **test source** | **3-class logits** | **Classify tests as REAL/SMOKE/MISSING — anti-self-licking-ice-cream-cone** |
+| **claim_verifier** | **40K** | **doc sentence** | **binary + span** | **Flag unsourced claims in README/docs — enforces truth at commit time** |
 
 #### Noodle the Penguin (First Demo Subatomic)
 
@@ -284,26 +285,57 @@ Reads test source code and classifies it into three buckets:
 
 This is the quality enforcement model. It prevents the pyramid from generating tests that test nothing.
 
+#### Claim Verifier (README-as-Test)
+
+Scans README and docs for claims and flags any that lack a source link or are numerically wrong.
+
+**Two modes:**
+
+1. **Subatomic model (pre-commit):** Reads each sentence, classifies as:
+   - **SOURCED** — has a link to implementation (`[f382](src/inference/mod.rs)`)
+   - **UNSOURCED** — makes a feature/capability claim with no link ("supports X" with no pointer)
+   - **NUMERIC** — contains a number that can be verified ("314 tests", "27 MB", "13 tools")
+   Pre-commit hook runs claim_verifier on staged `.md` files. Warns on UNSOURCED, blocks on NUMERIC mismatches.
+
+2. **Build-time verification (build.rs):** At `cargo build`, scan README for verifiable numeric claims:
+   - "X tests passing" — run `cargo test --release -p kova 2>&1 | grep 'test result'`, extract count, compare
+   - "Y tools available" — count entries in `TOOLS` array in `src/tools.rs`
+   - "Z lines" — `wc -l` on the referenced file
+   - Binary size claims — check against last release artifact
+   If any claim disagrees with reality, `build.rs` emits `cargo:warning` (or `compile_error!` in strict mode).
+
+**Input features (for the subatomic model):**
+- Sentence contains a number (binary)
+- Sentence contains words like "supports", "available", "provides", "includes" (binary)
+- Presence of markdown link `[text](path)` (binary)
+- Whether the link target exists on disk (binary)
+- Distance from nearest section header (positional)
+
+**Training data:** Label sentences from kova README + other project READMEs as SOURCED/UNSOURCED/NUMERIC. Easy to generate — any sentence with a `[link](path)` where the path exists is SOURCED.
+
+**The philosophy:** Truth is enforced by the compiler, not by good intentions. The README becomes a test. Lying isn't possible, not just discouraged. If the code changes and the docs don't update, the build tells you.
+
 ### Starter Nanobyte — Ships With the Binary
 
-A pre-baked `.nanobyte` blob embedded in the kova binary via `include_bytes!`. Users get a working pyramid with 10 subatomic models on first run. No setup, no model downloads, no config.
+A pre-baked `.nanobyte` blob embedded in the kova binary via `include_bytes!`. Users get a working pyramid with 11 subatomic models on first run. No setup, no model downloads, no config.
 
 **The starter pack:**
 
 | # | Model | Params | What It Does |
 |---|-------|--------|-------------|
 | 1 | shitty_test_detector | 30K | Classifies tests as REAL/SMOKE/MISSING |
-| 2 | noodle | 30K | Companion penguin — personality quips |
-| 3 | typo_fixer | 50K | Common typo correction |
-| 4 | code_vs_english | 20K | Binary: is this code or natural language |
-| 5 | intent_classify | 50K | Question/command/code/conversation |
-| 6 | slop_detector | 20K | Catches P12 banned AI words |
-| 7 | lang_detector | 30K | Rust/Python/JS/Go/Shell classifier |
-| 8 | sentiment | 20K | Positive/negative/neutral from text |
-| 9 | commit_msg_scorer | 30K | Rates commit message quality |
-| 10 | filename_predictor | 50K | Suggests filename from content snippet |
+| 2 | claim_verifier | 40K | Flags unsourced claims in docs — truth enforcement |
+| 3 | noodle | 30K | Companion penguin — personality quips |
+| 4 | typo_fixer | 50K | Common typo correction |
+| 5 | code_vs_english | 20K | Binary: is this code or natural language |
+| 6 | intent_classify | 50K | Question/command/code/conversation |
+| 7 | slop_detector | 20K | Catches P12 banned AI words |
+| 8 | lang_detector | 30K | Rust/Python/JS/Go/Shell classifier |
+| 9 | sentiment | 20K | Positive/negative/neutral from text |
+| 10 | commit_msg_scorer | 30K | Rates commit message quality |
+| 11 | filename_predictor | 50K | Suggests filename from content snippet |
 
-**Total: ~330K params, estimated <2MB on disk (quantized).** Embedded in the binary — zero network calls to start using the pyramid.
+**Total: ~370K params, estimated <2MB on disk (quantized).** Embedded in the binary — zero network calls to start using the pyramid.
 
 **User experience:**
 ```
