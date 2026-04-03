@@ -223,6 +223,10 @@ Same pattern from T3 -> T2.
 | commit_classifier | 30K | diff summary | commit type | feat/fix/refactor/docs/test |
 | slop_detector | 20K | sentence | binary | P12 banned word detection |
 | urgency_scorer | 20K | sentence | float | Priority 0.0-1.0 |
+| lang_detector | 30K | code snippet | 5-class logits | Rust/Python/JS/Go/Shell classifier |
+| sentiment | 20K | sentence | 3-class logits | Positive/negative/neutral |
+| commit_msg_scorer | 30K | commit message | float | Rate commit message quality 0.0-1.0 |
+| filename_predictor | 50K | content snippet | token logits | Suggest filename from content |
 | **noodle** | **30K** | **session context** | **short string** | **Noodle the penguin — companion AI, personality quips** |
 | **shitty_test_detector** | **30K** | **test source** | **3-class logits** | **Classify tests as REAL/SMOKE/MISSING — anti-self-licking-ice-cream-cone** |
 
@@ -279,6 +283,50 @@ Reads test source code and classifies it into three buckets:
 - Tournament scoring: penalize models that produce SMOKE tests
 
 This is the quality enforcement model. It prevents the pyramid from generating tests that test nothing.
+
+### Starter Nanobyte — Ships With the Binary
+
+A pre-baked `.nanobyte` blob embedded in the kova binary via `include_bytes!`. Users get a working pyramid with 10 subatomic models on first run. No setup, no model downloads, no config.
+
+**The starter pack:**
+
+| # | Model | Params | What It Does |
+|---|-------|--------|-------------|
+| 1 | shitty_test_detector | 30K | Classifies tests as REAL/SMOKE/MISSING |
+| 2 | noodle | 30K | Companion penguin — personality quips |
+| 3 | typo_fixer | 50K | Common typo correction |
+| 4 | code_vs_english | 20K | Binary: is this code or natural language |
+| 5 | intent_classify | 50K | Question/command/code/conversation |
+| 6 | slop_detector | 20K | Catches P12 banned AI words |
+| 7 | lang_detector | 30K | Rust/Python/JS/Go/Shell classifier |
+| 8 | sentiment | 20K | Positive/negative/neutral from text |
+| 9 | commit_msg_scorer | 30K | Rates commit message quality |
+| 10 | filename_predictor | 50K | Suggests filename from content snippet |
+
+**Total: ~330K params, estimated <2MB on disk (quantized).** Embedded in the binary — zero network calls to start using the pyramid.
+
+**User experience:**
+```
+$ cargo install kova
+$ kova
+╭─────────────────────────────╮
+│  Kova — augment engine      │
+│  pyramid: 10 subatomic (starter pack)
+│  nanobyte: 1.8MB (330K params)
+╰─────────────────────────────╯
+kova>
+```
+
+**Extensibility:** Users can train their own subatomics, pack custom `.nanobyte` files, and drop them in `~/.kova/models/`. Discovery finds them on startup. The starter pack is the floor, not the ceiling.
+
+**Build pipeline:**
+1. Train all 10 models individually via `candle_train.rs`
+2. `consolidate()` packs them into `starter.nanobyte`
+3. `include_bytes!("../assets/starter.nanobyte")` embeds in binary
+4. On first run, pyramid loads from embedded bytes (no mmap needed for embedded — copy to RAM once)
+5. User-supplied `.nanobyte` files in `~/.kova/models/` are mmap'd and merged into the pyramid at runtime
+
+**any-gpu integration:** The starter nanobyte ships with any-gpu too. `cargo install any-gpu` gets you the same 10 models. Same architecture, same pyramid, different host binary.
 
 ### Molecular Model Registry (Tier 2)
 
