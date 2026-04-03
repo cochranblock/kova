@@ -187,41 +187,41 @@ alias p10x='cd "${_KH}/pixel-forge" && cargo clippy'
 # Pattern: d<project>s = sync, d<project>b = build, d<project>d = deploy (full), d<project>r = restart
 
 # d3 = oakilydokily deploy pipeline (build on bt, deploy to gd)
-d3s() { rsync -avz --exclude target --exclude .git "${_KH}/oakilydokily/" bt:/home/mcochran/oakilydokily/; }
-d3b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p oakilydokily --release --features approuter'; }
-d3c() { scp bt:/home/mcochran/target/release/oakilydokily /tmp/oakilydokily-release && scp /tmp/oakilydokily-release gd:/home/mcochran/bin/oakilydokily; }
+d3s() { rsync -aq --exclude target --exclude .git "${_KH}/oakilydokily/" bt:/home/mcochran/oakilydokily/; }
+d3b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p oakilydokily --release --features approuter' 2>&1 | tail -1; }
+d3c() { scp -q bt:/home/mcochran/target/release/oakilydokily /tmp/oakilydokily-release && scp -q /tmp/oakilydokily-release gd:/home/mcochran/bin/oakilydokily; }
 d3r() { ssh gd 'systemctl --user restart oakilydokily'; }
-d3d() { echo "d3: sync→build→copy→restart"; d3s && d3b && d3c && d3r && echo "d3: oakilydokily deployed"; }
-d3dp() { (cd "${_KH}/oakilydokily" && git push) && d3d; }
+d3d() { d3s && echo "sync:ok" && d3b && echo "build:ok" && d3c && echo "copy:ok" && d3r && echo "d3:ok" || echo "d3:err"; }
+d3dp() { (cd "${_KH}/oakilydokily" && git push 2>&1 | tail -1) && d3d; }
 
 # d0 = kova deploy pipeline (build on bt, deploy to all nodes)
-d0s() { rsync -avz --exclude target --exclude .git "${_KH}/kova/" bt:/home/mcochran/kova/; }
-d0b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p kova --release --features serve'; }
+d0s() { rsync -aq --exclude target --exclude .git "${_KH}/kova/" bt:/home/mcochran/kova/; }
+d0b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p kova --release --features serve' 2>&1 | tail -1; }
 
 # d1 = approuter deploy pipeline
-d1s() { rsync -avz --exclude target --exclude .git "${_KH}/approuter/" bt:/home/mcochran/approuter/; }
-d1b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p approuter --release'; }
-d1c() { scp bt:/home/mcochran/target/release/approuter /tmp/approuter-release && scp /tmp/approuter-release gd:/home/mcochran/bin/approuter; }
-d1dp() { (cd "${_KH}/approuter" && git push) && d1s && d1b && d1c; }
+d1s() { rsync -aq --exclude target --exclude .git "${_KH}/approuter/" bt:/home/mcochran/approuter/; }
+d1b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p approuter --release' 2>&1 | tail -1; }
+d1c() { scp -q bt:/home/mcochran/target/release/approuter /tmp/approuter-release && scp -q /tmp/approuter-release gd:/home/mcochran/bin/approuter; }
+d1dp() { (cd "${_KH}/approuter" && git push 2>&1 | tail -1) && d1s && echo "sync:ok" && d1b && echo "build:ok" && d1c && echo "d1:ok" || echo "d1:err"; }
 
 # d2 = cochranblock deploy pipeline (sync→bt build→copy→gd restart)
-d2s() { rsync -avz --exclude target --exclude .git "${_KH}/cochranblock/" bt:/home/mcochran/cochranblock/; }
-d2b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p cochranblock --release --features approuter'; }
-d2c() { scp bt:/home/mcochran/target/release/cochranblock /tmp/cochranblock-release && scp /tmp/cochranblock-release gd:/home/mcochran/bin/cochranblock; }
+d2s() { rsync -aq --exclude target --exclude .git "${_KH}/cochranblock/" bt:/home/mcochran/cochranblock/; }
+d2b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p cochranblock --release --features approuter' 2>&1 | tail -1; }
+d2c() { scp -q bt:/home/mcochran/target/release/cochranblock /tmp/cochranblock-release && scp -q /tmp/cochranblock-release gd:/home/mcochran/bin/cochranblock; }
 d2r() { ssh gd 'pkill -f cochranblock 2>/dev/null; cd /home/mcochran/bin && nohup ./cochranblock </dev/null >>/tmp/cochranblock.log 2>&1 &'; }
-d2d() { echo "d2: sync→build→copy→restart"; d2s && d2b && d2c && d2r && echo "d2: cochranblock deployed"; }
-d2dp() { (cd "${_KH}/cochranblock" && git push) && d2d; }
+d2d() { d2s && echo "sync:ok" && d2b && echo "build:ok" && d2c && echo "copy:ok" && d2r && echo "d2:ok" || echo "d2:err"; }
+d2dp() { (cd "${_KH}/cochranblock" && git push 2>&1 | tail -1) && d2d; }
 alias redeploy='d2d'   # cochranblock: rebuild via ssh (bt) + redeploy to gd
 
 # d10 = pixel-forge deploy pipeline (sync→build on bt→copy to all nodes)
-d10s() { rsync -avz --exclude target --exclude .git --exclude data "${_KH}/pixel-forge/" bt:/home/mcochran/pixel-forge/; }
-d10b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran/pixel-forge && cargo build --release'; }
-d10c() { for h in lf gd bt st; do scp bt:/home/mcochran/pixel-forge/target/release/pixel-forge "$h":/home/mcochran/bin/pixel-forge 2>/dev/null && echo "$h: copied" || echo "$h: FAILED"; done; }
-d10d() { echo "d10: sync→build→copy"; d10s && d10b && d10c && echo "d10: pixel-forge deployed to all nodes"; }
-d10dp() { (cd "${_KH}/pixel-forge" && git push) && d10d; }
+d10s() { rsync -aq --exclude target --exclude .git --exclude data "${_KH}/pixel-forge/" bt:/home/mcochran/pixel-forge/; }
+d10b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran/pixel-forge && cargo build --release' 2>&1 | tail -1; }
+d10c() { for h in lf gd bt st; do scp -q bt:/home/mcochran/pixel-forge/target/release/pixel-forge "$h":/home/mcochran/bin/pixel-forge 2>/dev/null && echo "$h:ok" || echo "$h:err"; done; }
+d10d() { d10s && echo "sync:ok" && d10b && echo "build:ok" && d10c && echo "d10:ok" || echo "d10:err"; }
+d10dp() { (cd "${_KH}/pixel-forge" && git push 2>&1 | tail -1) && d10d; }
 
 # dw = sync workspace (Cargo.toml, lock, vendor) to bt
-dws() { rsync -avz "${_KH}/Cargo.toml" "${_KH}/Cargo.lock" bt:/home/mcochran/ && rsync -avz "${_KH}/vendor/" bt:/home/mcochran/vendor/; }
+dws() { rsync -aq "${_KH}/Cargo.toml" "${_KH}/Cargo.lock" bt:/home/mcochran/ && rsync -aq "${_KH}/vendor/" bt:/home/mcochran/vendor/ && echo "dws:ok" || echo "dws:err"; }
 
 # dm = build mural-wasm (local only — needs wasm32 target)
 dm() { cargo build --target wasm32-unknown-unknown -p mural-wasm --release && cp "${_KH}/target/wasm32-unknown-unknown/release/mural-wasm.wasm" "${_KH}/oakilydokily/assets/mural-wasm.wasm" && echo "mural-wasm built"; }
