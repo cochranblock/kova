@@ -223,6 +223,33 @@ Same pattern from T3 -> T2.
 | commit_classifier | 30K | diff summary | commit type | feat/fix/refactor/docs/test |
 | slop_detector | 20K | sentence | binary | P12 banned word detection |
 | urgency_scorer | 20K | sentence | float | Priority 0.0-1.0 |
+| **companion** | **30K** | **session context** | **short string** | **Personality quips, status reactions, encouragement** |
+
+#### Companion Model (First Demo Subatomic)
+
+The companion model is the proof-of-concept that validates the entire T1 pipeline end-to-end: train a model, pack it into the nanobyte, run inference in microseconds, output a short string.
+
+**What it does:** Watches session context — what tools ran, did tests pass/fail, is a build running, how long has the user been working — and produces one-liner personality-driven reactions. Not intelligence, just personality.
+
+**Input features (context vector):**
+- Last tool name (one-hot encoded across tool registry)
+- Tool success/failure (binary)
+- Build running (binary)
+- Tests passed/failed/count
+- Session duration bucket (fresh/working/marathon)
+- Time since last user input
+- Error count in last N turns
+
+**Output:** Index into a vocabulary of ~200 short quips, bucketed by situation:
+- Build success: "clean build", "ship it", "zero warnings"
+- Test failure: "ouch", "close one", "try again"
+- Long session: "still here?", "hydrate", "touch grass"
+- Edit streak: "on a roll", "flow state", "keep going"
+- Error recovery: "fixed it", "persistence pays", "back on track"
+
+**Training data:** Generated from session logs — label each (context_vector, appropriate_quip) pair. Augment with synthetic pairs. 30K params is more than enough for a lookup-with-personality.
+
+**Why this is first:** It's trivially small, has no downstream dependencies, is immediately visible to the user, and exercises every part of the nanobyte pipeline (mmap, offset read, forward pass, output decode) without any risk to the agentic loop.
 
 ### Molecular Model Registry (Tier 2)
 
@@ -451,12 +478,15 @@ For requests that need distributed inference:
 
 ### Sprint 2: Subatomic Models (src/swarm/subatomic.rs)
 
-1. Implement forward() for: intent_classify, code_vs_english, slop_detector
-2. Train using existing candle_train.rs pipeline
-3. Consolidate into first `.nanobyte`
-4. Wire into REPL preprocessing (before inference)
-5. **Files**: `src/swarm/subatomic.rs`
-6. **Test**: Classify 100 inputs, measure latency (<1ms target)
+1. **Companion model first** — train 30K param quip generator on synthetic session context data
+2. Pack companion into first `.nanobyte` via consolidate()
+3. Wire companion into REPL loop — after each tool result, run companion forward(), print quip
+4. Validate full pipeline: train -> safetensors -> nanobyte -> mmap -> forward() -> output string
+5. Then implement: intent_classify, code_vs_english, slop_detector
+6. Train all using existing candle_train.rs pipeline, consolidate into combined nanobyte
+7. Wire classifiers into REPL preprocessing (before inference)
+8. **Files**: `src/swarm/subatomic.rs`
+9. **Test**: Companion produces quip in <100us. Classifiers: 100 inputs, <1ms each
 
 ### Sprint 3: Discovery + Bridge (src/discovery.rs + src/bridge.rs)
 
