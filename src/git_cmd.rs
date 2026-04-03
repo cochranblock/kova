@@ -106,8 +106,9 @@ fn f158(raw: &str) -> String {
     let re_file = Regex::new(r"^\+\+\+ b/(.+)$").unwrap();
     let re_hunk = Regex::new(r"^@@ -\d+(?:,\d+)? \+(\d+)").unwrap();
     let re_skip = Regex::new(r"^(---|diff --git|index |new file|deleted file)").unwrap();
-    let re_add = Regex::new(r"^\+(?!\+\+)(.*)$").unwrap();
-    let re_del = Regex::new(r"^-(?!--)(.*)$").unwrap();
+    // regex crate doesn't support lookahead; match + or - then check it's not +++ / ---
+    let re_add = Regex::new(r"^\+(.*)$").unwrap();
+    let re_del = Regex::new(r"^-(.*)$").unwrap();
 
     let mut lines: Vec<String> = Vec::new();
     let mut current_file = String::new();
@@ -128,14 +129,24 @@ fn f158(raw: &str) -> String {
             continue;
         }
         if let Some(caps) = re_add.captures(line) {
-            let trimmed = caps[1].trim();
+            let rest = &caps[1];
+            // Skip +++ (file header already handled by re_file)
+            if rest.starts_with("++") {
+                continue;
+            }
+            let trimmed = rest.trim();
             if !trimmed.is_empty() {
                 lines.push(format!("{}:{} +{}", current_file, hunk_line, trimmed));
                 added += 1;
             }
             hunk_line += 1;
         } else if let Some(caps) = re_del.captures(line) {
-            let trimmed = caps[1].trim();
+            let rest = &caps[1];
+            // Skip --- (file header)
+            if rest.starts_with("--") {
+                continue;
+            }
+            let trimmed = rest.trim();
             if !trimmed.is_empty() {
                 lines.push(format!("{}:{} -{}", current_file, hunk_line, trimmed));
                 removed += 1;

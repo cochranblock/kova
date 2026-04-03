@@ -25,11 +25,11 @@ When a pane finishes a task and has no new dispatch:
 
 The fleet is never idle. If there's work on the stack, do it. No waiting for orders.
 
-1. [build] **Extract crates.io corpus on bt** — Run `scripts/extract_corpus.sh` on bt `/mnt/data/crates/` (240K crates, 34GB harvested). Extract .rs files to `/mnt/data/corpus/`. This unlocks real training data for all subatomic models. Depends: harvest complete (done).
+1. [security] **Fix shell injection in c2.rs hive tar-stream sync** — Line 382: `format!("cat {} | ssh {} \"...\"", tar_path, node, extract_dir)` passes user-controlled strings into `sh -c`. Replace with direct `Command::new("ssh").args([...])` — no shell interpolation, args as separate items. Also replace `/tmp/hive-build.tar` with `tempfile::NamedTempFile` to close race condition. P23 paranoia: highest-severity hole in the fleet.
 
-2. [build] **Build training JSONL from corpus** — Run `scripts/build_training_data.sh` on extracted corpus. Generate rust_kinds, slop_detector, code_vs_english JSONL. Retrain 3 proven models on real data instead of synthetic. Measure accuracy improvement.
+2. [build] **Add pre-push git hook: cargo test gate** — `.git/hooks/pre-push` running `cargo test -p kova --lib`. The f158 lookahead regex was a runtime panic that lived in main for 5 commits because there was no push gate. 2-second test run eliminates the whole class. Also add to `scripts/install-kova.sh` so new clones get it automatically.
 
-3. [build] **Implement nanobyte format** — `src/nanobyte.rs`. Header (64B), manifest, weight region, BLAKE3 signature (36B NanoSign). Load via memmap2. `weights()` returns `&[f32]` at offset. `consolidate()` packs trained models. This is the foundation for the pyramid. Ref: [`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md) section 2.
+3. [build] **Implement nanobyte format** — `src/nanobyte.rs`. Header (64B), manifest, weight region, BLAKE3 signature (36B NanoSign). Load via memmap2. `weights()` returns `&[f32]` at offset. `consolidate()` packs trained models. This is the critical path: items 4, 5, 16 are all blocked on this file existing. Ref: [`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md) section 2.
 
 4. [build] **Pack 3 proven models into first .nanobyte** — Consolidate slop_detector + code_vs_english + lang_detector from `assets/models/` into `starter.nanobyte`. Verify load/infer roundtrip. First real nanobyte file.
 
