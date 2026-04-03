@@ -1,0 +1,1 @@
+{"name":"lang_detector","feature_dim":256,"num_classes":5,"class_names":["rust", "python", "javascript", "go", "shell"],"total_params":1285,"best_accuracy":0.97,"architecture":"trigram_hash_linear","trained_on":"AMD Radeon RX 5700 XT via any-gpu Vulkan"}
