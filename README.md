@@ -19,62 +19,144 @@
 
 # Kova
 
-Augment engine. Local LLM agentic tool loop, swarm orchestration, tokenized everything.
+Augment engine. Local-first agentic tool loop with dual-mode inference, swarm orchestration, and tokenized everything.
 
-## Proof of Artifacts
+## What Works Today
 
-*Wire diagrams and GUI screenshots for quick review.*
+### Agent Loop (`src/agent_loop.rs`)
 
-### Wire / Architecture
+Streaming agentic tool loop. LLM calls tools, gets results, repeats until done. Dual-mode inference via `KOVA_INFERENCE` env — local Kalosm GGUF or Anthropic API with SSE streaming. Context auto-compacts at 80% of budget using LLM-powered summarization. File checkpoints taken before every write/edit for undo support.
 
-```mermaid
-flowchart TB
-    User[User] --> TUI[TUI / ratatui]
-    User --> GUI[GUI / egui]
-    User --> Serve[HTTP / serve]
-    TUI --> AgentLoop[Agent loop]
-    GUI --> AgentLoop
-    GUI --> SpriteQC[Sprite QC]
-    Serve --> AgentLoop
-    AgentLoop --> Router[Router]
-    Router --> Infer[Inference]
-    Router --> Cargo[cargo_cmd]
-    Router --> Node[node_cmd]
-    Router --> Git[git_cmd]
-    AgentLoop --> Tools[7 tools]
-    AgentLoop --> C2[c2 swarm]
-    C2 --> Nodes[lf gd bt st]
-    AgentLoop --> RAG[RAG / fastembed]
-    AgentLoop --> Micro[Micro Olympics]
-    Micro --> Tournament[Tournament]
-    Micro --> Bench[Bench]
-    Micro --> Pipe[Pipeline]
-```
+### Tools (`src/tools.rs`, 2,017 lines)
 
-### Crate Structure
+13 tools available to the agent:
 
-```mermaid
-flowchart LR
-    kova[kova — single crate] --> exopack[exopack — test augmentation]
-    kova --> wasm[wasm/ — thin WASM manifest]
-    wasm -.->|cross-compile| src_wc[src/web_client/]
-    src_wc -.->|include_bytes| serve[src/serve.rs]
-```
+| Tool | Purpose |
+|------|---------|
+| `read_file` | Read file contents with optional offset/limit |
+| `write_file` | Write content to file, auto-creates dirs |
+| `edit_file` | Find-and-replace exact text (must be unique match) |
+| `exec` | Shell command execution via `$SHELL` (default `/bin/sh`) |
+| `glob` | Find files matching glob patterns |
+| `grep` | Search file contents for text patterns |
+| `memory_write` | Append to persistent memory (`~/.kova/memory.md`) |
+| `code_review` | LLM-powered code review with severity scoring |
+| `code_outline` | Extract functions, structs, enums from Rust source |
+| `record_failure` | Record challenge failure for training feedback loop |
+| `undo_edit` | Restore file from last checkpoint (sled-backed) |
+| `rag_search` | Semantic search over indexed codebase (requires `rag` feature) |
+| `pixel_forge` | Generate pixel art sprites via Pixel Forge plugin |
 
-One crate. Source in `src/`. WASM thin client source lives in `src/web_client/`, cross-compiled via `wasm/Cargo.toml`. exopack is the only separate crate (testing).
+Permission gates: `KOVA_PERMS=guarded` prompts before shell execution and git mutations. Default is `open` (no prompts).
 
-### GUI Screenshots
+### REPL (`src/repl.rs`)
 
-| Surface | Screenshot | Description |
-|---------|-----------|-------------|
-| TUI | ![TUI](screenshots/tui.png) | Ratatui terminal UI — agent loop, chat, visual QC |
-| Native GUI | ![GUI](screenshots/gui.png) | egui desktop — REPL, backlog, sprite QC |
-| Web Client | ![Web](screenshots/serve.png) | WASM thin client — egui in browser via `kova s` |
-| Token Validator | ![Tokens](screenshots/tokens.png) | `kova tokens` — 100% compression coverage |
+Interactive chat. `kova` with no args starts the REPL. Loads system prompt from persona, project context, memory, and tool definitions. Routes through `f382` (local/remote/auto inference). Commands: `/exit`, `/clear`, `/project <path>`, `/tools`.
 
-> Screenshots captured via `./scripts/capture-screenshots.sh`. If images are missing, run the script or build kova with `--features serve,gui`.
+### C2 Swarm Orchestration (`src/c2.rs`, 1,309 lines)
+
+Distributed build and command execution across 4 worker nodes:
+
+- **Broadcast build**: One-command sync + `cargo build --release` on all nodes
+- **tmux dispatch** (`f377`): Send to tmux pane with retry + exponential backoff
+- **tmux broadcast** (`f378`): Send to all windows with stagger delay
+- **sponge mesh** (`f379`): Fast pass + rate-limit-aware retry with backoff
+- **Node commands** (`c1-c9`, `ci`): Tokenized SSH commands (status, specs, services, sync, build, deploy)
+- **Wake-on-LAN**: Wake sleeping nodes
+- **SSH host certificates**: Zero-churn host key management
+- **Binary deploy**: rsync kova + models to nodes, restart services
+
+### Inference (`src/inference/`)
+
+Three backends, one dispatcher:
+
+| Backend | Module | Method |
+|---------|--------|--------|
+| Local GGUF | `inference/local.rs` | Kalosm + candle, LRU model cache, streaming |
+| Anthropic API | `inference/providers.rs` | SSE streaming, `content_block_delta` parsing |
+| IRONHIVE cluster | `inference/cluster.rs` | Distributed dispatch across worker nodes |
+
+`f382` (dual_stream) reads `KOVA_INFERENCE` env: `local`, `remote`, or `auto` (default — local if model exists, else Anthropic API). `KOVA_MODEL` overrides the remote model.
+
+### Context Management (`src/context_mgr.rs`, 549 lines)
+
+- Token estimation: chars/4 rough count
+- Context compaction (`f380`): When conversation hits 80% of budget, older turns are sent to inference for LLM-powered summarization. Recent 4 turns kept intact. Falls back to static trim if needed.
+- Tool output trimming: Head/tail with `[truncated]` marker
+- File checkpointing (`f383`/`f384`): Snapshots file contents to sled before write/edit. `undo_edit` tool restores from last checkpoint.
+
+### Micro Olympics (`src/micro/`)
+
+Local LLM tournament system. Models compete across weight classes and event types.
+
+- **Tournament** (`tournament.rs`): 6 event types (sprint, technical, freestyle, judged, endurance, anti-slop), weight class brackets, DQ mechanism
+- **Training** (`candle_train.rs`): Pure Rust transformer training via candle. Three tiers (Spark 50K, Flame 500K, Blaze 2M). BPE tokenizer trained from scratch.
+- **Quantization** (`quantize.rs`): TurboQuant — FWHT + mixed-precision 2/4-bit + QJL residual recovery
+- **Routing** (`router.rs`): Epsilon-greedy bandit for template selection
+- **Validation** (`validate.rs`): Completeness, coherence, format, confidence checks
+- **Pipeline** (`pipe.rs`): Classify -> route -> run -> validate
+
+### Code Generation Pipeline (`src/factory.rs`, `src/moe.rs`, `src/academy.rs`)
+
+- **Factory** (`factory.rs`): 6-stage pipeline — classify, generate, compile, review, fix loop, output
+- **MoE** (`moe.rs`): Fan-out to N expert nodes, compile all variants, score, pick winner
+- **Academy** (`academy.rs`): Autonomous dev agent — task breakdown, code gen, test, commit
+- **Gauntlet** (`gauntlet.rs`): 5-phase stress test (crawl, walk, run, fight, survive)
+
+### Surfaces
+
+| Surface | Module | Status |
+|---------|--------|--------|
+| TUI | `src/tui.rs` (1,672 lines) | Ratatui terminal UI — agent chat, visual QC |
+| Native GUI | `src/gui.rs` (1,660 lines) | egui desktop — REPL, backlog, sprite QC |
+| HTTP API | `src/serve.rs` (1,351 lines) | Axum + WebSocket streaming + embedded WASM client |
+| MCP Server | `src/mcp.rs` (508 lines) | Model Context Protocol via JSON-RPC stdio |
+| WASM Client | `src/web_client/` | egui in browser via `kova s` |
+
+### Other Working Modules
+
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| `config.rs` | 791 | Config, paths, feature detection, model resolution |
+| `rag.rs` | 749 | fastembed vectors, sled index, chunk + search Rust files |
+| `feedback.rs` | 702 | Failure recording, harder challenge generation, DPO loop |
+| `syntax.rs` | 636 | Symbol extraction from Rust source files |
+| `review.rs` | 477 | LLM code review: staged, branch diff, severity scoring |
+| `git_cmd.rs` | 450 | Tokenized git commands (g0-g9), compressed output |
+| `ci.rs` | 387 | CI mode: headless quality gate, watch for changes |
+| `imagegen.rs` | 383 | Image generation: Stable Diffusion, DALL-E dispatch |
+| `training_data.rs` | 375 | Trace -> DPO/SFT/CSV export for fine-tuning |
+| `tokenization.rs` | 308 | Compression protocol validator |
 
 ---
+
+## Planned: Pyramid Architecture
+
+> **Status: Design complete, not yet implemented.** See [`docs/PYRAMID_ARCHITECTURE.md`](docs/PYRAMID_ARCHITECTURE.md) for the full plan.
+
+The next major initiative: replace external API dependency with a pyramid of locally-trained models.
+
+- **Tier 1 — Subatomic** (sub-100K params): Hundreds of single-task specialists. Typo fix, binary classify, flag expand, token tag. Microsecond inference.
+- **Tier 2 — Molecular** (100K-1M params): Coordinators with learned routing weights to subatomics. Intent routing, context summarization, tool selection.
+- **Tier 3 — Cellular** (1M-10M params): Domain specialists. Code generation, conversation, planning.
+
+All tiers share a single mmap'd weight blob called a **nanobyte**. Each model is a Rust function reading from different byte offsets. Cross-tier routing weights are trained, not hardcoded. Confidence gating means most requests never get past tier 1.
+
+Claude trains its own replacement at every level via PTY bridge logging. End state: fully closed pyramid, zero external API dependency.
+
+**What exists toward this goal:** candle training pipeline, tournament scoring, DPO/SFT export, TurboQuant quantization, epsilon-greedy routing, validation gates, circuit breakers. **What's not built yet:** nanobyte format, swarm.rs pyramid orchestrator, PTY bridge, discovery module, the trained models themselves.
+
+---
+
+## Crate Structure
+
+```
+kova/             — single crate, 103 Rust source files, ~41,600 lines
+  src/            — all source
+  src/web_client/ — WASM thin client (cross-compiled via wasm/)
+exopack/          — test augmentation library (separate crate)
+wasm/             — WASM build manifest
+```
 
 ## Tokenization
 
@@ -83,46 +165,20 @@ One crate. Source in `src/`. WASM thin client source lives in `src/web_client/`,
 ```
 $ kova tokens
 tokenization: 100.0% (368/368)
-  fn: 231/231 tokenized (highest: f365)
-  ty: 137/137 tokenized (highest: T213)
+  fn: 231/231 tokenized (highest: f384)
+  ty: 137/137 tokenized (highest: T215)
 ```
 
 Canonical map: [`docs/compression_map.md`](docs/compression_map.md)
 
----
+## Worker Nodes
 
-## Artifacts
-
-| Artifact | What | Lines |
-|----------|------|-------|
-| `src/main.rs` | CLI entrypoint. 15+ subcommands incl. tokenized `s`/`g` short forms | 1,778 |
-| `src/tui.rs` | Ratatui TUI — agent chat, visual QC, swipe mode | 1,672 |
-| `src/tools.rs` | 7 tools: read, write, edit, bash, glob, grep, memory_write | 1,412 |
-| `src/serve.rs` | Axum HTTP API + WebSocket streaming + embedded WASM client | 1,240 |
-| `src/academy.rs` | Recursive academy: training, evaluation, tournament wiring | 1,022 |
-| `src/gui.rs` | Native egui desktop GUI + Sprite QC integration | 912 |
-| `src/micro/tournament.rs` | Local LLM tournament. 42 competitors, 6 events, 45 challenges | 909 |
-| `src/node_cmd.rs` | Tokenized SSH node commands (c1-c9, ci). Parallel execution | 879 |
-| `src/inference/providers.rs` | Multi-provider inference: Ollama, OpenAI, Anthropic | 808 |
-| `src/cargo_cmd.rs` | Tokenized cargo wrapper (x0-x9). Compressed output for AI context | 786 |
-| `src/c2.rs` | Swarm orchestration: sync, build, broadcast to 4 worker nodes | 753 |
-| `src/rag.rs` | RAG: fastembed vectors, sled index, chunk + search Rust files | 750 |
-| `src/feedback.rs` | Failure analysis, challenge generation, DPO training loop | 703 |
-| `src/config.rs` | Config, paths, feature detection, model resolution | 697 |
-| `src/factory.rs` | Full pipeline: classify, generate, compile, review, fix loop | 667 |
-| `src/syntax.rs` | Syntax-aware code analysis. Symbol extraction from Rust source | 637 |
-| `src/moe.rs` | Mixture of Experts: fan-out to N nodes, compile, score, pick | 553 |
-| `src/gauntlet.rs` | Hell Week stress test. 5 phases, no mercy | 539 |
-| `src/web_client/app.rs` | WASM thin client. egui in browser, API + WebSocket | 530 |
-| `src/mcp.rs` | MCP server (Model Context Protocol). JSON-RPC stdio transport | 509 |
-| `src/review.rs` | LLM code review: staged, branch diff, severity scoring | 478 |
-| `src/git_cmd.rs` | Tokenized git commands (g0-g9). Compressed output | 448 |
-| `src/inference/cluster.rs` | IRONHIVE cluster: distributed AI across worker nodes | 424 |
-| `src/tokenization.rs` | Compression protocol validator. `kova tokens` CLI | 305 |
-| `src/ci.rs` | CI mode: headless quality gate, watch for changes | 387 |
-| `src/imagegen.rs` | Image generation: Stable Diffusion, DALL-E dispatch | 384 |
-| `.kova-aliases` | 110+ shell aliases for macOS + Debian. Deployed to all nodes | 280 |
-| **Total** | **92 Rust source files** | **32,305** |
+| Token | Host | Role |
+|-------|------|------|
+| n0/lf | kova-legion-forge | Primary build |
+| n1/gd | kova-tunnel-god | Tunnel/relay |
+| n2/bt | kova-thick-beast | Heavy compute |
+| n3/st | kova-elite-support | Support/backup |
 
 ## Supported Platforms
 
@@ -136,97 +192,12 @@ Canonical map: [`docs/compression_map.md`](docs/compression_map.md)
 | Web (PWA) | WASM + service worker | ~2.5 MB | Offline-first, installable |
 | Snap (Linux) | `snap/snapcraft.yaml` | — | core22, classic confinement |
 
-[GitHub Release v0.7.0](https://github.com/cochranblock/kova/releases/tag/v0.7.0) — download binaries.
-
 ## Binaries
 
 | Binary | Features | Purpose |
 |--------|----------|---------|
 | `kova` | serve, inference, rag, tui | All-inclusive: TUI, GUI, HTTP, LLM, swarm, tools |
-| `kova-test` | tests (exopack) | Quality gate: clippy, TRIPLE SIMS 3x, release build, smoke |
-
-## Tokenized Command Map
-
-### Shell Aliases (`.kova-aliases`)
-
-```
-k     = kova              ks    = serve + open browser
-kc    = chat (REPL)       kg    = gui
-kt    = test              kb    = bootstrap
-ktk   = tokens            kci   = ci mode
-krv   = review            kfb   = feedback
-kex   = export            kmcp  = mcp server
-ktr   = traces            kf    = factory
-kga   = gauntlet          kmoe  = moe
-kcl   = cluster           krag  = rag
-kx0-9 = cargo tokens      kn1-9 = node tokens
-kc2b  = broadcast build   kc2s  = sync all
-p0-p9 = cd to project     p0b   = cd + build
-p0te  = kova test binary
-```
-
-### Cargo Tokens (`kova x`)
-
-| Token | Command | Token | Command |
-|-------|---------|-------|---------|
-| x0 | build | x5 | build --release |
-| x1 | check | x6 | clean |
-| x2 | test | x7 | doc |
-| x3 | clippy | x8 | fmt --check |
-| x4 | run | x9 | bench |
-
-### Node Tokens (`kova c2 ncmd`)
-
-| Token | Command | Token | Command |
-|-------|---------|-------|---------|
-| c1 | nstat (status) | c6 | nbuild |
-| c2 | nspec (specs) | c7 | nlog |
-| c3 | nsvc (services) | c8 | nkill |
-| c4 | nrust (rustup) | c9 | ndeploy |
-| c5 | nsync | ci | compact inspect |
-
-### Project Tokens
-
-| Token | Project | Token | Project |
-|-------|---------|-------|---------|
-| p0 | kova | p5 | ronin-sites |
-| p1 | approuter | p7 | exopack |
-| p2 | cochranblock | p8 | whyyoulying |
-| p3 | oakilydokily | p9 | wowasticker |
-| p4 | rogue-repo | | |
-
-## Micro Olympics
-
-Local LLM tournament across the cluster. 42 competitors, 6 events, 45 challenges.
-
-**Champion: qwen2.5-coder:0.5b** (500M params, 91% accuracy, 6/7 gold medals)
-
-Full results: [`docs/TOURNAMENT_RESULTS.md`](docs/TOURNAMENT_RESULTS.md)
-
-Run: `kova micro tournament`
-
-## Worker Nodes
-
-| Token | Host | Role |
-|-------|------|------|
-| n0/lf | kova-legion-forge | Primary build |
-| n1/gd | kova-tunnel-god | Tunnel/relay |
-| n2/bt | kova-thick-beast | Heavy compute |
-| n3/st | kova-elite-support | Support/backup |
-
-## Features
-
-```toml
-default  = ["serve", "inference", "rag", "tui"]
-serve    = axum + tower + tracing (+ WASM thin client, built automatically)
-gui      = eframe + egui (native desktop)
-tui      = ratatui + crossterm (terminal UI)
-inference = kalosm + reqwest + lru
-autopilot = enigo (type into Cursor)
-daemon   = capnp (worker node)
-tests    = exopack (quality gate)
-rag      = fastembed + ordered-float
-```
+| `kova-test` | tests (exopack) | Quality gate: clippy, TRIPLE SIMS 3x, release build |
 
 ## Build
 
@@ -234,27 +205,39 @@ rag      = fastembed + ordered-float
 cargo build                          # default (serve + inference + rag + tui)
 cargo build --release --features serve --target aarch64-apple-darwin
 cargo run --features tests --bin kova-test   # quality gate
+cargo test --release -p kova                 # 314 unit/integration tests
 kova tokens                          # validate tokenization coverage
 ```
 
-**Serve (web GUI):** Builds WASM thin client automatically. Requires:
-`rustup target add wasm32-unknown-unknown` and `cargo install wasm-bindgen-cli`.
+## Features
 
-## Setup
-
-```sh
-# Install aliases (macOS)
-echo '[ -f "$HOME/.kova-aliases" ] && . "$HOME/.kova-aliases"' >> ~/.zshrc
-
-# Deploy to worker nodes
-kad   # or: for n in lf gd bt st; do scp .kova-aliases "$n":~/; done
-
-# Bootstrap kova config
-kova bootstrap
-
-# Install local LLM
-kova model install
+```toml
+default    = ["serve", "inference", "rag", "tui"]
+serve      = axum + tower + tracing (+ WASM thin client)
+gui        = eframe + egui (native desktop)
+tui        = ratatui + crossterm (terminal UI)
+inference  = kalosm + reqwest + lru
+mobile-llm = candle-core + candle-nn (on-device training/inference)
+autopilot  = enigo (type into Cursor)
+daemon     = capnp (worker node)
+tests      = exopack (quality gate)
+rag        = fastembed + ordered-float
 ```
+
+## Environment Variables
+
+| Variable | Values | Purpose |
+|----------|--------|---------|
+| `KOVA_INFERENCE` | `local`, `remote`, `auto` | Inference backend selection (default: auto) |
+| `KOVA_MODEL` | model name | Override remote model (default: claude-sonnet-4-6) |
+| `KOVA_PERMS` | `open`, `guarded` | Permission mode (default: open) |
+| `ANTHROPIC_API_KEY` | API key | Required for remote inference |
+
+## Tests
+
+314 tests passing. Run with `cargo test --release -p kova`.
+
+Coverage includes: tool dispatch, context compaction thresholds, checkpoint/undo roundtrips, permission gate logic, git mutation detection, tool parsing, code outline, file operations, CI pipeline, integration tests.
 
 ---
 
