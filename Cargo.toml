@@ -13,7 +13,7 @@ keywords = ["ai", "agent", "inference", "edge-computing", "augmentation"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = ["serve", "inference", "rag", "tui"]
+default = ["tui"]
 serve = ["dep:axum", "dep:futures-util", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:similar"]
 tui = ["dep:ratatui", "dep:crossterm"]
 inference = ["dep:kalosm", "dep:kalosm-sample", "dep:lru"]

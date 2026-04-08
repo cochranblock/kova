@@ -1,6 +1,9 @@
-# Kova build config. Debug target: Mac mini (aarch64-apple-darwin).
-# c2-core = Mac mini. Ensures debug binary runs on Mac mini.
+# Kova build config. Mac mini = c2-core. Nodes = x86_64 Linux.
 
 [build]
-# Mac mini Apple Silicon. Native when building on aarch64; cross when on x86_64.
 target = "aarch64-apple-darwin"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    "-C", "target-cpu=native",
+]

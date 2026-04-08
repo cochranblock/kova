@@ -14,8 +14,6 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Run native GUI (egui). Legacy — use TUI instead.
-    Gui(GuiArgs),
     /// Terminal UI. Chat + Visual QC. Like Claude Code but local.
     Tui(TuiArgs),
     /// Run HTTP API server. Web client at /.
@@ -110,6 +108,9 @@ enum Cmd {
         #[arg(long)]
         nodes: Option<String>,
     },
+    /// SSH into a node and land in kova REPL. `kova ssh n1` or `kova ssh bt`.
+    #[command(name = "ssh")]
+    Ssh(SshArgs),
     /// Federal compliance docs. Baked into the binary — no external files needed.
     #[command(name = "govdocs")]
     Govdocs {
@@ -117,6 +118,15 @@ enum Cmd {
         #[arg(default_value = "list")]
         doc: String,
     },
+}
+
+#[derive(clap::Args)]
+struct SshArgs {
+    /// Node to connect to (n0/lf, n1/gd, n2/bt, n3/st).
+    node: String,
+    /// Install kova as forced SSH command on the remote node.
+    #[arg(long)]
+    setup: bool,
 }
 
 #[derive(clap::Args)]
@@ -936,13 +946,6 @@ struct XArgs {
 }
 
 #[derive(clap::Args)]
-struct GuiArgs {
-    /// Enable demo mode: record actions to ~/.kova/demos/
-    #[arg(long)]
-    demo: bool,
-}
-
-#[derive(clap::Args)]
 struct TuiArgs {
     /// Project directory (default: cwd).
     #[arg(short, long)]
@@ -1048,17 +1051,6 @@ enum ModelCmd {
     List,
 }
 
-#[cfg(feature = "gui")]
-fn run_gui(demo: bool) -> anyhow::Result<()> {
-    kova::bootstrap()?;
-    kova::gui::run(demo)
-}
-
-#[cfg(not(feature = "gui"))]
-fn run_gui(_demo: bool) -> anyhow::Result<()> {
-    anyhow::bail!("GUI feature not enabled. Use `kova tui` or `kova serve --open`")
-}
-
 #[cfg(feature = "tui")]
 fn run_tui(project: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     kova::bootstrap()?;
@@ -1106,15 +1098,9 @@ async fn run_serve(_open: bool, _demo: bool) -> anyhow::Result<()> {
     anyhow::bail!("Build with --features serve for serve mode")
 }
 
-#[cfg(feature = "daemon")]
 fn run_node() -> anyhow::Result<()> {
-    kova::daemon::run();
+    println!("node daemon: stub");
     Ok(())
-}
-
-#[cfg(not(feature = "daemon"))]
-fn run_node() -> anyhow::Result<()> {
-    anyhow::bail!("Build with --features daemon for node mode")
 }
 
 async fn run_c2(args: C2Args) -> anyhow::Result<()> {
@@ -2237,6 +2223,43 @@ fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
     }
 }
 
+fn run_ssh(args: SshArgs) -> anyhow::Result<()> {
+    let node = kova::node_cmd::resolve_node(&args.node).to_string();
+
+    if args.setup {
+        // Install kova as forced SSH command on the remote node.
+        // Appends to ~/.bashrc so any SSH login drops into kova.
+        let setup_cmd = r#"
+grep -q '# kova-ssh-entry' ~/.bashrc 2>/dev/null || cat >> ~/.bashrc << 'ENTRY'
+
+# kova-ssh-entry — drop into kova REPL on SSH login
+if [ -n "$SSH_CONNECTION" ] && [ -t 0 ] && command -v kova >/dev/null 2>&1; then
+    exec kova
+fi
+ENTRY
+echo "kova ssh entry installed"
+"#;
+        let status = std::process::Command::new("ssh")
+            .args(["-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=accept-new", &node])
+            .arg(setup_cmd)
+            .status()?;
+        if !status.success() {
+            anyhow::bail!("setup failed on {}", node);
+        }
+        eprintln!("[ssh] {} configured — SSH will drop into kova REPL", node);
+        return Ok(());
+    }
+
+    // Interactive SSH: connect and launch kova.
+    let status = std::process::Command::new("ssh")
+        .args(["-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=accept-new", "-t", &node, "kova"])
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("ssh to {} exited with {}", node, status);
+    }
+    Ok(())
+}
+
 fn run_export(args: ExportArgs) -> anyhow::Result<()> {
     match args.cmd {
         ExportCmd::Training { format, output } => {
@@ -2330,10 +2353,12 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Mcp(_))
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
+        | Some(Cmd::Ssh(_))
         | Some(Cmd::Deploy { .. })
         | Some(Cmd::Govdocs { .. })
         | Some(Cmd::Tokens) => {
             return match args.cmd.unwrap() {
+                Cmd::Ssh(a) => run_ssh(a),
                 Cmd::Deploy { project, nodes } => {
                     kova::c2::f356(true, true, false, false, nodes, project)
                 }
@@ -2408,7 +2433,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
     }
 
     match cmd {
-        Some(Cmd::Gui(args)) => run_gui(args.demo),
         Some(Cmd::Tui(args)) => run_tui(args.project),
         Some(Cmd::Serve(args)) => run_serve(args.open, args.demo).await,
         Some(Cmd::S(args)) => run_serve(true, args.demo).await,
@@ -2576,6 +2600,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
         | Some(Cmd::Tokens)
+        | Some(Cmd::Ssh(_))
         | Some(Cmd::Deploy { .. })
         | Some(Cmd::Govdocs { .. }) => unreachable!("handled before tokio"),
         None => {
@@ -2593,11 +2618,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
                 kova::bootstrap()?;
                 kova::repl::f137(None)
             }
-            #[cfg(all(not(feature = "tui"), not(feature = "inference"), feature = "gui"))]
-            {
-                run_gui(false)
-            }
-            #[cfg(all(not(feature = "tui"), not(feature = "inference"), not(feature = "gui")))]
+            #[cfg(all(not(feature = "tui"), not(feature = "inference")))]
             {
                 eprintln!("Usage: kova <COMMAND>");
                 eprintln!("  kova tui   — terminal UI (requires --features tui)");

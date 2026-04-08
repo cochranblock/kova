@@ -49,15 +49,13 @@ pub use kernel::T208;
 pub mod academy;
 #[cfg(feature = "inference")]
 pub mod context_loader;
-#[cfg(feature = "gui")]
-pub mod gui;
 #[cfg(feature = "inference")]
 pub mod inference;
 #[cfg(feature = "tui")]
 pub mod tui;
 #[cfg(feature = "inference")]
 pub mod model;
-#[cfg(any(feature = "gui", feature = "serve"))]
+#[cfg(feature = "serve")]
 pub mod output;
 #[cfg(feature = "inference")]
 pub mod pipeline;
@@ -68,18 +66,12 @@ pub mod squeeze;
 pub mod router;
 #[cfg(feature = "serve")]
 pub mod serve;
-#[cfg(feature = "gui")]
-pub mod sprite_qc;
-#[cfg(feature = "gui")]
-pub mod theme;
 
 #[cfg(feature = "autopilot")]
 pub mod autopilot;
 
 pub mod browser;
 
-#[cfg(feature = "daemon")]
-pub mod daemon;
 
 #[cfg(feature = "mobile-llm")]
 pub mod mobile_llm;
@@ -112,7 +104,6 @@ pub mod repl;
 pub mod ci;
 #[cfg(feature = "inference")]
 pub mod feedback;
-pub mod imagegen;
 pub mod mcp;
 #[cfg(feature = "inference")]
 pub mod providers;

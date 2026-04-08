@@ -1124,6 +1124,99 @@ pub fn f370(
     Ok(())
 }
 
+// ── Tmux Primitives ──────────────────────────────────────────
+
+/// Send keys to a tmux pane target (e.g. "session:0").
+fn tmux_send(target: &str, keys: &str) {
+    let _ = std::process::Command::new("tmux")
+        .args(["send-keys", "-t", target, keys])
+        .output();
+}
+
+/// Send keys + Enter to a tmux pane.
+fn tmux_send_enter(target: &str, message: &str) {
+    let _ = std::process::Command::new("tmux")
+        .args(["send-keys", "-t", target, message, "Enter"])
+        .output();
+}
+
+/// Send bare Enter to a tmux pane.
+fn tmux_enter(target: &str) {
+    let _ = std::process::Command::new("tmux")
+        .args(["send-keys", "-t", target, "Enter"])
+        .output();
+}
+
+/// Capture the last N lines of a tmux pane.
+fn capture_pane_n(target: &str, n: usize) -> String {
+    std::process::Command::new("tmux")
+        .args(["capture-pane", "-t", target, "-p"])
+        .output()
+        .ok()
+        .map(|o| {
+            let text = String::from_utf8_lossy(&o.stdout).to_string();
+            let lines: Vec<&str> = text.lines().collect();
+            let start = lines.len().saturating_sub(n);
+            lines[start..].join("\n")
+        })
+        .unwrap_or_default()
+}
+
+/// Capture the last 8 lines of a tmux pane.
+fn capture_pane(target: &str) -> String {
+    capture_pane_n(target, 8)
+}
+
+/// Classify pane state from captured text.
+#[derive(Debug, PartialEq)]
+enum PaneState {
+    RateLimited,
+    Blocked,    // permission prompt
+    PlanPrompt, // plan approval needed
+    Pasted,     // pasted text prompt
+    Working,
+    Idle,       // at prompt
+    Unknown,
+}
+
+const ACTIVE_MARKERS: &[&str] = &[
+    "✻", "✶", "✽", "✢", "✳", "·",
+    "Bash", "Edit", "Read", "Write", "Searching", "Running",
+];
+
+fn classify_pane(pane: &str) -> PaneState {
+    if pane.contains("Rate limit") {
+        PaneState::RateLimited
+    } else if pane.contains("Would you like to proceed")
+        || pane.contains("Yes, auto-accept edits")
+        || pane.contains("Yes, and don")
+    {
+        PaneState::PlanPrompt
+    } else if pane.contains("Do you want to proceed") {
+        PaneState::Blocked
+    } else if pane.contains("Pasted text") {
+        PaneState::Pasted
+    } else if ACTIVE_MARKERS.iter().any(|m| pane.contains(m)) {
+        PaneState::Working
+    } else if pane.contains("❯") {
+        PaneState::Idle
+    } else {
+        PaneState::Unknown
+    }
+}
+
+/// Flush pasted-text prompt if present. Returns true if flushed.
+fn flush_pasted(target: &str) -> bool {
+    let pane = capture_pane(target);
+    if pane.contains("Pasted text") {
+        tmux_enter(target);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        true
+    } else {
+        false
+    }
+}
+
 // ── Tmux C2 Dispatch ─────────────────────────────────────────
 
 /// f377=tmux_dispatch. Send a message to a single tmux pane with retry and backoff.
@@ -1134,62 +1227,39 @@ pub fn f377(session: &str, window: &str, message: &str) -> Result<(), String> {
     let base_delay = std::time::Duration::from_secs(3);
 
     for attempt in 1..=max_retries {
-        // Send the message
-        let _ = std::process::Command::new("tmux")
-            .args(["send-keys", "-t", &target, message, "Enter"])
-            .output();
+        tmux_send_enter(&target, message);
         std::thread::sleep(base_delay);
 
-        // Capture pane state
-        let pane = capture_pane(&target);
-
         // Flush "Pasted text" prompts
-        if pane.contains("Pasted text") {
-            let _ = std::process::Command::new("tmux")
-                .args(["send-keys", "-t", &target, "Enter"])
-                .output();
-            std::thread::sleep(std::time::Duration::from_secs(2));
-        }
-
+        flush_pasted(&target);
         let pane = capture_pane(&target);
 
-        // Rate limited — exponential backoff
-        if pane.contains("Rate limit") {
-            let backoff = base_delay * attempt;
-            eprintln!("[w{}] rate limited — backoff {}s (attempt {}/{})",
-                window, backoff.as_secs(), attempt, max_retries);
-            std::thread::sleep(backoff);
-            let _ = std::process::Command::new("tmux")
-                .args(["send-keys", "-t", &target, "Enter"])
-                .output();
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            continue;
-        }
-
-        // Permission prompt — approve
-        if pane.contains("Do you want to proceed") || pane.contains("Yes, and don't ask") {
-            if pane.contains("❯") {
-                let _ = std::process::Command::new("tmux")
-                    .args(["send-keys", "-t", &target, "Enter"])
-                    .output();
+        match classify_pane(&pane) {
+            PaneState::RateLimited => {
+                let backoff = base_delay * attempt;
+                eprintln!("[w{}] rate limited — backoff {}s (attempt {}/{})",
+                    window, backoff.as_secs(), attempt, max_retries);
+                std::thread::sleep(backoff);
+                tmux_enter(&target);
                 std::thread::sleep(std::time::Duration::from_secs(2));
+                continue;
             }
-            continue;
-        }
-
-        // Active indicators — task accepted
-        let active_markers = ["✻", "✶", "✽", "✢", "✳", "·", "Bash", "Edit", "Read", "Write", "Searching", "Running"];
-        if active_markers.iter().any(|m| pane.contains(m)) {
-            eprintln!("[w{}] accepted on attempt {}", window, attempt);
-            return Ok(());
-        }
-
-        // Still at prompt — nudge
-        if pane.contains("❯") {
-            let _ = std::process::Command::new("tmux")
-                .args(["send-keys", "-t", &target, "Enter"])
-                .output();
-            std::thread::sleep(base_delay);
+            PaneState::Blocked | PaneState::PlanPrompt => {
+                if pane.contains("❯") {
+                    tmux_enter(&target);
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+                continue;
+            }
+            PaneState::Working => {
+                eprintln!("[w{}] accepted on attempt {}", window, attempt);
+                return Ok(());
+            }
+            PaneState::Idle => {
+                tmux_enter(&target);
+                std::thread::sleep(base_delay);
+            }
+            _ => {}
         }
     }
 
@@ -1211,7 +1281,6 @@ pub fn f378(session: &str, message: &str, stagger_secs: u64) -> Result<(), Strin
         let win = w.clone();
         let msg = message.to_string();
         handles.push(std::thread::spawn(move || {
-            // Stagger: wait i * stagger before dispatching
             std::thread::sleep(stagger * i as u32);
             f377(&sess, &win, &msg)
         }));
@@ -1242,25 +1311,14 @@ pub fn f379(session: &str, message: &str) -> Result<(), String> {
     eprintln!("[sponge] {} windows, fast pass...", windows.len());
     let mut failed: Vec<String> = Vec::new();
 
-    // First pass — fast, 2s between each
     for w in &windows {
         let target = format!("{}:{}", session, w);
-        let _ = std::process::Command::new("tmux")
-            .args(["send-keys", "-t", &target, message, "Enter"])
-            .output();
+        tmux_send_enter(&target, message);
         std::thread::sleep(std::time::Duration::from_secs(2));
+        flush_pasted(&target);
 
         let pane = capture_pane(&target);
-        // Flush pasted text
-        if pane.contains("Pasted text") {
-            let _ = std::process::Command::new("tmux")
-                .args(["send-keys", "-t", &target, "Enter"])
-                .output();
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-
-        let pane = capture_pane(&target);
-        if pane.contains("Rate limit") {
+        if classify_pane(&pane) == PaneState::RateLimited {
             failed.push(w.clone());
             eprintln!("[w{}] rate limited — will retry", w);
         } else {
@@ -1268,7 +1326,6 @@ pub fn f379(session: &str, message: &str) -> Result<(), String> {
         }
     }
 
-    // Retry passes — exponential backoff
     for retry in 1..=5u32 {
         if failed.is_empty() { break; }
         let backoff = 10 * retry as u64;
@@ -1278,13 +1335,11 @@ pub fn f379(session: &str, message: &str) -> Result<(), String> {
         let mut still_failed = Vec::new();
         for w in &failed {
             let target = format!("{}:{}", session, w);
-            let _ = std::process::Command::new("tmux")
-                .args(["send-keys", "-t", &target, message, "Enter"])
-                .output();
+            tmux_send_enter(&target, message);
             std::thread::sleep(std::time::Duration::from_secs(3));
 
             let pane = capture_pane(&target);
-            if pane.contains("Rate limit") {
+            if classify_pane(&pane) == PaneState::RateLimited {
                 still_failed.push(w.clone());
             } else {
                 eprintln!("[w{}] recovered on retry {}", w, retry);
@@ -1302,26 +1357,9 @@ pub fn f379(session: &str, message: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Capture the last 8 lines of a tmux pane.
-fn capture_pane(target: &str) -> String {
-    std::process::Command::new("tmux")
-        .args(["capture-pane", "-t", target, "-p"])
-        .output()
-        .ok()
-        .map(|o| {
-            let text = String::from_utf8_lossy(&o.stdout).to_string();
-            // Last 8 lines
-            let lines: Vec<&str> = text.lines().collect();
-            let start = lines.len().saturating_sub(8);
-            lines[start..].join("\n")
-        })
-        .unwrap_or_default()
-}
-
-// ── Absorbed from tmuxisfree ─────────────────────────────────
+// ── Fleet Management (absorbed from tmuxisfree) ─────────────
 
 /// f385=tmux_status. Fleet status — which panes are working, idle, or stuck.
-/// Ported from tmuxisfree f40.
 pub fn f385(session: &str) -> Result<(), String> {
     let windows = list_windows_with_names(session);
     if windows.is_empty() {
@@ -1333,40 +1371,24 @@ pub fn f385(session: &str) -> Result<(), String> {
     for (idx, name) in &windows {
         let target = format!("{}:{}", session, idx);
         let pane = capture_pane(&target);
-        let state = if pane.contains("Rate limit") {
-            "RATELIM"
-        } else if pane.contains("Do you want to proceed") || pane.contains("Yes, and don") {
-            "BLOCKED"
-        } else if pane.contains("Pasted text") {
-            "PASTED"
-        } else if pane.contains("❯") {
-            "IDLE"
-        } else if ["✻", "✶", "✽", "Bash", "Edit", "Read", "Write", "Searching", "Running"]
-            .iter()
-            .any(|m| pane.contains(m))
-        {
-            "WORKING"
-        } else {
-            "UNKNOWN"
+        let label = match classify_pane(&pane) {
+            PaneState::RateLimited => "RATELIM",
+            PaneState::Blocked | PaneState::PlanPrompt => "BLOCKED",
+            PaneState::Pasted => "PASTED",
+            PaneState::Idle => "IDLE",
+            PaneState::Working => "WORKING",
+            PaneState::Unknown => "UNKNOWN",
         };
-        eprintln!("{:<5} {:<22} {:<10}", idx, name, state);
+        eprintln!("{:<5} {:<22} {:<10}", idx, name, label);
     }
     Ok(())
 }
 
 /// f386=tmux_peek. Peek at a pane's recent output.
-/// Ported from tmuxisfree f50.
 pub fn f386(session: &str, window: &str, lines: usize) -> Result<(), String> {
     let target = format!("{}:{}", session, window);
     let content = std::process::Command::new("tmux")
-        .args([
-            "capture-pane",
-            "-t",
-            &target,
-            "-p",
-            "-S",
-            &format!("-{}", lines),
-        ])
+        .args(["capture-pane", "-t", &target, "-p", "-S", &format!("-{}", lines)])
         .output()
         .map_err(|e| format!("tmux capture: {}", e))?;
     print!("{}", String::from_utf8_lossy(&content.stdout));
@@ -1375,7 +1397,7 @@ pub fn f386(session: &str, window: &str, lines: usize) -> Result<(), String> {
 
 /// f387=tmux_unblock. Unblock daemon — auto-approves permission and plan prompts,
 /// flushes pasted text, retries rate limits with 60s cooldown.
-/// Self-kills older instances on startup. Ported from tmuxisfree f60.
+/// Self-kills older instances on startup.
 pub fn f387(session: &str, interval: u64) -> Result<(), String> {
     use std::collections::HashMap;
     use std::time::Instant;
@@ -1403,8 +1425,8 @@ pub fn f387(session: &str, interval: u64) -> Result<(), String> {
     );
 
     let mut cooldowns: HashMap<String, Instant> = HashMap::new();
-    let cooldown_plan = 30u64; // seconds between re-approving same window
-    let cooldown_rate = 60u64; // seconds between rate-limit retries
+    let cooldown_plan = 30u64;
+    let cooldown_rate = 60u64;
 
     loop {
         let windows = list_windows(session);
@@ -1413,60 +1435,40 @@ pub fn f387(session: &str, interval: u64) -> Result<(), String> {
             let pane = capture_pane(&target);
             let now = Instant::now();
 
-            // Plan approval — needs "1" then Enter
-            if pane.contains("Would you like to proceed")
-                || pane.contains("Yes, auto-accept edits")
-                || pane.contains("Yes, and don")
-            {
-                let key = format!("plan_{}", idx);
-                if let Some(last) = cooldowns.get(&key)
-                    && now.duration_since(*last).as_secs() < cooldown_plan
-                {
-                    continue;
+            match classify_pane(&pane) {
+                PaneState::PlanPrompt => {
+                    let key = format!("plan_{}", idx);
+                    if let Some(last) = cooldowns.get(&key)
+                        && now.duration_since(*last).as_secs() < cooldown_plan
+                    {
+                        continue;
+                    }
+                    tmux_send(&target, "1");
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    tmux_enter(&target);
+                    cooldowns.insert(key, now);
+                    eprintln!("[w{}] approved plan (cooldown {}s)", idx, cooldown_plan);
                 }
-                let _ = std::process::Command::new("tmux")
-                    .args(["send-keys", "-t", &target, "1"])
-                    .status();
-                std::thread::sleep(std::time::Duration::from_millis(200));
-                let _ = std::process::Command::new("tmux")
-                    .args(["send-keys", "-t", &target, "Enter"])
-                    .status();
-                cooldowns.insert(key, now);
-                eprintln!("[w{}] approved plan (cooldown {}s)", idx, cooldown_plan);
-                continue;
-            }
-
-            // Permission prompt — just Enter
-            if pane.contains("Do you want to proceed") {
-                let _ = std::process::Command::new("tmux")
-                    .args(["send-keys", "-t", &target, "Enter"])
-                    .status();
-                eprintln!("[w{}] approved permission", idx);
-                continue;
-            }
-
-            // Rate limited — retry with cooldown
-            if pane.contains("Rate limit") {
-                let key = format!("rl_{}", idx);
-                if let Some(last) = cooldowns.get(&key)
-                    && now.duration_since(*last).as_secs() < cooldown_rate
-                {
-                    continue;
+                PaneState::Blocked => {
+                    tmux_enter(&target);
+                    eprintln!("[w{}] approved permission", idx);
                 }
-                let _ = std::process::Command::new("tmux")
-                    .args(["send-keys", "-t", &target, "Enter"])
-                    .status();
-                cooldowns.insert(key, now);
-                eprintln!("[w{}] rate limited — retry (cooldown {}s)", idx, cooldown_rate);
-                continue;
-            }
-
-            // Pasted text — flush
-            if pane.contains("Pasted text") {
-                let _ = std::process::Command::new("tmux")
-                    .args(["send-keys", "-t", &target, "Enter"])
-                    .status();
-                eprintln!("[w{}] flushed pasted text", idx);
+                PaneState::RateLimited => {
+                    let key = format!("rl_{}", idx);
+                    if let Some(last) = cooldowns.get(&key)
+                        && now.duration_since(*last).as_secs() < cooldown_rate
+                    {
+                        continue;
+                    }
+                    tmux_enter(&target);
+                    cooldowns.insert(key, now);
+                    eprintln!("[w{}] rate limited — retry (cooldown {}s)", idx, cooldown_rate);
+                }
+                PaneState::Pasted => {
+                    tmux_enter(&target);
+                    eprintln!("[w{}] flushed pasted text", idx);
+                }
+                _ => {}
             }
         }
         std::thread::sleep(std::time::Duration::from_secs(interval));
@@ -1474,7 +1476,6 @@ pub fn f387(session: &str, interval: u64) -> Result<(), String> {
 }
 
 /// f388=tmux_qa. QA sweep — broadcast build + clippy + status to all panes.
-/// Ported from tmuxisfree f70.
 pub fn f388(session: &str) -> Result<(), String> {
     f378(
         session,
@@ -1655,20 +1656,12 @@ fn list_windows_with_names(session: &str) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-/// List non-control windows in a tmux session (skip C2/unblock).
+/// List non-control window indices in a tmux session (skip C2/unblock).
 fn list_windows(session: &str) -> Vec<String> {
-    std::process::Command::new("tmux")
-        .args(["list-windows", "-t", session, "-F", "#{window_index}:#{window_name}"])
-        .output()
-        .ok()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .filter(|l| !l.contains("C2") && !l.contains("unblock"))
-                .map(|l| l.split(':').next().unwrap_or("0").to_string())
-                .collect()
-        })
-        .unwrap_or_default()
+    list_windows_with_names(session)
+        .into_iter()
+        .map(|(idx, _)| idx)
+        .collect()
 }
 #[cfg(test)]
 mod tests {
