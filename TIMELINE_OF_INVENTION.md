@@ -16,6 +16,103 @@ Each entry follows this format:
 
 ---
 
+## Human Revelations — Invented Techniques
+
+*Novel ideas that came from human insight, not AI suggestion. These are original contributions to the field.*
+
+### P13 Compression Mapping (March 2026)
+
+**Invention:** A human-designed tokenization scheme that compresses all public symbols in a Rust codebase to short tokens (f0-fN for functions, t0-tN for types, s0-sN for fields), reducing AI context consumption by 40-60% per session.
+
+**The Problem:** AI coding assistants consume tokens proportional to symbol length. A function named `handle_cargo_build_with_features` costs 6x more context than `f134`. Across a session with hundreds of references, this blows through context windows and increases latency.
+
+**The Insight:** Military communications have used brevity codes for decades — "WILCO" instead of "Will comply with your last transmission." The same principle applies to AI-human code collaboration. If every symbol in the codebase has a short, unique token, AI sessions run faster, cost less, and fit more context.
+
+**The Technique:**
+1. Every public function gets `f` + sequential number (f0, f1, ... f392)
+2. Every public type gets `t` + number (t0, t1, ... t108)
+3. Every struct field gets `s` + number
+4. A canonical `compression_map.md` per project maps tokens to human-readable names
+5. Cargo commands become `x0`-`x9`, git commands `g0`-`g9`, node commands `c1`-`c9`
+6. Applied uniformly across 16+ repositories
+
+**Result:** 40-60% reduction in tokens consumed per AI session. Same codebase, same functionality, dramatically lower AI operational cost. Every CochranBlock project uses P13.
+
+**Named:** P13 Compression Mapping
+**Commit:** See `1012a05` (first kova tokenization) and per-project compression commits
+**Origin:** Military brevity codes (WILCO, SITREP, CASEVAC). Michael Cochran's 13 years in Army signals/cyber (17C). Applied to AI-human collaboration as a token economy measure.
+
+### Agentic Tool Loop with Tokenized Commands (March 2026)
+
+**Invention:** An AI agent loop where the LLM calls tools (read/write/edit/bash/glob/grep) iteratively until the task is complete, with all system commands pre-compressed into tokenized aliases that produce compressed output.
+
+**The Problem:** AI coding agents either (a) generate code and hope it works, or (b) run tools but consume massive context with verbose command output. `cargo build` dumps hundreds of lines. `git status` is chatty. Every tool call eats context budget.
+
+**The Insight:** Combine two ideas: (1) let the AI call tools in a loop until it decides it's done (agentic), and (2) make every tool call produce the minimum possible output (tokenized). The agent doesn't need `cargo build`'s full output — it needs "pass" or "fail + first error."
+
+**The Technique:**
+1. `agent_loop.rs` (f147-f148): LLM calls tools, receives results, decides next action, repeats until done
+2. `cargo_cmd.rs` (f133-f136): `kova x x0` through `x9` — cargo commands that parse output into compressed JSON
+3. `git_cmd.rs` (f156-f160): `kova git g0` through `g9` — git commands with compressed output
+4. `node_cmd.rs` (f122-f132): `kova c2 ncmd c1` through `c9` — SSH node commands with compressed output
+5. Every tool targets <100 tokens of output (P25)
+
+**Result:** An AI agent that can build, test, deploy, and manage infrastructure while consuming 5-10x fewer tokens than raw command output. The agent works faster because it processes less noise.
+
+**Named:** Tokenized Agentic Loop
+**Commit:** See initial commit and `agent_loop.rs`, `cargo_cmd.rs`, `git_cmd.rs`
+**Origin:** Frustration with AI assistants that dump 500 lines of `cargo build` output into context. Michael Cochran realized the AI doesn't need the output — it needs the result.
+
+### C2 Swarm Orchestration (March 2026)
+
+**Invention:** A command-and-control system that treats 4 heterogeneous worker nodes (different GPUs, different architectures) as a single distributed compute fabric, orchestrated from a Mac Mini over SSH with circuit breakers and job deduplication.
+
+**The Problem:** Solo developers with multiple machines (desktop, NUC, old laptop) can't easily distribute work across them. Cloud GPU is expensive. The machines sit idle 90% of the time.
+
+**The Insight:** Military C2 (command and control) systems don't require homogeneous units. A squad has riflemen, a SAW gunner, a grenadier — different capabilities, one mission. Apply the same model to heterogeneous compute nodes: each node has different GPU/CPU/RAM, but the C2 layer abstracts that into "capabilities" and routes work accordingly.
+
+**The Technique:**
+1. 4 nodes: lf (RTX 3070), gd (RTX 3050 Ti), bt (RX 5700 XT), st (CPU-only)
+2. `c2.rs` (f119-f121): distributed job queue with circuit breaker, dedup, priority scheduling
+3. `node_cmd.rs`: tokenized SSH commands (c1=status, c2=specs, ci=inspect)
+4. GPU scheduling: file-based lock + priority queue across nodes
+5. Health checks, WoL (Wake-on-LAN) for sleeping nodes, autossh tunnels
+
+**Result:** A solo developer with 4 consumer machines has a private GPU cluster. Training jobs route to the right node. Builds compile on the right architecture. No cloud, no Kubernetes, no orchestration framework — just SSH and Rust.
+
+**Named:** IRONHIVE C2
+**Commit:** `c1265c9` (distributed job queue), `c986dbc` (GPU scheduling), `b4211c5` (cluster infra)
+**Origin:** Army C2 doctrine applied to consumer hardware. Michael Cochran's experience as a 17C (Cyber Operations Specialist) managing distributed assets.
+
+### tmuxisfree Fleet Mesh (April 2026)
+
+**Invention:** A tmux session manager that treats AI agent panes as a fleet of workers — dispatching tasks, broadcasting commands, detecting rate limits, and auto-retrying with exponential backoff across multiple AI coding agents running in parallel.
+
+**The Problem:** Running multiple AI coding agents (Claude Code, Cursor, etc.) in tmux panes requires manual window switching, copy-pasting prompts, and monitoring each pane for completion. Rate limits from AI providers cause agents to stall silently.
+
+**The Insight:** This is a fleet management problem, not a terminal multiplexer problem. Each AI agent pane is a "vehicle" that can be IDLE or WORKING. A fleet dispatcher should be able to send tasks to idle vehicles, broadcast to all, and handle the fact that AI providers rate-limit — which means some vehicles will stall and need retry.
+
+**The Technique:**
+1. `tf0` (status): scan all panes, report IDLE/WORK state
+2. `tf1` (dispatch): send task to one pane with retry + backoff
+3. `tf3` (sponge): mesh broadcast — skip rate-limited panes, retry later
+4. `tf5` (unblock): daemon that auto-approves prompts and flushes paste buffers
+5. `tfp`/`tfpp`/`tfdr` (push/pop/drain): backlog queue per pane with auto-dispatch
+
+**Result:** A solo developer can run 4-8 AI agents in parallel, dispatch tasks from a C2 pane, and the fleet self-manages rate limits and retries. Multiplies AI throughput by the number of available panes.
+
+**Named:** Sponge Mesh Broadcast (tf3)
+**Commit:** See tmuxisfree repo
+**Origin:** Military convoy operations — vehicles that break down get skipped, convoy continues, recovery vehicle comes back for them. Applied to AI agent fleet management.
+
+### 2026-04-08 — Human Revelations Documentation Pass
+
+**What:** Documented novel human-invented techniques across the full CochranBlock portfolio. Added Human Revelations sections to all 13 project TOIs (kova, pixel-forge, approuter, exopack, ghost-fabric, whyyoulying, call-shield, rogue-repo, oakilydokily, ronin-sites, wowasticker, pocket-server, provenance-docs).
+**Commit:** See git log
+**AI Role:** AI formatted and wrote the sections. Human identified which techniques were genuinely novel, provided the origin stories, and directed the documentation pass.
+
+---
+
 ## Entries
 
 ### 2026-04-03 — Subatomic Models Trained + NanoSign + P23 + Blueprint
