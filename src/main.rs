@@ -46,27 +46,21 @@ enum Cmd {
     /// Short serve alias. `kova s` = `kova serve --open`. `kova s -d` = demo mode.
     S(SShortArgs),
     /// IRONHIVE cluster inference. Distributed AI across worker nodes.
-    #[cfg(feature = "inference")]
     #[command(name = "cluster")]
     T193(ClusterArgs),
     /// Rust Binary T181. Full pipeline: classify → generate → compile → review → fix.
-    #[cfg(feature = "inference")]
     #[command(name = "factory")]
     T181(FactoryArgs),
     /// Mixture of Experts. Fan-out to N nodes, compile all, score, pick winner.
-    #[cfg(feature = "inference")]
     #[command(name = "moe")]
     Moe(MoeArgs),
     /// Academy. MoE-powered autonomous dev agent. Plan → generate → wire → test → fix → commit.
-    #[cfg(feature = "inference")]
     #[command(name = "academy")]
     Academy(AcademyArgs),
     /// Gauntlet. Hell Week stress test for the AI pipeline. 5 phases, no mercy.
-    #[cfg(feature = "inference")]
     #[command(name = "gauntlet")]
     Gauntlet(GauntletArgs),
     /// Micro-model registry. List, run, and validate tiny purpose-built AI units.
-    #[cfg(feature = "inference")]
     #[command(name = "micro")]
     Micro(MicroArgs),
     /// RAG: index code, search semantically, retrieve context for LLM.
@@ -85,11 +79,9 @@ enum Cmd {
     #[command(name = "export")]
     Export(ExportArgs),
     /// Code review. Review staged changes or branch diff via LLM.
-    #[cfg(feature = "inference")]
     #[command(name = "review")]
     Review(ReviewArgs),
     /// Feedback loop. View/export tournament failure data and generated challenges.
-    #[cfg(feature = "inference")]
     #[command(name = "feedback")]
     Feedback(FeedbackArgs),
     /// Tokenization validator. Check compression protocol coverage.
@@ -173,14 +165,12 @@ enum CiCmd {
     },
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct ReviewArgs {
     #[command(subcommand)]
     cmd: ReviewCmd,
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Subcommand)]
 enum ReviewCmd {
     /// Review staged changes.
@@ -200,14 +190,12 @@ enum ReviewCmd {
     },
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct FeedbackArgs {
     #[command(subcommand)]
     cmd: FeedbackCmd,
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Subcommand)]
 enum FeedbackCmd {
     /// Show failure statistics.
@@ -642,7 +630,6 @@ enum QueueAction {
     Reset { node: String },
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct FactoryArgs {
     /// What to build.
@@ -667,7 +654,6 @@ struct FactoryArgs {
     ctx: u32,
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct MoeArgs {
     /// What to build.
@@ -692,7 +678,6 @@ struct MoeArgs {
     save: bool,
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct AcademyArgs {
     /// High-level task description.
@@ -717,21 +702,18 @@ struct AcademyArgs {
     dry_run: bool,
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct GauntletArgs {
     /// Run only specific phases (e.g. 1 2 3). Default: all.
     phases: Vec<u8>,
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct MicroArgs {
     #[command(subcommand)]
     cmd: MicroCmd,
 }
 
-#[cfg(feature = "inference")]
 #[derive(Subcommand)]
 enum MicroCmd {
     /// List all registered micro-model templates.
@@ -778,7 +760,6 @@ enum MicroCmd {
     /// Clear a stale tournament checkpoint (start fresh next run).
     TournamentClear,
     /// Run MoE tournament: Spark routes challenges, cascade on failure. Competes as "KovaMoE".
-    #[cfg(feature = "mobile-llm")]
     TournamentMoe {
         /// Max cascade attempts per challenge.
         #[arg(long, default_value = "3")]
@@ -819,7 +800,6 @@ enum MicroCmd {
         dry_run: bool,
     },
     /// Train kova's own models from scratch. Pure Rust, candle. No pretrained weights.
-    #[cfg(feature = "mobile-llm")]
     Forge {
         /// Model tier: spark (50K), flame (500K), blaze (2M), or "all".
         #[arg(default_value = "all")]
@@ -835,17 +815,14 @@ enum MicroCmd {
         batch_size: usize,
     },
     /// Generate synthetic classifier training data for all 8 categories.
-    #[cfg(feature = "mobile-llm")]
     Synth,
     /// Synth + retrain Spark in one shot. The evolve loop.
-    #[cfg(feature = "mobile-llm")]
     Evolve {
         /// Training epochs.
         #[arg(long, default_value = "200")]
         epochs: u32,
     },
     /// Quantize a trained model. Mixed-precision + QJL residual compression.
-    #[cfg(feature = "mobile-llm")]
     Quantize {
         /// Model tier: spark, flame, blaze.
         #[arg(default_value = "spark")]
@@ -855,7 +832,6 @@ enum MicroCmd {
         outlier_frac: f32,
     },
     /// Full evolution: tournament → export → synth → retrain → MoE validation. One command.
-    #[cfg(feature = "mobile-llm")]
     EvolveFull {
         /// Training epochs for Spark retrain.
         #[arg(long, default_value = "200")]
@@ -866,14 +842,12 @@ enum MicroCmd {
     },
 }
 
-#[cfg(feature = "inference")]
 #[derive(clap::Args)]
 struct ClusterArgs {
     #[command(subcommand)]
     cmd: ClusterCmd,
 }
 
-#[cfg(feature = "inference")]
 #[derive(Subcommand)]
 enum ClusterCmd {
     /// Show cluster status: nodes, models, health.
@@ -1051,7 +1025,6 @@ enum ModelCmd {
     List,
 }
 
-#[cfg(feature = "tui")]
 fn run_tui(project: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     kova::bootstrap()?;
     kova::tui::run(project)
@@ -1078,7 +1051,6 @@ fn run_test() -> anyhow::Result<()> {
     kova::f315()
 }
 
-#[cfg(feature = "serve")]
 async fn run_serve(open: bool, demo: bool) -> anyhow::Result<()> {
     let addr = kova::bind_addr();
     if open {
@@ -1430,7 +1402,6 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
     }
 }
 
-#[cfg(feature = "inference")]
 fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
     use kova::micro::{
         bench, pipe, registry::T149, router::T153, runner, stats, validate,
@@ -1646,7 +1617,6 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
         MicroCmd::TournamentMoe { max_cascade, spark_dir, oracle } => {
             use kova::micro::{tournament, moe_tournament};
 
@@ -1768,7 +1738,6 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             };
             f262(fmt, iters, dry_run).map_err(anyhow::Error::msg)
         }
-        #[cfg(feature = "mobile-llm")]
         MicroCmd::Forge { tier, epochs, lr, batch_size } => {
             use kova::micro::candle_train::{self, TrainConfig};
             use kova::micro::kova_model::Tier;
@@ -1807,7 +1776,6 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
         MicroCmd::Synth => {
             use kova::micro::candle_train;
             let training_dir = candle_train::training_dir();
@@ -1817,7 +1785,6 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 .map_err(anyhow::Error::msg)?;
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
         MicroCmd::Evolve { epochs } => {
             use kova::micro::candle_train::{self, TrainConfig};
             use kova::micro::kova_model::Tier;
@@ -1858,7 +1825,6 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             eprintln!("[evolve] Spark retrained: {}", path.display());
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
         MicroCmd::Quantize { tier, outlier_frac } => {
             use kova::micro::quantize;
 
@@ -1922,7 +1888,6 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             eprintln!("[quantize] saved: {}", out_path.display());
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
         MicroCmd::EvolveFull { epochs, max_cascade } => {
             use kova::micro::candle_train::{self, TrainConfig};
             use kova::micro::kova_model::Tier;
@@ -1994,7 +1959,6 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
     }
 }
 
-#[cfg(feature = "inference")]
 fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
     let cluster = kova::cluster::T193::default_hive();
     match args.cmd {
@@ -2138,7 +2102,6 @@ fn run_cluster(args: ClusterArgs) -> anyhow::Result<()> {
     }
 }
 
-#[cfg(feature = "inference")]
 fn run_review(args: ReviewArgs) -> anyhow::Result<()> {
     let provider = kova::providers::f333();
 
@@ -2160,7 +2123,6 @@ fn run_review(args: ReviewArgs) -> anyhow::Result<()> {
     }
 }
 
-#[cfg(feature = "inference")]
 fn run_feedback(args: FeedbackArgs) -> anyhow::Result<()> {
     match args.cmd {
         FeedbackCmd::Stats => {
@@ -2276,7 +2238,6 @@ fn main() -> anyhow::Result<()> {
 
     // Handle cluster/factory commands synchronously (reqwest::blocking can't run inside tokio)
     match &args.cmd {
-        #[cfg(feature = "inference")]
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
@@ -2339,7 +2300,6 @@ fn main() -> anyhow::Result<()> {
                 _ => unreachable!(),
             };
         }
-        #[cfg(feature = "inference")]
         Some(Cmd::Review(_))
         | Some(Cmd::Feedback(_)) => {
             return match args.cmd.unwrap() {
@@ -2391,7 +2351,6 @@ fn main() -> anyhow::Result<()> {
                     }
                     Ok(())
                 }
-                #[cfg(feature = "rag")]
                 Cmd::Rag(a) => run_rag(a),
                 Cmd::Traces(a) => run_traces(a),
                 Cmd::Mcp(a) => {
@@ -2425,7 +2384,6 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
-    #[cfg(feature = "serve")]
     {
         tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -2440,7 +2398,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         Some(Cmd::C2(args)) => run_c2(args).await,
         Some(Cmd::Model(args)) => match args.cmd {
             ModelCmd::Install => {
-                #[cfg(feature = "inference")]
                 {
                     kova::bootstrap()?;
                     kova::model::f77().await
@@ -2491,7 +2448,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             Ok(())
         }
         Some(Cmd::Autopilot(autopilot_args)) => {
-            #[cfg(feature = "autopilot")]
             {
                 kova::autopilot::run(autopilot_args.prompt.join(" "))
             }
@@ -2502,7 +2458,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
         }
         Some(Cmd::Prompt(prompt_args)) => {
-            #[cfg(feature = "browser")]
             {
                 // Use tokio::task::block_in_place to avoid nested runtime panic
                 tokio::task::block_in_place(|| {
@@ -2536,7 +2491,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
                 args.expand,
             )
         }
-        #[cfg(feature = "inference")]
         Some(Cmd::Chat(args)) => {
             kova::bootstrap()?;
             kova::repl::f137(args.project)
@@ -2585,7 +2539,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        #[cfg(feature = "inference")]
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
@@ -2605,7 +2558,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Govdocs { .. }) => unreachable!("handled before tokio"),
         None => {
             // Default: TUI (like Claude Code). Fallback: REPL, then GUI.
-            #[cfg(feature = "tui")]
             {
                 if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
                     eprintln!("kova: REPL requires a terminal. Use: kova --help");
@@ -2629,7 +2581,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
     }
 }
 
-#[cfg(feature = "rag")]
 fn run_rag(args: RagArgs) -> anyhow::Result<()> {
     use kova::rag;
 

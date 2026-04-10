@@ -13,16 +13,11 @@ keywords = ["ai", "agent", "inference", "edge-computing", "augmentation"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = ["tui"]
-serve = ["dep:axum", "dep:futures-util", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:similar"]
-tui = ["dep:ratatui", "dep:crossterm"]
-inference = ["dep:kalosm", "dep:kalosm-sample", "dep:lru"]
-autopilot = ["dep:enigo"]
-browser = ["dep:enigo", "dep:base64", "dep:core-graphics", "dep:image"]
+# Two gates: default (the product) and tests (exopack triple sims).
+# macOS-only deps (core-graphics, image) behind "macos" for platform compat.
+default = ["dep:axum", "dep:futures-util", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:similar", "dep:ratatui", "dep:crossterm", "dep:kalosm", "dep:kalosm-sample", "dep:lru", "dep:enigo", "dep:base64", "dep:fastembed", "dep:ordered-float", "dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
+macos = ["dep:core-graphics", "dep:image"]
 tests = ["exopack"]
-rag = ["dep:fastembed", "dep:ordered-float"]
-# mobile-llm: on-device safetensors inference via candle (Android/iOS). Pure Rust.
-mobile-llm = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -263,7 +263,6 @@ pub fn f380(conversation: &str, budget: &t111, model_path: &Path) -> String {
     }
 
     // Call inference to summarize (or static fallback without inference feature).
-    #[cfg(feature = "inference")]
     let summary = compact_via_inference(&old_text, model_path);
     #[cfg(not(feature = "inference"))]
     let summary = {
@@ -304,7 +303,6 @@ pub fn f380(conversation: &str, budget: &t111, model_path: &Path) -> String {
 
 /// Call inference to summarize old conversation turns.
 /// Collects all streamed tokens into a single string.
-#[cfg(feature = "inference")]
 fn compact_via_inference(old_text: &str, model_path: &Path) -> String {
     let summary_prompt = format!(
         "Summarize this conversation history. Keep all key facts, decisions, tool results, \

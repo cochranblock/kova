@@ -10,24 +10,18 @@ use std::thread;
 
 use kalosm::language::{ChatModelExt, Parse};
 
-#[cfg(feature = "inference")]
 use std::sync::LazyLock;
-#[cfg(feature = "inference")]
 use std::num::NonZeroUsize;
-#[cfg(feature = "inference")]
 use std::sync::Mutex;
 
-#[cfg(feature = "inference")]
 type CachedModel = Arc<kalosm::language::Llama>;
 
-#[cfg(feature = "inference")]
 static MODEL_CACHE: LazyLock<Mutex<lru::LruCache<PathBuf, CachedModel>>> = LazyLock::new(|| {
     let cap = NonZeroUsize::new(crate::config::model_cache_size()).unwrap_or(NonZeroUsize::MIN);
     Mutex::new(lru::LruCache::new(cap))
 });
 
 /// Get or load model from cache. Returns Arc<Llama> for inference.
-#[cfg(feature = "inference")]
 pub(crate) async fn get_or_load_model(model_path: &Path) -> anyhow::Result<CachedModel> {
     use kalosm::language::*;
 
@@ -107,7 +101,6 @@ async fn run_inference(
 
 /// f80_code_gen_structured. Experimental. Run inference with JSON schema, return rust_block directly.
 /// Returns Ok(rust_block) on success, Err on failure. Use when code_gen_structured config is true.
-#[cfg(feature = "inference")]
 pub async fn f80_code_gen_structured(
     model_path: &Path,
     system_prompt: &str,
@@ -133,7 +126,6 @@ pub async fn f80_code_gen_structured(
 }
 
 /// Structured output for code gen. Experimental.
-#[cfg(feature = "inference")]
 #[derive(Clone, Debug, kalosm::language::Parse, kalosm::language::Schema)]
 struct CodeGenOutput {
     rust_block: String,

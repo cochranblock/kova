@@ -25,18 +25,14 @@ use tower_http::cors::CorsLayer;
 /// t92=T92. Shared state: pipeline broadcast receiver for WebSocket clients.
 #[derive(Clone)]
 pub struct T92 {
-    #[cfg(feature = "inference")]
     pipeline_rx: Arc<Mutex<Option<broadcast::Receiver<Arc<str>>>>>,
-    #[cfg(feature = "inference")]
     last_trace: Arc<Mutex<Option<crate::trace::T93>>>,
 }
 
 impl Default for T92 {
     fn default() -> Self {
         Self {
-            #[cfg(feature = "inference")]
             pipeline_rx: Arc::new(Mutex::new(None)),
-            #[cfg(feature = "inference")]
             last_trace: Arc::new(Mutex::new(None)),
         }
     }
@@ -198,7 +194,6 @@ struct OaiModelEntry {
     owned_by: &'static str,
 }
 
-#[cfg(feature = "inference")]
 async fn v1_chat_completions(Json(req): Json<OaiChatRequest>) -> impl IntoResponse {
     let model_path = match crate::config::inference_model_path() {
         Some(p) if p.exists() => p,
@@ -422,7 +417,6 @@ async fn build_presets() -> Json<std::collections::HashMap<String, crate::BuildP
     Json(crate::all_build_presets())
 }
 
-#[cfg(feature = "inference")]
 async fn api_route(Json(req): Json<RouteRequest>) -> impl IntoResponse {
     let router_path = match crate::f78(crate::ModelRole::Router) {
         Some(p) => p,
@@ -578,7 +572,6 @@ async fn api_intent(
     let name = crate::f325(&intent.s0);
     let mut summary = None;
     if matches!(intent.s0, crate::t1::FullPipeline) {
-        #[cfg(feature = "inference")]
         {
             if let (Some(coder), Some(fix)) = (
                 crate::f78(crate::ModelRole::Coder),
@@ -655,7 +648,6 @@ async fn ws_stream(
 }
 
 async fn ws_handler(state: T92, mut socket: WebSocket) {
-    #[cfg(feature = "inference")]
     {
         let mut rx_opt = state.pipeline_rx.lock().await;
         if let Some(mut rx) = rx_opt.take() {
@@ -686,7 +678,6 @@ async fn ws_handler(state: T92, mut socket: WebSocket) {
     }
 }
 
-#[cfg(feature = "inference")]
 async fn api_explain(State(state): State<T92>) -> impl IntoResponse {
     let guard = state.last_trace.lock().await;
     match guard.as_ref() {
@@ -812,7 +803,6 @@ async fn api_backlog_run(
         });
 
     if matches!(intent.s0, crate::t1::FullPipeline) {
-        #[cfg(feature = "inference")]
         {
             if let (Some(coder), Some(fix)) = (
                 crate::f78(crate::ModelRole::Coder),
@@ -921,7 +911,6 @@ async fn api_backlog_post(Json(entry): Json<crate::t8>) -> impl IntoResponse {
     }
 }
 
-#[cfg(feature = "inference")]
 async fn api_explain_run(State(state): State<T92>) -> impl IntoResponse {
     let trace = state.last_trace.lock().await.clone();
     let trace = match trace {
@@ -956,7 +945,6 @@ async fn api_explain_run(State(state): State<T92>) -> impl IntoResponse {
 
 // ── MoE endpoint ────────────────────────────────────────────────
 
-#[cfg(feature = "inference")]
 #[derive(Deserialize)]
 struct MoeRunRequest {
     prompt: String,
@@ -972,11 +960,9 @@ struct MoeRunRequest {
     save_winner: bool,
 }
 
-#[cfg(feature = "inference")]
 fn default_num_experts() -> usize { 3 }
 fn default_true() -> bool { true }
 
-#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct MoeVariantResponse {
     node_id: String,
@@ -990,7 +976,6 @@ struct MoeVariantResponse {
     total_score: u32,
 }
 
-#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct MoeRunResponse {
     variants: Vec<MoeVariantResponse>,
@@ -998,7 +983,6 @@ struct MoeRunResponse {
     prompt: String,
 }
 
-#[cfg(feature = "inference")]
 async fn api_moe_run(Json(req): Json<MoeRunRequest>) -> impl IntoResponse {
     let config = crate::moe::T196 {
         num_experts: req.num_experts,
@@ -1142,7 +1126,6 @@ fn app_router() -> Router<T92> {
         // OpenAI-compat inference — kova as inference server
         .route("/v1/chat/completions", post(v1_chat_completions))
         .route("/v1/models", get(v1_models));
-    #[cfg(feature = "inference")]
     let r = r
         .route("/api/route", post(api_route))
         .route("/api/explain", get(api_explain))
