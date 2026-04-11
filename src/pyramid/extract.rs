@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 /// Training pair: input context → expected output code.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct TrainingPair {
     pub expert: String,
     pub input: String,

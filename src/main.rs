@@ -57,6 +57,13 @@ enum Cmd {
     #[cfg(feature = "inference")]
     #[command(name = "moe")]
     Moe(MoeArgs),
+    /// Pyramid: hierarchical MoE with Sponge Mesh correction. Task → Router → Assemblers → Experts.
+    #[cfg(feature = "inference")]
+    #[command(name = "pyramid")]
+    Pyramid(PyramidArgs),
+    /// Extract training data from repos for expert fine-tuning.
+    #[command(name = "extract")]
+    Extract(ExtractArgs),
     /// Academy. MoE-powered autonomous dev agent. Plan → generate → wire → test → fix → commit.
     #[cfg(feature = "inference")]
     #[command(name = "academy")]
@@ -690,6 +697,29 @@ struct MoeArgs {
     /// Save winning expert to ~/.kova/experts/.
     #[arg(long)]
     save: bool,
+}
+
+#[cfg(feature = "inference")]
+#[derive(clap::Args)]
+struct PyramidArgs {
+    /// What to build. e.g. "federal API scout like whobelooking"
+    prompt: Vec<String>,
+    /// Project target: cli, web, lib, full
+    #[arg(short, long, default_value = "cli")]
+    target: String,
+    /// Output directory for generated project
+    #[arg(short, long)]
+    output: Option<std::path::PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct ExtractArgs {
+    /// Base directory containing repos (default: home dir)
+    #[arg(short, long)]
+    base: Option<std::path::PathBuf>,
+    /// Output file for training pairs (default: stdout)
+    #[arg(short, long)]
+    output: Option<std::path::PathBuf>,
 }
 
 #[cfg(feature = "inference")]
@@ -2280,6 +2310,7 @@ fn main() -> anyhow::Result<()> {
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
+        | Some(Cmd::Pyramid(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
         | Some(Cmd::Micro(_)) => {
@@ -2310,6 +2341,28 @@ fn main() -> anyhow::Result<()> {
                         save_winner: a.save,
                     };
                     kova::moe::f341(&a.prompt.join(" "), config);
+                    Ok(())
+                }
+                Cmd::Pyramid(a) => {
+                    let target = match a.target.as_str() {
+                        "web" => kova::pyramid::TaskTarget::Web,
+                        "lib" => kova::pyramid::TaskTarget::Lib,
+                        "full" => kova::pyramid::TaskTarget::Full,
+                        _ => kova::pyramid::TaskTarget::Cli,
+                    };
+                    let task = kova::pyramid::Task {
+                        description: a.prompt.join(" "),
+                        project_name: a.output.as_ref()
+                            .and_then(|p| p.file_name())
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "project".to_string()),
+                        target,
+                    };
+                    let provider = kova::providers::T129::Anthropic {
+                        api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
+                        model: std::env::var("KOVA_MODEL").unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
+                    };
+                    kova::pyramid::run(task, &provider);
                     Ok(())
                 }
                 Cmd::Academy(a) => {
@@ -2353,11 +2406,26 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Mcp(_))
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
+        | Some(Cmd::Extract(_))
         | Some(Cmd::Ssh(_))
         | Some(Cmd::Deploy { .. })
         | Some(Cmd::Govdocs { .. })
         | Some(Cmd::Tokens) => {
             return match args.cmd.unwrap() {
+                Cmd::Extract(a) => {
+                    let base = a.base.unwrap_or_else(|| {
+                        dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+                    });
+                    let pairs = kova::pyramid::extract::extract_all(&base);
+                    if let Some(out) = a.output {
+                        let json = serde_json::to_string_pretty(&pairs).unwrap_or_default();
+                        std::fs::write(&out, json)?;
+                        println!("[extract] wrote {} pairs to {}", pairs.len(), out.display());
+                    } else {
+                        println!("{}", serde_json::to_string_pretty(&pairs).unwrap_or_default());
+                    }
+                    Ok(())
+                }
                 Cmd::Ssh(a) => run_ssh(a),
                 Cmd::Deploy { project, nodes } => {
                     kova::c2::f356(true, true, false, false, nodes, project)
