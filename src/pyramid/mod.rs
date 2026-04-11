@@ -112,7 +112,7 @@ pub fn run(task: Task, provider: &crate::providers::T129) -> PyramidResult {
 
     // Layer 1+0: Assemblers dispatch to experts, collect outputs
     let mut all_outputs: Vec<LayerOutput> = Vec::new();
-    let mut mesh = SpongeMesh::new(3, std::time::Duration::from_secs(2));
+    let mesh = SpongeMesh::new(3, std::time::Duration::from_secs(2));
 
     for subtask in &subtasks {
         let assembler = Assembler::for_subtask(subtask);

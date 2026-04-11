@@ -22,7 +22,7 @@
 //! retry with "you produced X which failed because Y, try again."
 
 use super::LayerOutput;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 /// Result from a Sponge Mesh dispatch.
 #[derive(Debug)]
