@@ -14,11 +14,16 @@
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 
 use anyhow::Result;
+#[cfg(feature = "browser")]
 use anyhow::Context;
+#[cfg(feature = "browser")]
 use std::process::Command;
+#[cfg(feature = "browser")]
 use std::time::{Duration, Instant};
+#[cfg(feature = "browser")]
 use std::path::PathBuf;
 
+#[cfg(feature = "browser")]
 use enigo::{Enigo, Keyboard, Mouse, Settings, Coordinate, Button, Key, Direction};
 
 /// Prompt entry — label + text to send.
@@ -96,6 +101,7 @@ fn capture_screen() -> Result<(u32, u32, Vec<u8>)> {
     anyhow::bail!("screen capture only supported on macOS")
 }
 
+#[cfg(feature = "browser")]
 fn screen_hash(screen: &[u8]) -> u64 {
     let mut h: u64 = 0;
     for (i, &b) in screen.iter().step_by(997).enumerate() {
@@ -111,6 +117,7 @@ fn screen_hash(screen: &[u8]) -> u64 {
 /// Find the center of the largest image on screen.
 /// Images are large rectangles of varied color surrounded by UI chrome.
 /// We look for a region in the middle ~60% of the screen with high color variance.
+#[cfg(feature = "browser")]
 fn find_generated_image(screen: &[u8], sw: u32, sh: u32) -> Option<(i32, i32)> {
     // The generated image is usually in the center of the page
     // Scan the middle portion of the screen for a large block of non-uniform pixels
@@ -176,6 +183,7 @@ fn find_generated_image(screen: &[u8], sw: u32, sh: u32) -> Option<(i32, i32)> {
 /// It's a small icon that appears on hover — typically a down-arrow,
 /// lighter/darker than the image. We look for small UI elements that
 /// appeared after the hover near the cursor position.
+#[cfg(feature = "browser")]
 fn find_download_button(
     before: &[u8], after: &[u8],
     sw: u32, sh: u32,
@@ -227,6 +235,7 @@ fn find_download_button(
 }
 
 /// Find Gemini input area — wide light bar in bottom portion of screen.
+#[cfg(feature = "browser")]
 fn find_input(screen: &[u8], sw: u32, sh: u32) -> Option<(i32, i32)> {
     let y_start = (sh as f32 * 0.65) as u32;
 
@@ -271,6 +280,7 @@ fn find_input(screen: &[u8], sw: u32, sh: u32) -> Option<(i32, i32)> {
 // Input helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "browser")]
 fn click_at(x: i32, y: i32) -> Result<()> {
     let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
     e.move_mouse(x, y, Coordinate::Abs).map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -279,12 +289,14 @@ fn click_at(x: i32, y: i32) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "browser")]
 fn move_mouse(x: i32, y: i32) -> Result<()> {
     let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
     e.move_mouse(x, y, Coordinate::Abs).map_err(|e| anyhow::anyhow!("{}", e))?;
     Ok(())
 }
 
+#[cfg(feature = "browser")]
 fn type_text(text: &str) -> Result<()> {
     let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
     for chunk in text.as_bytes().chunks(50) {
@@ -295,6 +307,7 @@ fn type_text(text: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "browser")]
 fn press_enter() -> Result<()> {
     let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
     e.key(Key::Return, Direction::Click).map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -302,6 +315,7 @@ fn press_enter() -> Result<()> {
 }
 
 /// Focus a specific Firefox window by index (0 or 1).
+#[cfg(feature = "browser")]
 fn focus_gemini_window(index: usize) -> Result<()> {
     let script = format!(
         r#"tell application "System Events"
@@ -319,6 +333,7 @@ fn focus_gemini_window(index: usize) -> Result<()> {
 }
 
 /// Count Gemini windows.
+#[cfg(feature = "browser")]
 fn count_gemini_windows() -> usize {
     let out = Command::new("osascript")
         .args(["-e", r#"tell application "System Events" to count (every window of process "firefox" whose name contains "Gemini")"#])
@@ -330,6 +345,7 @@ fn count_gemini_windows() -> usize {
 }
 
 /// Start new chat in current Gemini window.
+#[cfg(feature = "browser")]
 fn new_chat() -> Result<()> {
     // Gemini keyboard shortcut for new chat
     let mut e = Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -348,6 +364,7 @@ fn new_chat() -> Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Send a prompt in the currently focused window.
+#[cfg(feature = "browser")]
 fn send_prompt(text: &str) -> Result<()> {
     let (sw, sh, screen) = capture_screen()?;
 
@@ -363,6 +380,7 @@ fn send_prompt(text: &str) -> Result<()> {
 }
 
 /// Wait for image to appear, hover it, find and click download.
+#[cfg(feature = "browser")]
 fn harvest_image(timeout: Duration) -> Result<bool> {
     let (sw, sh, initial) = capture_screen()?;
     let initial_hash = screen_hash(&initial);
@@ -423,6 +441,7 @@ fn harvest_image(timeout: Duration) -> Result<bool> {
 // Main pipeline
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "browser")]
 pub async fn run_autoprompt(
     prompt_file: &str,
     output_dir: &str,

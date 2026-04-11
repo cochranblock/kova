@@ -39,48 +39,77 @@ pub type Message = t91;
 pub use backlog::{f293, t8, t9};
 pub use intent::{f62, f325, t0, t1, t2};
 pub use plan::{t3, t4, t5};
+#[cfg(feature = "inference")]
 pub use router::{f79, T94};
 
 pub use error::{T176, T176Result};
 pub use kernel::T208;
 
+#[cfg(feature = "inference")]
 pub mod academy;
+#[cfg(feature = "inference")]
 pub mod context_loader;
+#[cfg(feature = "inference")]
 pub mod inference;
+#[cfg(feature = "tui")]
 pub mod tui;
+#[cfg(feature = "inference")]
 pub mod model;
+#[cfg(feature = "serve")]
 pub mod output;
+#[cfg(feature = "inference")]
 pub mod pipeline;
 pub mod recent_changes;
 #[allow(non_camel_case_types)]
 pub mod squeeze;
+#[cfg(feature = "inference")]
 pub mod router;
+#[cfg(feature = "serve")]
 pub mod serve;
+
+#[cfg(feature = "autopilot")]
 pub mod autopilot;
+
 pub mod browser;
+
+
+#[cfg(feature = "mobile-llm")]
 pub mod mobile_llm;
+
+#[cfg(feature = "inference")]
 pub mod agent_loop;
 pub mod c2;
 pub mod cargo_cmd;
 pub mod context_mgr;
+#[cfg(feature = "inference")]
 pub mod cluster;
 pub mod elicitor;
+#[cfg(feature = "inference")]
 pub mod factory;
+#[cfg(feature = "inference")]
 pub mod gauntlet;
 pub mod git_cmd;
 pub mod gpu_sched;
 pub mod job_queue;
 pub mod inspect;
+#[cfg(feature = "inference")]
 pub mod micro;
+#[cfg(feature = "inference")]
 pub mod moe;
 pub mod node_cmd;
+#[cfg(feature = "inference")]
 pub mod pyramid;
+#[cfg(feature = "rag")]
 pub mod rag;
+#[cfg(feature = "inference")]
 pub mod repl;
 pub mod ci;
+#[cfg(feature = "inference")]
 pub mod feedback;
 pub mod mcp;
+#[cfg(feature = "inference")]
 pub mod providers;
+#[cfg(feature = "inference")]
 pub mod review;
 pub mod ssh_ca;
 pub mod syntax;

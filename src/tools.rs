@@ -248,6 +248,7 @@ pub static TOOLS: &[t101] = &[
             },
         ],
     },
+    #[cfg(feature = "rag")]
     t101 {
         name: "rag_search",
         description: "Search indexed codebase for relevant code chunks. Returns file paths, line ranges, and code snippets.",
@@ -527,6 +528,7 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
         "glob" => f146(call, project_dir),
         "grep" => f150(call, project_dir),
         "memory_write" => f155(call),
+        #[cfg(feature = "inference")]
         "code_review" => f207(call, project_dir),
         #[cfg(not(feature = "inference"))]
         "code_review" => t104 {
@@ -535,6 +537,7 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
             output: "code_review requires inference feature".into(),
         },
         "code_outline" => f208(call, project_dir),
+        #[cfg(feature = "inference")]
         "record_failure" => f209(call),
         #[cfg(not(feature = "inference"))]
         "record_failure" => t104 {
@@ -542,6 +545,7 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
             success: false,
             output: "record_failure requires inference feature".into(),
         },
+        #[cfg(feature = "rag")]
         "rag_search" => f166(call),
         "pixel_forge" => f220(call),
         "undo_edit" => f384(call, project_dir),
@@ -991,6 +995,7 @@ fn f155(call: &t103) -> t104 {
 
 // ── f166: rag_search ────────────────────────────────────
 
+#[cfg(feature = "rag")]
 fn f166(call: &t103) -> t104 {
     let query = match require_arg(call, "query") {
         Ok(q) => q,
@@ -1041,6 +1046,7 @@ fn f166(call: &t103) -> t104 {
 // ── f207: code_review ─────────────────────────────────────
 
 /// f207=code_review tool. Send diff to LLM for review.
+#[cfg(feature = "inference")]
 fn f207(call: &t103, _project_dir: &Path) -> t104 {
     let diff = match require_arg(call, "diff") {
         Ok(d) => d,
@@ -1097,6 +1103,7 @@ fn f208(call: &t103, project_dir: &Path) -> t104 {
 // ── f209: record_failure ──────────────────────────────────
 
 /// f209=record_failure tool. Store a challenge failure for curriculum feedback.
+#[cfg(feature = "inference")]
 fn f209(call: &t103) -> t104 {
     let challenge = match require_arg(call, "challenge") {
         Ok(c) => c.to_string(),

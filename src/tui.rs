@@ -244,6 +244,7 @@ impl App {
             project_name, model_display,
         );
 
+        #[cfg(feature = "inference")]
         let system_prompt = crate::repl::f139(&project_dir);
         #[cfg(not(feature = "inference"))]
         let system_prompt = String::new();
@@ -350,6 +351,7 @@ impl App {
         self.thinking = true;
 
         // Run agent loop (blocking — tokens go to a buffer, not stdout).
+        #[cfg(feature = "inference")]
         {
             if let Some(ref model_path) = self.model_path {
                 let max_iter = crate::config::orchestration_max_fix_retries() + 20;

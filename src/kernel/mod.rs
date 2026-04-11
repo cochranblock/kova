@@ -82,6 +82,7 @@ impl T208 {
     }
 
     /// Get cluster status.
+    #[cfg(feature = "inference")]
     pub fn cluster_status(&self) -> String {
         crate::inference::cluster::T193::default_hive().status()
     }

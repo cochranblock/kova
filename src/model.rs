@@ -4,6 +4,7 @@
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 /// f77=model_install. Download Qwen2.5-Coder-0.5B-Instruct GGUF to ~/.kova/models/
+#[cfg(feature = "inference")]
 pub async fn f77() -> anyhow::Result<()> {
     use std::io::Write;
 
