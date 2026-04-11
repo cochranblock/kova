@@ -22,7 +22,7 @@
 //! retry with "you produced X which failed because Y, try again."
 
 use super::LayerOutput;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 /// Result from a Sponge Mesh dispatch.
 #[derive(Debug)]
@@ -50,6 +50,23 @@ impl SpongeMesh {
         }
     }
 
+    /// Add jitter to backoff so parallel experts don't retry in lockstep.
+    /// Uses system time nanos as cheap entropy — no rand crate needed.
+    fn jittered_backoff(&self, retry: u32) -> Duration {
+        let base = self.base_backoff * retry;
+        let nanos = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos();
+        // Jitter: ±25% of base backoff
+        let jitter_ms = (nanos % (base.as_millis().max(1) as u32 / 2)) as u64;
+        if nanos % 2 == 0 {
+            base + Duration::from_millis(jitter_ms)
+        } else {
+            base.saturating_sub(Duration::from_millis(jitter_ms))
+        }
+    }
+
     /// Dispatch an inference call with Sponge Mesh retry.
     /// The closure produces a LayerOutput. If the output indicates failure
     /// (compile error, empty code), we retry with the error context.
@@ -68,10 +85,10 @@ impl SpongeMesh {
             }
 
             retries += 1;
-            let backoff = self.base_backoff * retries;
+            let backoff = self.jittered_backoff(retries);
 
             eprintln!(
-                "[mesh] retry {}/{} for {} — backoff {}ms — error: {}",
+                "[mesh] retry {}/{} for {} — backoff {}ms (jittered) — error: {}",
                 retries,
                 self.max_retries,
                 last_output.source_expert,
@@ -120,16 +137,17 @@ impl SpongeMesh {
             }
 
             retries += 1;
-            let backoff = self.base_backoff * retries;
+            let backoff = self.jittered_backoff(retries);
 
             let error_ctx = last_output.error_output.as_deref()
                 .unwrap_or("output was empty or malformed");
 
             eprintln!(
-                "[mesh] retry {}/{} for {} — feeding error back — {}",
+                "[mesh] retry {}/{} for {} — backoff {}ms (jittered) — feeding error back — {}",
                 retries,
                 self.max_retries,
                 last_output.source_expert,
+                backoff.as_millis(),
                 truncate(error_ctx, 80)
             );
 

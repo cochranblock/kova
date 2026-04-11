@@ -186,42 +186,39 @@ alias p10x='cd "${_KH}/pixel-forge" && cargo clippy'
 # dN = deploy tokens: sync source → build on bt → copy binary → restart on gd
 # Pattern: d<project>s = sync, d<project>b = build, d<project>d = deploy (full), d<project>r = restart
 
-# d3 = oakilydokily deploy pipeline (build on bt, deploy to gd)
-d3s() { rsync -aq --exclude target --exclude .git "${_KH}/oakilydokily/" bt:/home/mcochran/oakilydokily/; }
-d3b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p oakilydokily --release --features approuter' 2>&1 | tail -1; }
-d3c() { scp -q bt:/home/mcochran/target/release/oakilydokily /tmp/oakilydokily-release && scp -q /tmp/oakilydokily-release gd:/home/mcochran/bin/oakilydokily; }
-d3r() { ssh gd 'systemctl --user restart oakilydokily'; }
+# d3 = oakilydokily deploy (git pull→bt build→pipe→gd hot-swap)
+d3s() { ssh bt 'cd ~/oakilydokily && git pull' 2>&1 | tail -1; }
+d3b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran/oakilydokily && cargo build --release --features approuter' 2>&1 | tail -1; }
+d3c() { ssh bt 'cat ~/oakilydokily/target/release/oakilydokily' | ssh gd 'cat > ~/bin/oakilydokily.new && chmod +x ~/bin/oakilydokily.new && mv ~/bin/oakilydokily.new ~/bin/oakilydokily'; }
+d3r() { ssh gd 'cd /home/mcochran/bin && nohup ./oakilydokily serve </dev/null >>/tmp/oakilydokily.log 2>&1 &'; }
 d3d() { d3s && echo "sync:ok" && d3b && echo "build:ok" && d3c && echo "copy:ok" && d3r && echo "d3:ok" || echo "d3:err"; }
 d3dp() { (cd "${_KH}/oakilydokily" && git push 2>&1 | tail -1) && d3d; }
 
-# d0 = kova deploy pipeline (build on bt, deploy to all nodes)
-d0s() { rsync -aq --exclude target --exclude .git "${_KH}/kova/" bt:/home/mcochran/kova/; }
-d0b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p kova --release --features serve' 2>&1 | tail -1; }
+# d0 = kova deploy (git pull→bt build)
+d0s() { ssh bt 'cd ~/kova && git pull' 2>&1 | tail -1; }
+d0b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran/kova && cargo build --release --features serve' 2>&1 | tail -1; }
 
-# d1 = approuter deploy pipeline
-d1s() { rsync -aq --exclude target --exclude .git "${_KH}/approuter/" bt:/home/mcochran/approuter/; }
-d1b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p approuter --release' 2>&1 | tail -1; }
-d1c() { scp -q bt:/home/mcochran/target/release/approuter /tmp/approuter-release && scp -q /tmp/approuter-release gd:/home/mcochran/bin/approuter; }
+# d1 = approuter deploy (git pull→bt build→pipe→gd)
+d1s() { ssh bt 'cd ~/approuter && git pull' 2>&1 | tail -1; }
+d1b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran/approuter && cargo build --release' 2>&1 | tail -1; }
+d1c() { ssh bt 'cat ~/approuter/target/release/approuter' | ssh gd 'cat > ~/bin/approuter.new && chmod +x ~/bin/approuter.new && mv ~/bin/approuter.new ~/bin/approuter'; }
 d1dp() { (cd "${_KH}/approuter" && git push 2>&1 | tail -1) && d1s && echo "sync:ok" && d1b && echo "build:ok" && d1c && echo "d1:ok" || echo "d1:err"; }
 
-# d2 = cochranblock deploy pipeline (sync→bt build→copy→gd restart)
-d2s() { rsync -aq --exclude target --exclude .git "${_KH}/cochranblock/" bt:/home/mcochran/cochranblock/; }
-d2b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran && cargo build -p cochranblock --release --features approuter' 2>&1 | tail -1; }
-d2c() { scp -q bt:/home/mcochran/target/release/cochranblock /tmp/cochranblock-release && scp -q /tmp/cochranblock-release gd:/home/mcochran/bin/cochranblock; }
-d2r() { ssh gd 'pkill -f cochranblock 2>/dev/null; cd /home/mcochran/bin && nohup ./cochranblock </dev/null >>/tmp/cochranblock.log 2>&1 &'; }
+# d2 = cochranblock deploy (git pull→bt build→pipe→gd hot-swap)
+d2s() { ssh bt 'cd ~/cochranblock && git pull' 2>&1 | tail -1; }
+d2b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran/cochranblock && cargo build --release --features approuter' 2>&1 | tail -1; }
+d2c() { ssh bt 'cat ~/cochranblock/target/release/cochranblock' | ssh gd 'cat > ~/bin/cochranblock.new && chmod +x ~/bin/cochranblock.new && mv ~/bin/cochranblock.new ~/bin/cochranblock'; }
+d2r() { ssh gd 'cd /home/mcochran/bin && nohup ./cochranblock serve </dev/null >>/tmp/cochranblock.log 2>&1 &'; }
 d2d() { d2s && echo "sync:ok" && d2b && echo "build:ok" && d2c && echo "copy:ok" && d2r && echo "d2:ok" || echo "d2:err"; }
 d2dp() { (cd "${_KH}/cochranblock" && git push 2>&1 | tail -1) && d2d; }
-alias redeploy='d2d'   # cochranblock: rebuild via ssh (bt) + redeploy to gd
+alias redeploy='d2d'
 
-# d10 = pixel-forge deploy pipeline (sync→build on bt→copy to all nodes)
-d10s() { rsync -aq --exclude target --exclude .git --exclude data "${_KH}/pixel-forge/" bt:/home/mcochran/pixel-forge/; }
+# d10 = pixel-forge deploy (git pull→bt build→pipe to all nodes)
+d10s() { ssh bt 'cd ~/pixel-forge && git pull' 2>&1 | tail -1; }
 d10b() { ssh bt 'export PATH="$HOME/.cargo/bin:$PATH"; cd /home/mcochran/pixel-forge && cargo build --release' 2>&1 | tail -1; }
-d10c() { for h in lf gd bt st; do scp -q bt:/home/mcochran/pixel-forge/target/release/pixel-forge "$h":/home/mcochran/bin/pixel-forge 2>/dev/null && echo "$h:ok" || echo "$h:err"; done; }
+d10c() { for h in lf gd bt st; do ssh bt "cat ~/pixel-forge/target/release/pixel-forge" | ssh "$h" 'cat > ~/bin/pixel-forge.new && chmod +x ~/bin/pixel-forge.new && mv ~/bin/pixel-forge.new ~/bin/pixel-forge' 2>/dev/null && echo "$h:ok" || echo "$h:err"; done; }
 d10d() { d10s && echo "sync:ok" && d10b && echo "build:ok" && d10c && echo "d10:ok" || echo "d10:err"; }
 d10dp() { (cd "${_KH}/pixel-forge" && git push 2>&1 | tail -1) && d10d; }
-
-# dw = sync workspace (Cargo.toml, lock, vendor) to bt
-dws() { rsync -aq "${_KH}/Cargo.toml" "${_KH}/Cargo.lock" bt:/home/mcochran/ && rsync -aq "${_KH}/vendor/" bt:/home/mcochran/vendor/ && echo "dws:ok" || echo "dws:err"; }
 
 # dm = build mural-wasm (local only — needs wasm32 target)
 dm() { cargo build --target wasm32-unknown-unknown -p mural-wasm --release && cp "${_KH}/target/wasm32-unknown-unknown/release/mural-wasm.wasm" "${_KH}/oakilydokily/assets/mural-wasm.wasm" && echo "mural-wasm built"; }
