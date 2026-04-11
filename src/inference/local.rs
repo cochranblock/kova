@@ -1,5 +1,6 @@
-//! Local LLM inference. Kalosm + GGUF. Streams tokens.
-//! f76=chat_stream
+//! Local LLM inference. Candle + GGUF. Streams tokens.
+//! f76=chat_stream, f80=chat_complete.
+//! Replaces Kalosm — direct candle for auditability + shared engine with pixel-forge.
 
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
@@ -8,29 +9,34 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc};
 use std::thread;
 
-use kalosm::language::{ChatModelExt, Parse};
-
-#[cfg(feature = "inference")]
-use std::sync::LazyLock;
 #[cfg(feature = "inference")]
 use std::num::NonZeroUsize;
 #[cfg(feature = "inference")]
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 #[cfg(feature = "inference")]
-type CachedModel = Arc<kalosm::language::Llama>;
+use candle_core::{quantized::gguf_file, Device, Tensor};
+#[cfg(feature = "inference")]
+use candle_transformers::models::quantized_llama::ModelWeights;
+#[cfg(feature = "inference")]
+use tokenizers::Tokenizer;
 
 #[cfg(feature = "inference")]
-static MODEL_CACHE: LazyLock<Mutex<lru::LruCache<PathBuf, CachedModel>>> = LazyLock::new(|| {
-    let cap = NonZeroUsize::new(crate::config::model_cache_size()).unwrap_or(NonZeroUsize::MIN);
-    Mutex::new(lru::LruCache::new(cap))
-});
+struct CachedModel {
+    model: ModelWeights,
+    tokenizer: Tokenizer,
+    device: Device,
+}
 
-/// Get or load model from cache. Returns Arc<Llama> for inference.
 #[cfg(feature = "inference")]
-pub(crate) async fn get_or_load_model(model_path: &Path) -> anyhow::Result<CachedModel> {
-    use kalosm::language::*;
+static MODEL_CACHE: LazyLock<Mutex<lru::LruCache<PathBuf, Arc<CachedModel>>>> =
+    LazyLock::new(|| {
+        let cap = NonZeroUsize::new(crate::config::model_cache_size()).unwrap_or(NonZeroUsize::MIN);
+        Mutex::new(lru::LruCache::new(cap))
+    });
 
+#[cfg(feature = "inference")]
+pub(crate) fn get_or_load_model(model_path: &Path) -> anyhow::Result<Arc<CachedModel>> {
     let path_buf = model_path.to_path_buf();
 
     {
@@ -40,24 +46,36 @@ pub(crate) async fn get_or_load_model(model_path: &Path) -> anyhow::Result<Cache
         }
     }
 
-    let source = LlamaSource::new(FileSource::Local(model_path.to_path_buf()));
-    let model = Llama::builder()
-        .with_source(source)
-        .build()
-        .await
+    let device = Device::Cpu;
+    let mut file = std::fs::File::open(model_path)?;
+    let content = gguf_file::Content::read(&mut file)
+        .map_err(|e| anyhow::anyhow!("GGUF read: {}", e))?;
+    let model = ModelWeights::from_gguf(content, &mut file, &device)
         .map_err(|e| anyhow::anyhow!("model load: {}", e))?;
 
-    let model = Arc::new(model);
+    // Tokenizer: look for tokenizer.json next to model, or in ~/.kova/models/
+    let tok_path = model_path
+        .parent()
+        .map(|p| p.join("tokenizer.json"))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| crate::models_dir().join("tokenizer.json"));
+
+    let tokenizer = Tokenizer::from_file(&tok_path)
+        .map_err(|e| anyhow::anyhow!("tokenizer load from {}: {}", tok_path.display(), e))?;
+
+    let cached = Arc::new(CachedModel {
+        model,
+        tokenizer,
+        device,
+    });
     {
         let mut cache = MODEL_CACHE.lock().unwrap();
-        cache.put(path_buf, Arc::clone(&model));
+        cache.put(path_buf, Arc::clone(&cached));
     }
-    Ok(model)
+    Ok(cached)
 }
 
 /// f76=chat_stream. Spawn inference in a thread. Returns receiver for streamed tokens.
-/// Uses Arc<str> for zero-copy handoff; receiver can use &* without clone.
-/// When sender is dropped, inference is done.
 pub fn f76(
     model_path: &Path,
     system_prompt: &str,
@@ -70,91 +88,129 @@ pub fn f76(
     let input = user_input.to_string();
 
     thread::spawn(move || {
-        let rt = match tokio::runtime::Runtime::new() {
-            Ok(r) => r,
-            Err(e) => {
-                let _ = tx.send(Arc::from(format!("Error: tokio runtime: {}", e)));
-                return;
-            }
-        };
-        rt.block_on(async {
-            let _ = run_inference(&path, &system, &input, tx).await;
-        });
+        if let Err(e) = run_inference(&path, &system, &input, &tx) {
+            let _ = tx.send(Arc::from(format!("Error: {}", e)));
+        }
     });
 
     rx
 }
 
-async fn run_inference(
+#[cfg(feature = "inference")]
+fn run_inference(
     model_path: &Path,
     system_prompt: &str,
     user_input: &str,
-    tx: mpsc::Sender<Arc<str>>,
+    tx: &mpsc::Sender<Arc<str>>,
 ) -> anyhow::Result<()> {
-    use kalosm::language::StreamExt;
+    use candle_transformers::generation::LogitsProcessor;
 
-    let model = get_or_load_model(model_path).await?;
+    let cached = get_or_load_model(model_path)?;
 
-    let mut chat = model.chat().with_system_prompt(system_prompt);
-    let mut response = chat(user_input);
+    let prompt = format!(
+        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        system_prompt, user_input
+    );
 
-    while let Some(token) = response.next().await {
-        let _ = tx.send(Arc::from(token.to_string()));
+    let tokens = cached
+        .tokenizer
+        .encode(prompt.as_str(), true)
+        .map_err(|e| anyhow::anyhow!("tokenize: {}", e))?;
+    let input_ids = tokens.get_ids();
+
+    let mut logits_proc = LogitsProcessor::new(42, Some(0.7), Some(0.9));
+    let mut all_tokens: Vec<u32> = input_ids.to_vec();
+    let eos = cached
+        .tokenizer
+        .token_to_id("<|im_end|>")
+        .unwrap_or(151643);
+
+    let mut model = cached.model.clone();
+    let max_tokens: usize = 2048;
+
+    // Process prompt
+    let input_tensor =
+        Tensor::new(input_ids, &cached.device)?.unsqueeze(0)?;
+    let logits = model.forward(&input_tensor, 0)?;
+    let logits = logits.squeeze(0)?.to_dtype(candle_core::DType::F32)?;
+    let next_token = logits_proc.sample(&logits)?;
+    all_tokens.push(next_token);
+
+    if next_token != eos {
+        if let Some(text) = decode_token(&cached.tokenizer, next_token) {
+            let _ = tx.send(Arc::from(text));
+        }
+    }
+
+    // Generate tokens
+    for i in 0..max_tokens {
+        let input = Tensor::new(&[next_token], &cached.device)?.unsqueeze(0)?;
+        let logits = model.forward(&input, input_ids.len() + i + 1)?;
+        let logits = logits.squeeze(0)?.to_dtype(candle_core::DType::F32)?;
+        let next_token = logits_proc.sample(&logits)?;
+        all_tokens.push(next_token);
+
+        if next_token == eos {
+            break;
+        }
+        if let Some(text) = decode_token(&cached.tokenizer, next_token) {
+            let _ = tx.send(Arc::from(text));
+        }
     }
 
     Ok(())
 }
 
-/// f80_code_gen_structured. Experimental. Run inference with JSON schema, return rust_block directly.
-/// Returns Ok(rust_block) on success, Err on failure. Use when code_gen_structured config is true.
-#[cfg(feature = "inference")]
-pub async fn f80_code_gen_structured(
-    model_path: &Path,
-    system_prompt: &str,
-    user_input: &str,
-) -> anyhow::Result<String> {
-    use std::sync::Arc;
-
-    let model = get_or_load_model(model_path).await?;
-
-    const STRUCTURED_PROMPT: &str = "Generate Rust code only. Reply with valid JSON: {\"rust_block\": \"your code here\"}. Escape newlines as \\n and quotes as \\\".";
-    let full_system = format!("{}\n\n{}", system_prompt, STRUCTURED_PROMPT);
-
-    let task = model
-        .task(&full_system)
-        .with_constraints(Arc::new(CodeGenOutput::new_parser()));
-
-    let stream = task.run(user_input);
-    let output: CodeGenOutput = stream
-        .await
-        .map_err(|e| anyhow::anyhow!("structured code gen: {}", e))?;
-
-    Ok(output.rust_block)
+#[cfg(not(feature = "inference"))]
+fn run_inference(
+    _model_path: &Path,
+    _system_prompt: &str,
+    _user_input: &str,
+    tx: &mpsc::Sender<Arc<str>>,
+) -> anyhow::Result<()> {
+    let _ = tx.send(Arc::from("Error: build with --features inference"));
+    Ok(())
 }
 
-/// Structured output for code gen. Experimental.
 #[cfg(feature = "inference")]
-#[derive(Clone, Debug, kalosm::language::Parse, kalosm::language::Schema)]
-struct CodeGenOutput {
-    rust_block: String,
+fn decode_token(tokenizer: &Tokenizer, token: u32) -> Option<String> {
+    tokenizer.decode(&[token], true).ok()
 }
 
 /// f80=chat_complete. Run inference, return full response. No streaming.
-pub async fn f80(
+pub fn f80(
     model_path: &Path,
     system_prompt: &str,
     user_input: &str,
 ) -> anyhow::Result<String> {
-    use kalosm::language::StreamExt;
-
-    let model = get_or_load_model(model_path).await?;
-
-    let mut chat = model.chat().with_system_prompt(system_prompt);
-    let mut response = chat(user_input);
-
+    let rx = f76(model_path, system_prompt, &[], user_input);
     let mut out = String::new();
-    while let Some(token) = response.next().await {
-        out.push_str(&token.to_string());
+    for token in rx {
+        out.push_str(&token);
     }
     Ok(out)
+}
+
+/// f80_code_gen_structured. Run inference, extract code block from response.
+#[cfg(feature = "inference")]
+pub fn f80_code_gen_structured(
+    model_path: &Path,
+    system_prompt: &str,
+    user_input: &str,
+) -> anyhow::Result<String> {
+    let full_system = format!(
+        "{}\n\nGenerate Rust code only. Wrap in ```rust ... ``` fences.",
+        system_prompt
+    );
+    let response = f80(model_path, &full_system, user_input)?;
+
+    // Extract code between ```rust and ```
+    if let Some(start) = response.find("```rust") {
+        let code_start = start + 7;
+        if let Some(end) = response[code_start..].find("```") {
+            return Ok(response[code_start..code_start + end].trim().to_string());
+        }
+    }
+    // Fallback: return raw response
+    Ok(response)
 }

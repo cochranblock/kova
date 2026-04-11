@@ -130,10 +130,22 @@ impl Expert {
         shared: &LayerOutput,
         provider: &T129,
     ) -> LayerOutput {
+        self.generate_with_context(subtask, shared, provider, None)
+    }
+
+    /// Generate with optional error context from a previous failed attempt.
+    /// Phase 3: Sponge Mesh feeds error back so the expert can correct.
+    pub fn generate_with_context(
+        &self,
+        subtask: &Subtask,
+        shared: &LayerOutput,
+        provider: &T129,
+        error_ctx: Option<&str>,
+    ) -> LayerOutput {
         let start = Instant::now();
         let system = self.system_prompt();
 
-        let prompt = format!(
+        let mut prompt = format!(
             "Context: {}\n\nShared boilerplate already generated:\n```rust\n{}\n```\n\n\
             Generate ONLY the {} code. Do not repeat the boilerplate. \
             Output raw Rust code in a ```rust block.",
@@ -141,6 +153,22 @@ impl Expert {
             shared.code,
             self.description()
         );
+
+        // Phase 3: Append error context from previous failed attempt
+        if let Some(err) = error_ctx {
+            prompt.push_str(&format!(
+                "\n\nPrevious attempt failed:\n{}\nFix the issue. Do not repeat the same mistake.",
+                err
+            ));
+        }
+
+        // Flywheel: Check sled for past failures matching this expert type
+        if let Some(hint) = super::compiler_teacher::lookup_hint(&self.kind) {
+            prompt.push_str(&format!(
+                "\n\nKnown pitfall for {:?}: previously generated code failed with: {}\nThe fix was to: {}",
+                self.kind, hint.error, truncate_str(&hint.good_code, 200)
+            ));
+        }
 
         let code = match crate::providers::f199(provider, "", &system, &prompt) {
             Ok(r) => extract_rust(&r.text),
@@ -259,6 +287,10 @@ impl Expert {
             ExpertKind::RustBoilerplate => "src/lib.rs".to_string(),
         }
     }
+}
+
+fn truncate_str(s: &str, max: usize) -> &str {
+    if s.len() <= max { s } else { &s[..max] }
 }
 
 /// Extract Rust code from a ```rust ... ``` block.

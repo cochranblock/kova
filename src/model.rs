@@ -43,5 +43,17 @@ pub async fn f77() -> anyhow::Result<()> {
     }
     eprintln!("\r  Done. {}", dest.display());
 
+    // Also download tokenizer.json
+    let tok_url = "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct/resolve/main/tokenizer.json";
+    let tok_dest = models_dir.join("tokenizer.json");
+    if !tok_dest.exists() {
+        eprintln!("Downloading tokenizer.json...");
+        let resp = client.get(tok_url).send().await?;
+        resp.error_for_status_ref()?;
+        let bytes = resp.bytes().await?;
+        std::fs::write(&tok_dest, &bytes)?;
+        eprintln!("  Done. {}", tok_dest.display());
+    }
+
     Ok(())
 }

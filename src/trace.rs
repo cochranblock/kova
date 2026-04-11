@@ -28,7 +28,7 @@ pub struct T93 {
 pub struct T109 {
     /// Unix timestamp (millis).
     pub ts: u64,
-    /// Backend: "ollama" or "kalosm".
+    /// Backend: "ollama" or "candle".
     pub backend: String,
     /// Model name (e.g. "qwen2.5-coder:1.5b").
     pub model: String,

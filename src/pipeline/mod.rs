@@ -107,11 +107,10 @@ async fn run_pipeline(
 
     let (mut response, mut initial_code) = if crate::config::code_gen_structured() {
         match crate::inference::f80_code_gen_structured(coder_path, &code_gen_prompt, user_input)
-            .await
         {
             Ok(rust_block) => (format!("```rust\n{}\n```", rust_block), Some(rust_block)),
             Err(_) => {
-                let s = match crate::inference::f80(coder_path, &code_gen_prompt, user_input).await
+                let s = match crate::inference::f80(coder_path, &code_gen_prompt, user_input)
                 {
                     Ok(s) => s,
                     Err(e) => {
@@ -125,7 +124,7 @@ async fn run_pipeline(
             }
         }
     } else {
-        let s = match crate::inference::f80(coder_path, &code_gen_prompt, user_input).await {
+        let s = match crate::inference::f80(coder_path, &code_gen_prompt, user_input) {
             Ok(s) => s,
             Err(e) => {
                 trace.outcome = "failed".to_string();

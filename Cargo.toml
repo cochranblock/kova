@@ -16,12 +16,12 @@ categories = ["command-line-utilities", "development-tools"]
 default = ["tui"]
 serve = ["dep:axum", "dep:futures-util", "dep:tower", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:similar"]
 tui = ["dep:ratatui", "dep:crossterm"]
-inference = ["dep:kalosm", "dep:kalosm-sample", "dep:lru"]
+inference = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub", "dep:lru"]
 autopilot = ["dep:enigo"]
 browser = ["dep:enigo", "dep:base64", "dep:core-graphics", "dep:image"]
 tests = ["exopack"]
 rag = ["dep:fastembed", "dep:ordered-float"]
-# mobile-llm: on-device safetensors inference via candle (Android/iOS). Pure Rust.
+# mobile-llm: on-device safetensors inference via candle (Android/iOS). Shares candle deps with inference.
 mobile-llm = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -50,8 +50,6 @@ tower = { version = "0.5", features = ["util"], optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
-kalosm = { version = "0.4", features = ["language", "llama"], optional = true }
-kalosm-sample = { version = "0.4", optional = true }
 lru = { version = "0.16", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "blocking", "json"] }
 exopack = { version = "0.1", git = "https://github.com/cochranblock/exopack", optional = true, features = ["triple_sims", "interface", "baked_demo", "demo", "video", "screenshot"] }

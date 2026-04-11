@@ -137,14 +137,10 @@ fn local_generate(model_path: &std::path::Path, system: &str, prompt: &str) -> R
     let sys = system.to_string();
     let inp = prompt.to_string();
 
-    // Spawn a thread with its own tokio runtime (same pattern as inference::f76).
+    // Spawn a thread for local inference (sync now with candle).
     let handle = std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| format!("tokio: {}", e))?;
-        rt.block_on(async {
-            crate::inference::f80(&path, &sys, &inp)
-                .await
-                .map_err(|e| format!("local inference: {}", e))
-        })
+        crate::inference::f80(&path, &sys, &inp)
+            .map_err(|e| format!("local inference: {}", e))
     });
 
     handle.join().map_err(|_| "inference thread panic".to_string())?

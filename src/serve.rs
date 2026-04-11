@@ -226,12 +226,8 @@ async fn v1_chat_completions(Json(req): Json<OaiChatRequest>) -> impl IntoRespon
     let system_len = system.len();
     let user_len = user.len();
     let result = tokio::task::spawn_blocking(move || {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| format!("tokio: {}", e))?;
-        rt.block_on(async {
-            crate::inference::f80(&model_path, &system, &user)
-                .await
-                .map_err(|e| format!("inference: {}", e))
-        })
+        crate::inference::f80(&model_path, &system, &user)
+            .map_err(|e| format!("inference: {}", e))
     }).await;
 
     let text = match result {

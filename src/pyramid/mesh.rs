@@ -123,18 +123,40 @@ impl SpongeMesh {
 
     /// Dispatch with error context fed back into each retry.
     /// This is the full Sponge Mesh — the expert sees its own failure.
+    /// Flywheel: successful retries save (bad, error, good) training pairs.
     pub fn dispatch_with_context<F>(&self, f: F) -> MeshResult
     where
         F: Fn(Option<&str>) -> LayerOutput,
     {
         let mut last_output = f(None);
         let mut retries = 0;
+        let mut prev_bad_code: Option<String> = None;
+        let mut prev_error: Option<String> = None;
 
         while retries < self.max_retries {
             if self.validate(&last_output) {
                 last_output.retry_count = retries;
+
+                // Flywheel: if this was a retry, save the correction as a training pair
+                if retries > 0 {
+                    if let (Some(bad), Some(err)) = (&prev_bad_code, &prev_error) {
+                        if let Ok(kind) = last_output.source_expert.parse::<String>() {
+                            super::compiler_teacher::save_pair(
+                                bad,
+                                err,
+                                &last_output.code,
+                                &expert_kind_from_str(&kind),
+                            );
+                        }
+                    }
+                }
+
                 return MeshResult::Success(last_output);
             }
+
+            // Save the bad output before retrying
+            prev_bad_code = Some(last_output.code.clone());
+            prev_error = last_output.error_output.clone();
 
             retries += 1;
             let backoff = self.jittered_backoff(retries);
@@ -153,12 +175,22 @@ impl SpongeMesh {
 
             std::thread::sleep(backoff);
 
-            // Retry WITH the error context — expert sees what went wrong
             last_output = f(Some(error_ctx));
         }
 
         if self.validate(&last_output) {
             last_output.retry_count = retries;
+
+            // Flywheel: save the final successful correction
+            if let (Some(bad), Some(err)) = (&prev_bad_code, &prev_error) {
+                super::compiler_teacher::save_pair(
+                    bad,
+                    err,
+                    &last_output.code,
+                    &expert_kind_from_str(&last_output.source_expert),
+                );
+            }
+
             return MeshResult::Success(last_output);
         }
 
@@ -189,6 +221,34 @@ impl SpongeMesh {
 
         // Passed all checks
         true
+    }
+}
+
+/// Map expert name string back to ExpertKind. Default to RustBoilerplate for unknowns.
+fn expert_kind_from_str(s: &str) -> super::ExpertKind {
+    use super::ExpertKind::*;
+    match s {
+        "CargoToml" => CargoToml,
+        "ClaudeConfig" => ClaudeConfig,
+        "StructDef" => StructDef,
+        "EnumDef" => EnumDef,
+        "ThiserrorEnum" => ThiserrorEnum,
+        "AxumRouter" => AxumRouter,
+        "AxumHandler" => AxumHandler,
+        "ClapParser" => ClapParser,
+        "ClapSubcommand" => ClapSubcommand,
+        "SledRead" => SledRead,
+        "SledWrite" => SledWrite,
+        "BincodeSerialize" => BincodeSerialize,
+        "ZstdCompress" => ZstdCompress,
+        "ReqwestClient" => ReqwestClient,
+        "CandleModelLoad" => CandleModelLoad,
+        "CandleForward" => CandleForward,
+        "NanosignVerify" => NanosignVerify,
+        "TestUnit" => TestUnit,
+        "TestIntegration" => TestIntegration,
+        "ExopackGate" => ExopackGate,
+        _ => RustBoilerplate,
     }
 }
 

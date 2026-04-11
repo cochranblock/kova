@@ -1,12 +1,12 @@
 //! Inference — unified facade. InferenceRouter picks backend based on task + config.
 //!
 //! Submodules:
-//!   local.rs     — Kalosm GGUF (was inference.rs)
+//!   local.rs     — Candle GGUF (direct, no wrapper — shared engine with pixel-forge)
 //!   cluster.rs   — IRONHIVE distributed dispatch (was top-level cluster.rs)
 //!   providers.rs — Multi-provider client (was top-level providers.rs)
 //!
 //! f382=dual_stream. Unified inference dispatcher. Reads KOVA_INFERENCE env:
-//!   local  — Kalosm GGUF only (f76)
+//!   local  — Candle GGUF only (f76)
 //!   remote — Anthropic API streaming (f381)
 //!   auto   — local if model exists, else remote (default)
 // Unlicense — cochranblock.org
