@@ -27,7 +27,7 @@
 ### Early Exit & Layer Skipping
 
 - **LayerSkip** (Meta) — Layer dropout + early exit loss; self-speculative decoding; up to 2.16× speedup (summarization), 1.82× (coding). [arXiv:2404.16710](https://arxiv.org/abs/2404.16710)
-- **Middle Layer Skipping** — Learned gating to skip symmetric spans of central blocks; leverages redundancy in middle layers. [arXiv:2506.21103](https://arxiv.org/abs/2506.21103)
+- **Middle Layer Skipping** — Learned gating to skip symmetric spans of central blocks; exploits redundancy in middle layers. [arXiv:2506.21103](https://arxiv.org/abs/2506.21103)
 - **SkipBERT** — Skips shallow layers via n-gram lookup; 65% latency reduction. [ACL 2022](https://aclanthology.org/2022.acl-long.503.pdf)
 
 ### Memory-Mapped Model Loading

@@ -1,9 +1,9 @@
 <!-- Unlicense — cochranblock.org -->
 <!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
 
-# Blazing Speed — Optimization Guide
+# Blazing Speed — Improvement Guide
 
-**Purpose:** Document each speed optimization, config flags, and baseline metrics for Kova.
+**Purpose:** Document each speed improvement, config flags, and baseline metrics for Kova.
 
 **Date:** 2026-03-10
 

@@ -489,7 +489,7 @@ Run `rg '/// f[0-9]+=' kova/src` to list coverage.
 
 **kova-test** binary (f90) depends on exopack for TRIPLE SIMS via f61. Main binary uses plain `cargo test` (f93); no exopack in main.
 
-### Robustness
+### Solidness
 
 - **f62_table_driven** — Single table of (input, expected); add rows to extend coverage.
 - **f62_precedence_*** — Explicit precedence tests (full vs test, cloudflare vs cache).

@@ -138,7 +138,7 @@
 
 ## Sim 3: Implementation Deep Dive
 
-**Focus:** Code paths, consistency, robustness.
+**Focus:** Code paths, consistency, solidness.
 
 ---
 

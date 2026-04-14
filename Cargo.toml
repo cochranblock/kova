@@ -96,7 +96,7 @@ overflow-checks = true     # catch integer overflow
 [profile.release]
 opt-level = 3              # max speed, not size
 lto = "fat"                # full cross-crate LTO
-codegen-units = 1          # single codegen unit = best optimization
+codegen-units = 1          # single codegen unit = best perf
 panic = 'abort'            # no unwind overhead
 strip = true               # strip symbols from binary
 overflow-checks = true     # catch overflow even in release

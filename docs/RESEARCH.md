@@ -105,4 +105,4 @@
 4. **Compute Layer** — Offload to rayon (CPU), optional GPU, SIMD
 5. **Rust Integration** — cargo, rust-analyzer, sccache, mold
 
-**Principle:** Maximize utilization of all available compute (cores, SIMD, GPU) while keeping intent human-readable and constraints verifiable.
+**Principle:** Maximize use of all available compute (cores, SIMD, GPU) while keeping intent human-readable and constraints verifiable.

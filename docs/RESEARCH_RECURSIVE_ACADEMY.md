@@ -16,7 +16,7 @@
 **Implications for Kova:**
 - Pipeline traces (intent → router → coder → cargo_check → fix) are optimization signals
 - Don't just log; structure traces so they can be "back-propagated" into prompt/system improvements
-- OptoPrime: LLM-based optimizer that learns from traces; could adapt for Rust/Kova (Python bridge or port concepts)
+- OptoPrime: LLM-based prompt improver that learns from traces; could adapt for Rust/Kova (Python bridge or port concepts)
 
 ---
 

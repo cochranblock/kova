@@ -13,7 +13,7 @@
 
 A senior engineer uses Kova. When something fails or feels opaque, they get an explanation grounded in what actually happened — not generic docs. The models that power Kova use the same conventions the engineer already maintains in Cursor (rules, skills, protocol_map). The fix loop stops before it degrades. The system teaches itself from real failures.
 
-**"Pros of the pros"** = highest-leverage user value: explainability, convention alignment, and self-improvement from traces.
+**"Pros of the pros"** = highest-impact user value: explainability, convention alignment, and self-improvement from traces.
 
 ---
 
@@ -151,7 +151,7 @@ Before implementing, confirm:
 - [ ] US-9.1–US-9.3 align with DDI research
 - [ ] Edge cases are handled
 - [ ] No overlap with USER_STORY_PERFECT_RUST (Epics 1–6)
-- [ ] "Pros of the pros" = highest leverage: Cursor prompts + Explain + DDI cap
+- [ ] "Pros of the pros" = highest impact: Cursor prompts + Explain + DDI cap
 
 ---
 

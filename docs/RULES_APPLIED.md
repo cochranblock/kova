@@ -14,7 +14,7 @@ Rules from `.cursor/rules/` mapped to this workspace. Applied and verified.
 | **user-preferences** | All | Rust first, descriptive names (except tokenized code per compression_map), direct answers, never cover Cursor |
 | **build-plans-first** | All | Plan before execute; wait for approval on 3+ steps, architectural, or destructive changes |
 | **slow-is-fast** | All | Depth over speed; verify outputs; use capable models for complex work |
-| **ultra-optimization** | All | Match model to task; offload to Gemini for research/commentary; minimize @ context |
+| **ultra-tightening** | All | Match model to task; offload to Gemini for research/commentary; minimize @ context |
 | **self-hosted-gitlab** | Git | When GitLab is primary: `origin` → localhost:8929; `git push origin HEAD`. (Current: origin = GitHub.) |
 | **gemini-cli-keep-files** | CLI | Advise "yes" when CLI prompts for file writes and paths are expected |
 | **kova-gitlab-blueprint** | red-team-recon, gitlab-config, docs | WBS by project; pipeline = validation; artifacts = CDRLs |

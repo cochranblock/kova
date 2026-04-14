@@ -163,7 +163,7 @@ Each entry follows this format:
 **Commit:** `4228073`
 **AI Role:** AI simulated real user, identified pain points, implemented fixes. Human reviewed and approved.
 
-### 2026-03-27 — P13 Tokenization + Binary Size Optimization
+### 2026-03-27 — P13 Tokenization + Binary Size Reduction
 
 **What:** Tokenized quantize.rs (f366-f376, T214-T215). Release profile: opt-level=z, LTO, codegen-units=1, panic=abort, strip. Binary: 54 MB → 27 MB (48% reduction).
 **Commit:** `1012a05`

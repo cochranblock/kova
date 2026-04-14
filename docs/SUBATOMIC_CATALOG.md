@@ -31,7 +31,7 @@ Human intent drives the sled priority queue. Not heuristics. Not access patterns
 Human types 'fix the bug'    → error-fixer, borrow-checker, lifetime models → top
 Human types 'add a struct'   → field-count, derive-needed, visibility      → hot
 Human types 'write tests'    → test-pattern, assertion-style, coverage     → promote
-Human types 'deploy'         → build-time, binary-size, optimization       → load
+Human types 'deploy'         → build-time, binary-size, shrinking         → load
 Human opens unsafe block     → unsafe-analysis, ffi-pattern, raw-pointer   → page in
 ```
 

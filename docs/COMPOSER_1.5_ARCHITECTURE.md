@@ -46,7 +46,7 @@ Goal: Replace the monolithic LLM approach with a fast, task-specific routing pip
 Goal: Bridge the gap between the mobile WASM client and the local multi-model pipeline.
 
 1. Axum Framework Integration:
-   - Upgrade `kova serve` to use `axum` and `tokio` for robust, asynchronous routing.
+   - Upgrade `kova serve` to use `axum` and `tokio` for solid, asynchronous routing.
 2. Endpoints:
    - `POST /api/intent`: Receives the `t0` Intent payload from the mobile client.
    - `GET /ws/stream`: Upgrades the connection to a WebSocket.

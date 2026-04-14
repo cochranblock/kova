@@ -163,7 +163,7 @@ const PHASE2: &[Challenge] = &[
     Challenge {
         phase: 2,
         name: "sieve_moe",
-        prompt: "Write a function that finds all prime numbers up to N using the Sieve of Eratosthenes. Include comprehensive tests for N=0, N=1, N=2, N=10, N=100.",
+        prompt: "Write a function that finds all prime numbers up to N using the Sieve of Eratosthenes. Include full tests for N=0, N=1, N=2, N=10, N=100.",
         must_contain: &["fn ", "vec!", "true"],
         must_not_contain: &[],
         use_moe: true,
