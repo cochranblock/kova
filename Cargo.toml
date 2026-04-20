@@ -101,3 +101,15 @@ panic = 'abort'            # no unwind overhead
 strip = true               # strip symbols from binary
 overflow-checks = true     # catch overflow even in release
 debug-assertions = true    # catch logic bugs in production
+
+[profile.diamond]
+inherits = "release"
+opt-level = 3              # maximum LLVM speed
+lto = "fat"                # cross-crate inlining, full monomorphized dedup
+codegen-units = 1          # one crystal, no fracture planes
+strip = true               # symbols don't run, they just ride along
+panic = "abort"            # cull unwinding machinery
+overflow-checks = false    # trust the arithmetic, check explicitly when needed
+debug = false              # DWARF is heavy
+incremental = false        # incremental caches are fracture planes
+split-debuginfo = "off"    # no separate .dSYM or .pdb

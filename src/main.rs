@@ -2413,18 +2413,27 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Tokens) => {
             return match args.cmd.unwrap() {
                 Cmd::Extract(a) => {
-                    let base = a.base.unwrap_or_else(|| {
-                        dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
-                    });
-                    let pairs = kova::pyramid::extract::extract_all(&base);
-                    if let Some(out) = a.output {
-                        let json = serde_json::to_string_pretty(&pairs).unwrap_or_default();
-                        std::fs::write(&out, json)?;
-                        println!("[extract] wrote {} pairs to {}", pairs.len(), out.display());
-                    } else {
-                        println!("{}", serde_json::to_string_pretty(&pairs).unwrap_or_default());
+                    #[cfg(feature = "inference")]
+                    {
+                        let base = a.base.unwrap_or_else(|| {
+                            dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+                        });
+                        let pairs = kova::pyramid::extract::extract_all(&base);
+                        if let Some(out) = a.output {
+                            let json = serde_json::to_string_pretty(&pairs).unwrap_or_default();
+                            std::fs::write(&out, json)?;
+                            println!("[extract] wrote {} pairs to {}", pairs.len(), out.display());
+                        } else {
+                            println!("{}", serde_json::to_string_pretty(&pairs).unwrap_or_default());
+                        }
+                        Ok(())
                     }
-                    Ok(())
+                    #[cfg(not(feature = "inference"))]
+                    {
+                        let _ = a;
+                        eprintln!("extract requires --features inference");
+                        Ok(())
+                    }
                 }
                 Cmd::Ssh(a) => run_ssh(a),
                 Cmd::Deploy { project, nodes } => {
