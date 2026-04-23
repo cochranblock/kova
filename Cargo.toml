@@ -39,6 +39,8 @@ flate2 = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "io-util", "macros", "signal"] }
 tempfile = "3"
 similar = { version = "2", optional = true }
+notify = "8"
+ctrlc = "3"
 
 ratatui = { version = "0.29", optional = true }
 crossterm = { version = "0.28", optional = true }

@@ -125,7 +125,12 @@ enum Cmd {
         #[arg(default_value = "list")]
         doc: String,
     },
+    /// Hive — file sync over SSH (absorbed from standalone ironhive). Watch workspace, rsync deltas.
+    #[command(name = "hive")]
+    Hive(hive::HiveArgs),
 }
+
+mod hive;
 
 #[derive(clap::Args)]
 struct SshArgs {
@@ -2410,6 +2415,7 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Ssh(_))
         | Some(Cmd::Deploy { .. })
         | Some(Cmd::Govdocs { .. })
+        | Some(Cmd::Hive(_))
         | Some(Cmd::Tokens) => {
             return match args.cmd.unwrap() {
                 Cmd::Extract(a) => {
@@ -2488,6 +2494,7 @@ fn main() -> anyhow::Result<()> {
                         anyhow::bail!("{} untokenized items", report.untokenized.len())
                     }
                 }
+                Cmd::Hive(a) => hive::dispatch(a).map_err(|e| anyhow::anyhow!("{}", e)),
                 _ => unreachable!(),
             };
         }
@@ -2681,7 +2688,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Tokens)
         | Some(Cmd::Ssh(_))
         | Some(Cmd::Deploy { .. })
-        | Some(Cmd::Govdocs { .. }) => unreachable!("handled before tokio"),
+        | Some(Cmd::Govdocs { .. })
+        | Some(Cmd::Hive(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: TUI (like Claude Code). Fallback: REPL, then GUI.
             #[cfg(feature = "tui")]
