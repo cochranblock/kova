@@ -1,0 +1,20 @@
+# Unlicense — cochranblock.org
+# Contributors: GotEmCoach, KOVA, Claude Opus 4.6
+[package]
+name = "kova-edge"
+version = "0.1.0"
+edition = "2024"
+description = "ESP32 edge firmware: BME280 sensor + on-device inference"
+
+[dependencies]
+esp-idf-hal = "0.44"
+esp-idf-sys = { version = "0.35", features = ["binstart"] }
+bme280 = "0.5"
+embedded-hal = "1.0"
+
+[build-dependencies]
+embuild = "0.32"
+
+[[bin]]
+name = "kova-edge"
+harness = false
