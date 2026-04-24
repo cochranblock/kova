@@ -255,7 +255,7 @@ mod tests {
             T116 {
                 prompt: "Write a hello world function".into(),
                 response: "fn hello() { println!(\"Hello, world!\"); }".into(),
-                model: "qwen2.5-coder:1.5b".into(),
+                model: "custom-model:local".into(),
                 score: 1.0,
                 passed: true,
                 latency_ms: 500,
@@ -264,7 +264,7 @@ mod tests {
             T116 {
                 prompt: "Write a hello world function".into(),
                 response: "ERROR: timeout".into(),
-                model: "qwen2.5-coder:0.5b".into(),
+                model: "custom-model:tiny".into(),
                 score: 0.0,
                 passed: false,
                 latency_ms: 15000,
@@ -273,7 +273,7 @@ mod tests {
             T116 {
                 prompt: "Classify this intent".into(),
                 response: "build".into(),
-                model: "qwen2.5-coder:1.5b".into(),
+                model: "custom-model:local".into(),
                 score: 0.9,
                 passed: true,
                 latency_ms: 6000,
@@ -320,8 +320,8 @@ mod tests {
         assert!(lines[0].starts_with("prompt,response,model,score,passed,latency_ms,category"));
 
         // Verify data rows contain expected model names.
-        assert!(content.contains("qwen2.5-coder:1.5b"));
-        assert!(content.contains("qwen2.5-coder:0.5b"));
+        assert!(content.contains("custom-model:local"));
+        assert!(content.contains("custom-model:tiny"));
     }
 
     /// f184=f184. Verify DPO pairs: chosen has higher score than rejected.
@@ -343,8 +343,8 @@ mod tests {
         let pair: T175 = serde_json::from_str(lines[0]).unwrap();
         assert!(pair.chosen_score > pair.rejected_score);
         assert_eq!(pair.category, "ollama:generate");
-        assert_eq!(pair.chosen_model, "qwen2.5-coder:1.5b");
-        assert_eq!(pair.rejected_model, "qwen2.5-coder:0.5b");
+        assert_eq!(pair.chosen_model, "custom-model:local");
+        assert_eq!(pair.rejected_model, "custom-model:tiny");
     }
 
     /// Verify csv_escape handles special characters.

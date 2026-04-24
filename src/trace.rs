@@ -30,7 +30,7 @@ pub struct T109 {
     pub ts: u64,
     /// Backend: "ollama" or "candle".
     pub backend: String,
-    /// Model name (e.g. "qwen2.5-coder:1.5b").
+    /// Model name (customer-configurable; e.g. "custom-model:local").
     pub model: String,
     /// Node/URL that handled the request.
     pub node: String,

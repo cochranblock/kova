@@ -269,8 +269,8 @@ pub fn f78(role: T89) -> Option<PathBuf> {
 
 fn default_filename(role: T89) -> &'static str {
     match role {
-        T89::Router | T89::Fix => "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf",
-        T89::Coder => "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf",
+        T89::Router | T89::Fix => "custom-model.gguf",
+        T89::Coder => "custom-model.gguf",
     }
 }
 
@@ -338,10 +338,9 @@ pub fn f216() -> String {
         .unwrap_or_else(|_| "http://localhost:11434".to_string())
 }
 
-/// f217=default_model. Default model for review/feedback. OLLAMA_MODEL or qwen2.5-coder:1.5b.
+/// f217=default_model. Default model for review/feedback. Reads OLLAMA_MODEL; no open-source default.
 pub fn f217() -> String {
-    std::env::var("OLLAMA_MODEL")
-        .unwrap_or_else(|_| "qwen2.5-coder:1.5b".to_string())
+    std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "custom-model:local".to_string())
 }
 
 /// f97=home. HOME env or /.
@@ -651,9 +650,9 @@ backlog = "~/.kova/backlog.json"
 bind = "127.0.0.1:3002"
 
 [models]
-router = "~/.kova/models/Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf"
-coder = "~/.kova/models/Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf"
-fix = "~/.kova/models/Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf"
+router = "~/.kova/models/custom-model.gguf"
+coder = "~/.kova/models/custom-model.gguf"
+fix = "~/.kova/models/custom-model.gguf"
 
 [orchestration]
 router_resident = true
@@ -770,15 +769,15 @@ mod tests {
     fn model_role_default_filename() {
         assert_eq!(
             default_filename(T89::Router),
-            "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf"
+            "custom-model.gguf"
         );
         assert_eq!(
             default_filename(T89::Coder),
-            "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf"
+            "custom-model.gguf"
         );
         assert_eq!(
             default_filename(T89::Fix),
-            "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf"
+            "custom-model.gguf"
         );
     }
 

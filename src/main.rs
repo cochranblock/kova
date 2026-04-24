@@ -26,8 +26,6 @@ enum Cmd {
     Bootstrap,
     /// Print loaded Cursor prompts (baked + external). For testing and debugging.
     Prompts,
-    /// Model management (install Qwen2.5-Coder).
-    Model(ModelArgs),
     /// Recent changes (f86). Tokenized for LLM context. Stay on task.
     Recent(RecentArgs),
     /// Autopilot: type prompt into Cursor composer. No API costs. Requires Cursor focused.
@@ -1070,20 +1068,6 @@ struct SqueezeArgs {
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     format: String,
-}
-
-#[derive(clap::Args)]
-struct ModelArgs {
-    #[command(subcommand)]
-    cmd: ModelCmd,
-}
-
-#[derive(Subcommand)]
-enum ModelCmd {
-    /// Download Qwen2.5-Coder-0.5B-Instruct GGUF to ~/.kova/models/
-    Install,
-    /// List configured models and paths (router, coder, fix).
-    List,
 }
 
 #[cfg(feature = "tui")]
@@ -2522,38 +2506,6 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         Some(Cmd::S(args)) => run_serve(true, args.demo).await,
         Some(Cmd::Node) => run_node(),
         Some(Cmd::C2(args)) => run_c2(args).await,
-        Some(Cmd::Model(args)) => match args.cmd {
-            ModelCmd::Install => {
-                #[cfg(feature = "inference")]
-                {
-                    kova::bootstrap()?;
-                    kova::model::f77().await
-                }
-                #[cfg(not(feature = "inference"))]
-                {
-                    anyhow::bail!("Build with --features inference for model install")
-                }
-            }
-            ModelCmd::List => {
-                kova::bootstrap()?;
-                for (role, path) in [
-                    ("router", kova::f78(kova::ModelRole::Router)),
-                    ("coder", kova::f78(kova::ModelRole::Coder)),
-                    ("fix", kova::f78(kova::ModelRole::Fix)),
-                ] {
-                    match path {
-                        Some(p) => eprintln!("  {}: {}", role, p.display()),
-                        None => eprintln!("  {}: (not found)", role),
-                    }
-                }
-                eprintln!(
-                    "  orchestration: max_fix_retries={} run_clippy={}",
-                    kova::orchestration_max_fix_retries(),
-                    kova::orchestration_run_clippy()
-                );
-                Ok(())
-            }
-        },
         Some(Cmd::Bootstrap) => {
             kova::bootstrap()?;
             eprintln!("Bootstrap complete. ~/.kova/ ready.");

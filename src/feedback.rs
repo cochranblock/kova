@@ -47,7 +47,7 @@ pub struct T126 {
     pub expected_verify: String,
     /// What the model actually returned.
     pub actual_response: String,
-    /// Model name (e.g. "qwen2.5-coder:1.5b").
+    /// Model name (e.g. "custom-model:local").
     pub model: String,
     /// Tournament event type (e.g. "sprint", "technical", "freestyle").
     pub event_type: String,
@@ -375,7 +375,7 @@ mod tests {
                 input: "Error: cannot borrow `v` as mutable".into(),
                 expected_verify: "compiles".into(),
                 actual_response: "fn f() {}".into(),
-                model: "qwen2.5-coder:1.5b".into(),
+                model: "custom-model:local".into(),
                 event_type: "technical".into(),
                 ts: 1000,
             };
@@ -635,7 +635,7 @@ DIFFICULTY: hard";
             input: "code with\nnewlines\tand tabs".into(),
             expected_verify: "compiles".into(),
             actual_response: "wrong answer with \"quotes\"".into(),
-            model: "qwen2.5-coder:1.5b".into(),
+            model: "custom-model:local".into(),
             event_type: "technical".into(),
             ts: 42,
         };

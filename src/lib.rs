@@ -53,8 +53,6 @@ pub mod context_loader;
 pub mod inference;
 #[cfg(feature = "tui")]
 pub mod tui;
-#[cfg(feature = "inference")]
-pub mod model;
 #[cfg(feature = "serve")]
 pub mod output;
 #[cfg(feature = "inference")]
@@ -73,8 +71,6 @@ pub mod autopilot;
 pub mod browser;
 
 
-#[cfg(feature = "mobile-llm")]
-pub mod mobile_llm;
 
 #[cfg(feature = "inference")]
 pub mod agent_loop;

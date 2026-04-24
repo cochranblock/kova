@@ -10,7 +10,11 @@
 
 use std::process::Command;
 
-const DEFAULT_MODEL: &str = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit";
+// No open-source model default. Caller must set via env var KOVA_TRAIN_BASE_MODEL
+// (e.g. a path to a custom MLX safetensors dir or a private HF repo id).
+fn default_model() -> String {
+    std::env::var("KOVA_TRAIN_BASE_MODEL").unwrap_or_default()
+}
 const DEFAULT_ITERS: u32 = 600;
 
 /// T172=TrainFormat
@@ -59,10 +63,15 @@ pub fn f262(
 
     let iters = iters.unwrap_or(DEFAULT_ITERS);
 
+    let base_model = default_model();
+    if base_model.is_empty() {
+        return Err("KOVA_TRAIN_BASE_MODEL is unset — point it at a custom MLX model path or private HF id".into());
+    }
+
     let mut cmd = Command::new("python");
     cmd.args([
         "-m", "mlx_lm.lora",
-        "--model", DEFAULT_MODEL,
+        "--model", &base_model,
         "--train",
         "--data", training_dir.to_str().unwrap(),
         "--adapter-path", adapters_dir.to_str().unwrap(),
