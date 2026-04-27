@@ -1147,7 +1147,10 @@ fn tmux_enter(target: &str) {
         .output();
 }
 
-/// Capture the last N lines of a tmux pane.
+/// Capture the last N non-blank lines of a tmux pane. Strips trailing blank
+/// padding first so tall panes with TUI footer whitespace still surface the
+/// actionable content (Claude Code's "accept edits on" footer leaves dozens
+/// of blank rows below the prompt on 68-row panes).
 fn capture_pane_n(target: &str, n: usize) -> String {
     std::process::Command::new("tmux")
         .args(["capture-pane", "-t", target, "-p"])
@@ -1155,7 +1158,10 @@ fn capture_pane_n(target: &str, n: usize) -> String {
         .ok()
         .map(|o| {
             let text = String::from_utf8_lossy(&o.stdout).to_string();
-            let lines: Vec<&str> = text.lines().collect();
+            let mut lines: Vec<&str> = text.lines().collect();
+            while lines.last().map(|l| l.trim().is_empty()).unwrap_or(false) {
+                lines.pop();
+            }
             let start = lines.len().saturating_sub(n);
             lines[start..].join("\n")
         })
@@ -1405,7 +1411,7 @@ pub fn f387(session: &str, interval: u64) -> Result<(), String> {
     // Self-kill: find and kill older unblock instances
     let my_pid = std::process::id();
     if let Ok(out) = std::process::Command::new("pgrep")
-        .args(["-f", "kova c2 unblock"])
+        .args(["-f", "kova[^ ]* c2 unblock"])
         .output()
     {
         for line in String::from_utf8_lossy(&out.stdout).lines() {

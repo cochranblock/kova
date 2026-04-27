@@ -492,7 +492,7 @@ enum C2Cmd {
         session: String,
     },
     /// Fleet status: show which panes are working, idle, blocked, or rate-limited.
-    #[command(name = "status")]
+    #[command(name = "tmux-status")]
     TmuxStatus {
         #[arg(long, default_value = "kova-c2")]
         session: String,
