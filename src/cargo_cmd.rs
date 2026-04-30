@@ -23,7 +23,7 @@ const PROJECT_MAP: &[(&str, &str)] = &[
     ("p4", "rogue-repo"),
     ("p5", "ronin-sites"),
     ("p6", "kova-core"),
-    ("p7", "exopack"),
+    // p7 was "exopack" — absorbed into kova/src/exopack/ on 2026-04-30. p7 unused.
     ("p8", "whyyoulying"),
     ("p9", "wowasticker"),
 ];

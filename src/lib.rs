@@ -70,6 +70,15 @@ pub mod autopilot;
 
 pub mod browser;
 
+#[cfg(any(
+    feature = "screenshot", feature = "mock", feature = "interface",
+    feature = "video", feature = "demo", feature = "baked_demo",
+    feature = "triple_sims", feature = "devtools", feature = "standards_check",
+    feature = "checkpoint", feature = "compaction", feature = "dual_mode",
+    feature = "perm_gate", feature = "harvest"
+))]
+pub mod exopack;
+
 
 
 #[cfg(feature = "inference")]
@@ -165,15 +174,15 @@ pub fn f315() -> anyhow::Result<()> {
     }
 
     println!("kova test: TRIPLE SIMS (3 simulations)...");
-    let report = exopack::triple_sims::f60_triple_sims_run(project);
-    print!("{}", report.summary());
-    if !report.ok() {
+    let (ok, summary) = crate::exopack::triple_sims::f61(project, 3);
+    print!("{}", summary);
+    if !ok {
         anyhow::bail!("TRIPLE SIMS: one or more simulations failed");
     }
 
     println!("kova test: cargo test -p kova 3x...");
     let project_buf = project.to_path_buf();
-    let (ok, stderr) = exopack::triple_sims::f61_with_args(
+    let (ok, stderr) = crate::exopack::triple_sims::f61_with_args(
         &project_buf,
         3,
         &["-p", "kova", "--features", "serve,tests"],
@@ -270,7 +279,7 @@ pub fn f315() -> anyhow::Result<()> {
                     .map_err(|e| anyhow::anyhow!("{}", e));
                 let result = match rt {
                     Ok(r) => r
-                        .block_on(exopack::baked_demo::run_baked_demo(&kova_bin, &home, port))
+                        .block_on(crate::exopack::baked_demo::f95(&kova_bin, &home, port))
                         .map_err(|e| anyhow::anyhow!("{}", e)),
                     Err(e) => Err(e),
                 };

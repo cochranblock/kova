@@ -91,9 +91,9 @@ fn walk_dir(dir: &Path, entries: &mut Vec<TokenEntry>) {
     for entry in read.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            // Skip target/, .git, wasm/, exopack/
+            // Skip target/, .git, wasm/
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if name == "target" || name == ".git" || name == "wasm" || name == "exopack" {
+            if name == "target" || name == ".git" || name == "wasm" {
                 continue;
             }
             walk_dir(&path, entries);

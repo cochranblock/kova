@@ -21,8 +21,27 @@ tui = ["dep:ratatui", "dep:crossterm"]
 inference = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:lru"]
 autopilot = ["dep:enigo"]
 browser = ["dep:enigo", "dep:base64", "dep:core-graphics", "dep:image"]
-tests = ["exopack"]
 rag = ["dep:fastembed", "dep:ordered-float"]
+
+# ── exopack (absorbed from cochranblock/exopack v0.2.1, 2026-04-30) ────────────
+# Testing augmentation modules. Each feature activates one src/exopack/*.rs module.
+screenshot = ["dep:scraper", "dep:resvg", "dep:usvg", "dep:tiny-skia", "dep:ab_glyph", "dep:fontdb", "dep:image"]
+mock = ["dep:wiremock"]
+interface = []
+video = ["dep:xcap", "dep:image"]
+demo = ["video"]
+baked_demo = ["interface"]
+triple_sims = []
+devtools = ["dep:chromiumoxide", "dep:futures", "dep:tokio-tungstenite"]
+standards_check = []
+checkpoint = []
+compaction = []
+dual_mode = []
+perm_gate = []
+harvest = ["dep:chromiumoxide", "dep:futures", "dep:tokio-tungstenite", "dep:image"]
+# tests: exopack suite for kova-test binary. Linux-portable (no xcap/pipewire).
+# For video/demo recording (Mac-only deps via xcap+pipewire), add them explicitly.
+tests = ["triple_sims", "interface", "baked_demo", "screenshot"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -53,9 +72,20 @@ tower-http = { version = "0.6", features = ["cors"], optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 lru = { version = "0.16", optional = true }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "blocking", "json"] }
-exopack = { version = "0.1", git = "https://github.com/cochranblock/exopack", optional = true, features = ["triple_sims", "interface", "baked_demo", "demo", "video", "screenshot"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "blocking", "json", "cookies"] }
 fastembed = { version = "5", optional = true }
+# exopack-absorbed optional deps
+scraper = { version = "0.19", optional = true }
+resvg = { version = "0.47", optional = true }
+usvg = { version = "0.47", optional = true }
+tiny-skia = { version = "0.12", optional = true }
+ab_glyph = { version = "0.2", optional = true }
+fontdb = { version = "0.23", optional = true }
+wiremock = { version = "0.6", optional = true }
+chromiumoxide = { version = "0.9", optional = true, default-features = false, features = ["fetcher", "rustls", "zip8"] }
+futures = { version = "0.3", optional = true }
+xcap = { version = "0.9", optional = true }
+tokio-tungstenite = { version = "0.26", optional = true, features = ["rustls-tls-webpki-roots"] }
 ordered-float = { version = "4", optional = true }
 dirs = "5"
 glob = "0.3"

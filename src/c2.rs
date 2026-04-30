@@ -637,7 +637,6 @@ const WORKSPACE_CRATES: &[&str] = &[
     "cochranblock",
     "oakilydokily",
     "kova",
-    "exopack",
     "whyyoulying",
     "wowasticker",
     "railgun",
