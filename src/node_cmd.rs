@@ -15,7 +15,13 @@ use std::thread;
 // ── Node Map ──────────────────────────────────────────────
 
 /// nN → SSH hostname.
-const NODE_MAP: &[(&str, &str)] = &[("n0", "lf"), ("n1", "gd"), ("n2", "bt"), ("n3", "st")];
+const NODE_MAP: &[(&str, &str)] = &[
+    ("n0", "lf"),
+    ("n1", "gd"),
+    ("n2", "bt"),
+    ("n3", "st"),
+    ("n4", "mm"),
+];
 
 /// Resolve nN token or pass through raw hostname.
 pub fn resolve_node(s: &str) -> &str {
@@ -830,6 +836,7 @@ mod tests {
         assert_eq!(resolve_node("n1"), "gd");
         assert_eq!(resolve_node("n2"), "bt");
         assert_eq!(resolve_node("n3"), "st");
+        assert_eq!(resolve_node("n4"), "mm");
     }
 
     #[test]
@@ -844,6 +851,7 @@ mod tests {
         assert_eq!(to_token("gd"), "n1");
         assert_eq!(to_token("bt"), "n2");
         assert_eq!(to_token("st"), "n3");
+        assert_eq!(to_token("mm"), "n4");
     }
 
     #[test]
@@ -893,8 +901,8 @@ mod tests {
     }
 
     #[test]
-    fn node_map_has_four_entries() {
-        assert_eq!(NODE_MAP.len(), 4);
+    fn node_map_has_five_entries() {
+        assert_eq!(NODE_MAP.len(), 5);
     }
 
     #[test]

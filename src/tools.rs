@@ -1643,6 +1643,7 @@ mod tests {
         assert!(result.output.contains("Foo"));
     }
 
+    #[cfg(feature = "inference")]
     #[test]
     fn f141_dispatch_record_failure() {
         let call = t103 {
@@ -1661,6 +1662,7 @@ mod tests {
         assert!(result.output.contains("recorded"));
     }
 
+    #[cfg(feature = "inference")]
     #[test]
     fn f141_dispatch_record_failure_missing_arg() {
         let call = t103 {

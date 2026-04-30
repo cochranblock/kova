@@ -14,6 +14,7 @@ const NODE_PRINCIPALS: &[(&str, &str, &str)] = &[
     ("gd", "kova-tunnel-god.kova.inside", "192.168.1.44"),
     ("bt", "kova-thick-beast.kova.inside", "192.168.1.45"),
     ("st", "kova-elite-support.kova.inside", "192.168.1.43"),
+    ("mm", "kova-c2-core.kova.inside", "192.168.1.27"),
 ];
 
 fn ssh_dir() -> PathBuf {

@@ -33,6 +33,7 @@ flowchart TD
     C2 --> n1["n1/gd: Tunnel God"]
     C2 --> n2["n2/bt: Thick Beast"]
     C2 --> n3["n3/st: Elite Support"]
+    C2 --> n4["n4/mm: Mac Mini"]
 ```
 
 ## Build Output
@@ -49,7 +50,7 @@ flowchart TD
 | macOS x86_64 (Intel) | 13 MB (no RAG) | [Release v0.7.0](https://github.com/cochranblock/kova/releases/tag/v0.7.0) |
 | User surfaces | 7 (REPL, TUI, GUI, HTTP+WASM, Android, iOS scaffold, PWA) | [`src/main.rs`](src/main.rs) |
 | Agent tools | 13 | [`TOOLS` array in `src/tools.rs`](src/tools.rs) |
-| Worker nodes | 4 (SSH orchestrated) | [`f350` in `src/c2.rs`](src/c2.rs) |
+| Worker nodes | 5 (SSH orchestrated) | [`f350` in `src/c2.rs`](src/c2.rs) |
 | Unit/integration tests | 314 passing | `cargo test --release -p kova` |
 | LLMs evaluated | 42 (Micro Olympics) | [`docs/TOURNAMENT_RESULTS.md`](docs/TOURNAMENT_RESULTS.md) |
 

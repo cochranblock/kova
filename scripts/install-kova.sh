@@ -10,6 +10,12 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "Building Kova..."
 cd "$ROOT"
+
+# Install pre-push test gate (idempotent)
+if [ -d "$ROOT/.git" ]; then
+    bash "$SCRIPT_DIR/install-pre-push-hook.sh"
+fi
+
 cargo build --release --bin kova -F serve
 
 BIN="$ROOT/target/release/kova"

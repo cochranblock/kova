@@ -58,15 +58,16 @@ impl T212 {
 }
 
 pub fn f350() -> Vec<&'static str> {
-    vec!["lf", "gd", "bt", "st"]
+    vec!["lf", "gd", "bt", "st", "mm"]
 }
 
-/// MAC addresses for Wake-on-LAN. st has no WoL support.
+/// MAC addresses for Wake-on-LAN. st (n3) has no WoL support.
 pub fn f351(node: &str) -> Option<&'static str> {
     match node {
         "lf" | "n0" => Some("6c:24:08:df:7c:39"),
         "gd" | "n1" => Some("cc:96:e5:bd:01:3a"),
         "bt" | "n2" => Some("2c:f0:5d:55:3b:d3"),
+        "mm" | "n4" => Some("1c:f6:4c:3d:6c:cf"),
         _ => None, // st/n3 has no WoL support
     }
 }

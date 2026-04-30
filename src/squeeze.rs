@@ -20,9 +20,10 @@ pub struct t177 {
 
 // Known node tokens: hostname → short token (from node_cmd.rs)
 const NODE_MAP: &[(&str, &str)] = &[
-    ("gd", "g"), ("lf", "l"), ("bt", "b"), ("st", "s"),
+    ("gd", "g"), ("lf", "l"), ("bt", "b"), ("st", "s"), ("mm", "m"),
     ("kova-tunnel-god", "g"), ("kova-legion-forge", "l"),
     ("kova-thick-beast", "b"), ("kova-elite-support", "s"),
+    ("kova-c2-core", "m"), ("kova-mac-mini", "m"),
 ];
 // IP last-octet → node token
 const IP_NODE_MAP: &[(&str, &str)] = &[
@@ -30,6 +31,7 @@ const IP_NODE_MAP: &[(&str, &str)] = &[
     ("50", "b"),               // bt IP
     ("45", "l"),               // lf IP
     ("53", "s"), ("52", "s"),  // st IPs
+    ("27", "m"),               // mm IP
 ];
 
 // Blocklist: never use these as alias names (shell builtins, common tools, confusing)
@@ -150,7 +152,7 @@ pub fn f393(cfg: &t177) -> anyhow::Result<t182> {
 
     // Remote node histories (optional)
     if cfg.remote {
-        for node in &["gd", "lf", "bt", "st"] {
+        for node in &["gd", "lf", "bt", "st", "mm"] {
             let output = std::process::Command::new("ssh")
                 .args(["-o", "ConnectTimeout=5", node,
                        "cat ~/.bash_history ~/.zsh_history 2>/dev/null"])

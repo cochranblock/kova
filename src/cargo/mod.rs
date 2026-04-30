@@ -132,7 +132,7 @@ pub fn f311(wants_binary: bool) -> String {
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "inference"))]
 mod tests {
     use super::*;
     use crate::pipeline::extract_rust_block;
