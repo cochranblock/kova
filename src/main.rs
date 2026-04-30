@@ -126,6 +126,22 @@ enum Cmd {
     /// Hive — file sync over SSH (absorbed from standalone ironhive). Watch workspace, rsync deltas.
     #[command(name = "hive")]
     Hive(hive::HiveArgs),
+    /// Demo: zero-input automation. Spawns kova serve, exercises every CLI subcommand + HTTP endpoint. Requires --features baked_demo.
+    #[command(name = "demo")]
+    Demo(DemoArgs),
+}
+
+#[derive(clap::Args)]
+struct DemoArgs {
+    /// kova binary to drive (default: current_exe).
+    #[arg(long)]
+    bin: Option<std::path::PathBuf>,
+    /// Override HOME for the demo (default: temp dir, cleaned up on exit).
+    #[arg(long)]
+    home: Option<std::path::PathBuf>,
+    /// HTTP port for `kova serve` during the demo (default: 19402).
+    #[arg(long, default_value_t = 19402)]
+    port: u16,
 }
 
 mod hive;
@@ -2586,6 +2602,29 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         #[cfg(not(feature = "tests"))]
         Some(Cmd::Test) => {
             anyhow::bail!("Build with --features tests for kova test")
+        }
+        #[cfg(feature = "baked_demo")]
+        Some(Cmd::Demo(args)) => {
+            let kova_bin = match args.bin {
+                Some(p) => p,
+                None => std::env::current_exe()
+                    .map_err(|e| anyhow::anyhow!("current_exe: {}", e))?,
+            };
+            let (home, _tmp_guard) = match args.home {
+                Some(p) => (p, None),
+                None => {
+                    let t = tempfile::TempDir::new()?;
+                    let p = t.path().to_path_buf();
+                    (p, Some(t))
+                }
+            };
+            kova::exopack::baked_demo::f95(&kova_bin, &home, args.port)
+                .await
+                .map_err(|e| anyhow::anyhow!("{}", e))
+        }
+        #[cfg(not(feature = "baked_demo"))]
+        Some(Cmd::Demo(_)) => {
+            anyhow::bail!("Build with --features baked_demo for kova demo")
         }
         Some(Cmd::Recent(args)) => {
             let project = args

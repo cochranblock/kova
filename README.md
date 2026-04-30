@@ -1,23 +1,42 @@
 <!-- Unlicense — cochranblock.org -->
 <!-- Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3 -->
 
-> **It's not the Mech — it's the pilot.**
->
-> This repo is part of [CochranBlock](https://cochranblock.org) — 8 Unlicense Rust repositories that power an entire company on a **single <10MB binary**, a laptop, and a **$10/month** Cloudflare tunnel. No AWS. No Kubernetes. No six-figure DevOps team. Zero cloud.
->
-> **[cochranblock.org](https://cochranblock.org)** is a live demo of this architecture. You're welcome to read every line of source code — it's all public domain.
->
-> Every repo ships with **[Proof of Artifacts](PROOF_OF_ARTIFACTS.md)** (wire diagrams, screenshots, and build output proving the work is real) and a **[Timeline of Invention](TIMELINE_OF_INVENTION.md)** (dated commit-level record of what was built, when, and why — proving human-piloted AI development, not generated spaghetti).
->
-> **Looking to cut your server bill by 90%?** → [Zero-Cloud Tech Intake Form](https://cochranblock.org/deploy)
-
----
-
 <p align="center">
   <img src="https://raw.githubusercontent.com/cochranblock/kova/main/assets/logo.png" alt="Kova" width="120">
 </p>
 
 # Kova
+
+**Local-first augment engine.** Agentic tool loop with dual-mode inference (local GGUF or Anthropic SSE), 5-node SSH swarm orchestration, and tokenized-everything compression. One <10 MB binary. No cloud.
+
+## Quickstart
+
+```bash
+# Build (release, with HTTP API)
+cargo build --release -p kova-engine --features serve --bin kova
+
+# Or install from crates.io
+cargo install kova-engine --features serve
+
+# Default UI: TUI (chat + Visual QC, Claude-Code-like)
+kova
+
+# HTTP API + web client at /
+kova serve
+
+# Zero-input baked demo: exercises every CLI subcommand + HTTP endpoint
+kova demo                    # requires --features baked_demo
+
+# Inspect the cluster: Host | Cores | RAM | Disk(GB free) | GPU
+kova c2 inspect
+
+# TRIPLE SIMS deploy gate: clippy, 3× cargo test, release build, smoke
+kova test                    # requires --features tests
+```
+
+5 nodes today: `n0/lf` (Legion Forge), `n1/gd` (Tunnel God), `n2/bt` (Thick Beast), `n3/st` (Elite Support), `n4/mm` (Mac Mini / c2-core).
+
+## What it is
 
 Augment engine. Local-first agentic tool loop with dual-mode inference, swarm orchestration, and tokenized everything.
 
@@ -58,7 +77,7 @@ Interactive chat. `kova` with no args starts the REPL ([`f137`](src/repl.rs)). S
 
 ### C2 Swarm Orchestration ([`src/c2.rs`](src/c2.rs), 1,309 lines)
 
-Distributed build and command execution across 4 worker nodes ([`f350`](src/c2.rs)):
+Distributed build and command execution across 5 worker nodes ([`f350`](src/c2.rs)):
 
 - **Broadcast build** ([`f356`](src/c2.rs)): One-command sync + `cargo build --release` on all nodes
 - **Parallel sync** ([`f357`](src/c2.rs)): Tar-stream or rsync to all nodes
@@ -275,6 +294,20 @@ rag        = fastembed + ordered-float
 314 tests passing. Run with `cargo test --release -p kova`.
 
 Coverage includes: tool dispatch ([`f141`](src/tools.rs)), context compaction thresholds ([`context_mgr::tests`](src/context_mgr.rs)), checkpoint/undo roundtrips ([`f383`/`f384` tests](src/tools.rs)), permission gate logic ([`is_guarded` tests](src/tools.rs)), git mutation detection ([`is_git_mutation` tests](src/tools.rs)), tool parsing ([`f140` tests](src/tools.rs)), code outline, file operations, CI pipeline ([`ci::tests`](src/ci.rs)), integration tests ([`tests/integration.rs`](tests/integration.rs)).
+
+---
+
+## Why this exists — CochranBlock
+
+> **It's not the Mech — it's the pilot.**
+>
+> This repo is part of [CochranBlock](https://cochranblock.org) — 8 Unlicense Rust repositories that power an entire company on a **single <10 MB binary**, a laptop, and a **$10/month** Cloudflare tunnel. No AWS. No Kubernetes. No six-figure DevOps team. Zero cloud.
+>
+> **[cochranblock.org](https://cochranblock.org)** is a live demo of this architecture. Every line of source code is public domain.
+>
+> Every repo ships with **[Proof of Artifacts](PROOF_OF_ARTIFACTS.md)** (wire diagrams, screenshots, and build output proving the work is real) and a **[Timeline of Invention](TIMELINE_OF_INVENTION.md)** (dated commit-level record proving human-piloted AI development, not generated spaghetti).
+>
+> **Looking to cut your server bill by 90%?** → [Zero-Cloud Tech Intake Form](https://cochranblock.org/deploy)
 
 ---
 
