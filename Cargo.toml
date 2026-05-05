@@ -39,6 +39,10 @@ compaction = []
 dual_mode = []
 perm_gate = []
 harvest = ["dep:chromiumoxide", "dep:futures", "dep:tokio-tungstenite", "dep:image"]
+# ats_fixtures: pure-string HTML generators that mirror real ATS DOM
+# conventions (Greenhouse / Lever / Workday / iCIMS / Ashby). No deps.
+# Source attributions live in atsisbroken's docs/ATS_FIXTURE_SOURCES.md.
+ats_fixtures = []
 # tests: exopack suite for kova-test binary. Linux-portable (no xcap/pipewire).
 # For video/demo recording (Mac-only deps via xcap+pipewire), add them explicitly.
 tests = ["triple_sims", "interface", "baked_demo", "screenshot"]
@@ -51,6 +55,7 @@ clap = { version = "4", features = ["derive"] }
 sled = "0.34"
 bincode = { version = "2", features = ["serde"] }
 zstd = "0.13"
+blake3 = "1"
 toml = "0.8"
 csv = "1"
 pdf-extract = "0.10"

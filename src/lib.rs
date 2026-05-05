@@ -75,7 +75,7 @@ pub mod browser;
     feature = "video", feature = "demo", feature = "baked_demo",
     feature = "triple_sims", feature = "devtools", feature = "standards_check",
     feature = "checkpoint", feature = "compaction", feature = "dual_mode",
-    feature = "perm_gate", feature = "harvest"
+    feature = "perm_gate", feature = "harvest", feature = "ats_fixtures"
 ))]
 pub mod exopack;
 
