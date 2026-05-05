@@ -77,15 +77,15 @@ struct FieldDef {
 }
 
 const SHARED_FIELDS: &[FieldDef] = &[
-    FieldDef { slot: "first",    expected_key: "full_name" },
-    FieldDef { slot: "last",     expected_key: "full_name" },
+    FieldDef { slot: "first",    expected_key: "first_name" },
+    FieldDef { slot: "last",     expected_key: "last_name" },
     FieldDef { slot: "email",    expected_key: "email" },
     FieldDef { slot: "phone",    expected_key: "phone" },
     FieldDef { slot: "linkedin", expected_key: "linkedin" },
     FieldDef { slot: "github",   expected_key: "github" },
     FieldDef { slot: "address",  expected_key: "address" },
     FieldDef { slot: "city",     expected_key: "address" },
-    FieldDef { slot: "zip",      expected_key: "address" },
+    FieldDef { slot: "zip",      expected_key: "postal_code" },
     FieldDef { slot: "auth",     expected_key: "work_authorization" },
     FieldDef { slot: "why",      expected_key: "freetext" },
     FieldDef { slot: "salary",   expected_key: "" }, // out-of-vocab decoy
@@ -126,23 +126,26 @@ pub fn render(vendor: AtsVendor, opts: &FixtureOpts) -> String {
 /// Public: per-vendor (field_id, expected_classifier_key) pairs that
 /// the consumer should assert against their classifier output.
 pub fn expected_keys(vendor: AtsVendor, opts: &FixtureOpts) -> Vec<(String, &'static str)> {
+    // Per-vendor: which slots are present + which key the classifier
+    // should produce for each. Lever/Ashby render slot "first" as a
+    // single combined Name field (label "Full name" / "Name") which
+    // the classifier maps to "full_name" — NOT "first_name".
     SHARED_FIELDS
         .iter()
-        .filter(|f| match vendor {
-            // Lever uses a single combined `name` field (per
-            // jeffistyping/workpls). Address sub-fields omitted.
-            AtsVendor::Lever
-                if matches!(f.slot, "last" | "address" | "city" | "zip") =>
-            {
-                false
-            }
-            // Ashby (R2-verified 2026-05-05) also uses a single
-            // combined `Name` field on Lago's tenant. City/zip not
-            // asked — only a generic "Where are you based?" text.
-            AtsVendor::Ashby if matches!(f.slot, "last" | "city" | "zip") => false,
-            _ => true,
+        .filter_map(|f| {
+            let id = field_id(f.slot, opts);
+            let expected: &'static str = match (vendor, f.slot) {
+                // Lever — combined name; no last/address sub-fields.
+                (AtsVendor::Lever, "first") => "full_name",
+                (AtsVendor::Lever, "last" | "address" | "city" | "zip") => return None,
+                // Ashby — combined name (R2-verified at Lago); no last/city/zip.
+                (AtsVendor::Ashby, "first") => "full_name",
+                (AtsVendor::Ashby, "last" | "city" | "zip") => return None,
+                // Everyone else uses the canonical SHARED_FIELDS key.
+                _ => f.expected_key,
+            };
+            Some((id, expected))
         })
-        .map(|f| (field_id(f.slot, opts), f.expected_key))
         .collect()
 }
 
