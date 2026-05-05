@@ -130,13 +130,16 @@ pub fn expected_keys(vendor: AtsVendor, opts: &FixtureOpts) -> Vec<(String, &'st
         .iter()
         .filter(|f| match vendor {
             // Lever uses a single combined `name` field (per
-            // jeffistyping/workpls), so the "last" slot doesn't exist
-            // there. Address sub-fields also omitted.
+            // jeffistyping/workpls). Address sub-fields omitted.
             AtsVendor::Lever
                 if matches!(f.slot, "last" | "address" | "city" | "zip") =>
             {
                 false
             }
+            // Ashby (R2-verified 2026-05-05) also uses a single
+            // combined `Name` field on Lago's tenant. City/zip not
+            // asked — only a generic "Where are you based?" text.
+            AtsVendor::Ashby if matches!(f.slot, "last" | "city" | "zip") => false,
             _ => true,
         })
         .map(|f| (field_id(f.slot, opts), f.expected_key))
@@ -363,34 +366,43 @@ fn render_icims(opts: &FixtureOpts) -> String {
 }
 
 fn render_ashby(opts: &FixtureOpts) -> String {
-    // Ashby pattern: modern React-shaped, role="combobox" instead of
-    // <select> for some categorical fields. We use real <select> for
-    // consumer-test simplicity but mirror Ashby's visible structure.
+    // R2-verified selectors (2026-05-05) from live capture of
+    // https://jobs.ashbyhq.com/lago/.../application — Ashby uses
+    // stable `ashby-application-form-*` class suffixes alongside
+    // hashed primary class names. Single combined `Name` field
+    // (like Lever, not split first/last). `<label>` based — no
+    // aria-label evident on text inputs. Resume upload is a
+    // top-level pane (`ashby-application-form-autofill-pane`),
+    // not inline. Generic placeholders ("Type here...",
+    // "hello@example.com...", "https://example.com...").
+    //
+    // PLACEHOLDER LIMITATION: real Ashby renders the form via React
+    // with hashed class names like `_root_xd2v0_1` mixed with the
+    // stable `ashby-application-form-*` semantic class. Our fixture
+    // mimics the stable suffixes only — the hashed prefixes drift
+    // per release and aren't worth chasing for a test fixture.
     let id = |s: &str| field_id(s, opts);
     let body = format!(
-        r#"<form class="ashby-application-form">
-<div class="_field"><label for="{first}">First Name</label><input type="text" id="{first}" name="firstName"></div>
-<div class="_field"><label for="{last}">Last Name</label><input type="text" id="{last}" name="lastName"></div>
-<div class="_field"><label for="{email}">Email</label><input type="email" id="{email}" name="email"></div>
-<div class="_field"><label for="{phone}">Phone</label><input type="tel" id="{phone}" name="phoneNumber"></div>
-<div class="_field"><label for="{linkedin}">LinkedIn URL</label><input type="url" id="{linkedin}" name="linkedinUrl"></div>
-<div class="_field"><label for="{github}">GitHub URL</label><input type="url" id="{github}" name="githubUrl"></div>
-<div class="_field"><label for="{address}">Address</label><input type="text" id="{address}" name="address"></div>
-<div class="_field"><label for="{city}">City</label><input type="text" id="{city}" name="city"></div>
-<div class="_field"><label for="{zip}">Zip</label><input type="text" id="{zip}" name="postalCode"></div>
-<div class="_field"><label for="{auth}">Work Authorization</label><select id="{auth}" name="workAuthorization" role="combobox"><option>I am authorized</option><option>I require sponsorship</option></select></div>
-<div class="_field"><label for="{why}">Why this role?</label><textarea id="{why}" name="answer_why_role"></textarea></div>
-<div class="_field"><label for="{salary}">Compensation expectations</label><input type="number" id="{salary}" name="compensationExpectation"></div>
-</form>"#,
+        r#"<div class="ashby-application-form-container">
+<div class="ashby-application-form-section-container">
+<div class="ashby-application-form-autofill-pane"><label class="ashby-application-form-autofill-input-title">Resume</label></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{first}">Name</label><input type="text" id="{first}" placeholder="Type here..."></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{email}">Email</label><input type="email" id="{email}" placeholder="hello@example.com..."></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{phone}">Phone</label><input type="tel" id="{phone}" placeholder="Type here..."></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{linkedin}">LinkedIn Link</label><input type="url" id="{linkedin}" placeholder="https://example.com..."></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{github}">GitHub Link</label><input type="url" id="{github}" placeholder="https://example.com..."></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{address}">Where are you based?</label><input type="text" id="{address}" placeholder="Type here..."></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{auth}">Are you authorized to work in the United States?</label><select id="{auth}"><option>Yes</option><option>No</option></select></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{why}">Tell us about something you've built recently</label><textarea id="{why}" placeholder="Type here..."></textarea></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="{salary}">Salary expectation</label><input type="number" id="{salary}"></div>
+<button type="submit" class="ashby-application-form-submit-button">Submit Application</button>
+</div></div>"#,
         first = id("first"),
-        last = id("last"),
         email = id("email"),
         phone = id("phone"),
         linkedin = id("linkedin"),
         github = id("github"),
         address = id("address"),
-        city = id("city"),
-        zip = id("zip"),
         auth = id("auth"),
         why = id("why"),
         salary = id("salary"),
