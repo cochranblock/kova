@@ -17,7 +17,10 @@
 //! Fixtures share a canonical 9-field profile slot inventory:
 //!   email, phone, full_name (split first/last), address (street,
 //!   city, postal_code), linkedin, github, work_authorization,
-//!   freetext-question, plus one out-of-vocab decoy.
+//!   freetext-question, plus a salary-expectation field. (Was an
+//!   out-of-vocab decoy until atsisbroken's Phase G Tier 3
+//!   classifier route landed; now classifies as
+//!   `salary_expectation`.)
 //! `expected_keys(vendor)` returns the (id, classifier_key) pairs
 //! the consumer should assert against their classifier output.
 
@@ -91,7 +94,11 @@ const SHARED_FIELDS: &[FieldDef] = &[
     FieldDef { slot: "zip",      expected_key: "postal_code" },
     FieldDef { slot: "auth",     expected_key: "work_authorization" },
     FieldDef { slot: "why",      expected_key: "freetext" },
-    FieldDef { slot: "salary",   expected_key: "" }, // out-of-vocab decoy
+    // Was the out-of-vocab decoy until atsisbroken's Phase G Tier 3
+    // landed a salary classifier route. The slot HTML still says
+    // "Salary expectation" / "Expected compensation" / etc. across
+    // vendors; the classifier now correctly identifies these.
+    FieldDef { slot: "salary",   expected_key: "salary_expectation" },
 ];
 
 /// Compose the deterministic field id the renderer will emit for
