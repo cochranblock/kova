@@ -13,6 +13,7 @@ pub mod cursor_prompts;
 pub mod error;
 pub mod intent;
 pub mod kernel;
+pub mod nanobyte;
 pub mod plan;
 pub mod storage;
 pub mod surface;

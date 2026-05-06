@@ -56,6 +56,7 @@ sled = "0.34"
 bincode = { version = "2", features = ["serde"] }
 zstd = "0.13"
 blake3 = "1"
+memmap2 = "0.9"
 toml = "0.8"
 csv = "1"
 pdf-extract = "0.10"
@@ -123,6 +124,10 @@ path = "src/main.rs"
 name = "kova-test"
 path = "src/bin/kova-test.rs"
 required-features = ["tests"]
+
+[[bin]]
+name = "pack-starter"
+path = "src/bin/pack-starter.rs"
 
 [profile.dev]
 opt-level = 1              # dev builds still fast to run

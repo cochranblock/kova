@@ -82,6 +82,7 @@ flowchart TD
 | Swarm Training | Trigram hash → linear classifier, GPU-accelerated | [`f389`-`f392` in `src/swarm/train.rs`](src/swarm/train.rs) |
 | C2 Fleet | Status, peek, unblock daemon, QA sweep | [`f385`-`f388` in `src/c2.rs`](src/c2.rs) |
 | NanoSign | Universal AI model signing (36 bytes, BLAKE3) | [`docs/NANOSIGN.md`](docs/NANOSIGN.md) |
+| Nanobyte Format | Packed model file: 64B header + manifest + f32 weights + NSIG trailer; mmap-loadable | [`src/nanobyte.rs`](src/nanobyte.rs) |
 
 ## Proven: Subatomic Models on AMD GPU
 
@@ -94,6 +95,8 @@ flowchart TD
 | lang_detector | 1,285 | 97.0% | 12.9s | ~6us | [`assets/models/lang_detector/`](assets/models/lang_detector/) |
 
 Training corpus: 240,596 crates from crates.io (34GB) on bt `/mnt/data/crates/`.
+
+Packed into [`assets/starter.nanobyte`](assets/starter.nanobyte) (9,592 bytes — 64B header + 240B manifest + 9,252B weights + 36B NSIG, BLAKE3-verified) via [`src/bin/pack-starter.rs`](src/bin/pack-starter.rs). 2,313 total params across 3 models.
 
 ## Planned: Full Pyramid
 

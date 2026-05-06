@@ -115,6 +115,12 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-05-06 — Nanobyte Format + Starter Pack (BACKLOG #1, #2)
+
+**What:** Implemented packed model file format ([`src/nanobyte.rs`](src/nanobyte.rs)): 64-byte header + 80-byte/entry manifest + contiguous f32 weights region + 36-byte NSIG trailer (BLAKE3 of all preceding bytes). `Nanobyte::load()` mmaps the file via `memmap2`, verifies BLAKE3, parses manifests; `weights(name)` / `routing(name)` return `&[f32]` slices into the mapped buffer; `consolidate(&[PackInput])` packs models atomically (tmp file + rename). Pack-starter binary ([`src/bin/pack-starter.rs`](src/bin/pack-starter.rs)) reads the 3 trained subatomics from `assets/models/`, concats `[W | b]` per model, and emits [`assets/starter.nanobyte`](assets/starter.nanobyte) — **9,592 bytes, 3 models, 2,313 total params** (slop_detector + code_vs_english + lang_detector). 5 unit tests cover roundtrip, tamper detection, unsigned rejection, bad-magic rejection, and weights-region alignment. Module passes clippy `-D warnings`.
+**Commit:** *(this commit)*
+**AI Role:** AI implemented the format, packer, and tests. Human directed the spec ([`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md) §2 + [`docs/NANOSIGN.md`](docs/NANOSIGN.md)) and applied crosswalk lessons from pixel-forge's sibling `src/nanosign.rs` — confirming both implementations align so BACKLOG #8 (extract `nanosign` crate) cleanly dedupes them later.
+
 ### 2026-04-03 — Subatomic Models Trained + NanoSign + P23 + Blueprint
 
 **What:** Trained first 3 subatomic models on bt's AMD RX 5700 XT via any-gpu Vulkan: slop_detector (514 params, 89.4%), code_vs_english (514 params, 94.2%), lang_detector (1,285 params, 97.0%). Built swarm training infrastructure ([`src/swarm/train.rs`](src/swarm/train.rs), f389-f392). Harvested 240,596 crates from crates.io to bt `/mnt/data/crates/` (34GB). Published NanoSign spec ([`docs/NANOSIGN.md`](docs/NANOSIGN.md)) — universal AI model signing (36 bytes, BLAKE3, any format). Created P23 Triple Lens Research Protocol. Published 66-model subatomic catalog ([`docs/SUBATOMIC_CATALOG.md`](docs/SUBATOMIC_CATALOG.md)). Consolidated full blueprint ([`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md)). Added C2 fleet commands: status (f385), peek (f386), unblock daemon (f387), QA sweep (f388).
