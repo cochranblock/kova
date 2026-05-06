@@ -286,6 +286,87 @@ pub const STARTER_CLASS_NAMES: &[(&str, &[&str])] = &[
     ("slop_detector", &["clean", "slop"]),
     ("code_vs_english", &["english", "code"]),
     ("lang_detector", &["rust", "python", "javascript", "go", "shell"]),
+    // banking77 intents (PolyAI/banking77, CC-BY-4.0). Order matches
+    // assets/datasets/banking77/categories.json — the training label index.
+    ("intent_classifier", &[
+        "card_arrival",
+        "card_linking",
+        "exchange_rate",
+        "card_payment_wrong_exchange_rate",
+        "extra_charge_on_statement",
+        "pending_cash_withdrawal",
+        "fiat_currency_support",
+        "card_delivery_estimate",
+        "automatic_top_up",
+        "card_not_working",
+        "exchange_via_app",
+        "lost_or_stolen_card",
+        "age_limit",
+        "pin_blocked",
+        "contactless_not_working",
+        "top_up_by_bank_transfer_charge",
+        "pending_top_up",
+        "cancel_transfer",
+        "top_up_limits",
+        "wrong_amount_of_cash_received",
+        "card_payment_fee_charged",
+        "transfer_not_received_by_recipient",
+        "supported_cards_and_currencies",
+        "getting_virtual_card",
+        "card_acceptance",
+        "top_up_reverted",
+        "balance_not_updated_after_cheque_or_cash_deposit",
+        "card_payment_not_recognised",
+        "edit_personal_details",
+        "why_verify_identity",
+        "unable_to_verify_identity",
+        "get_physical_card",
+        "visa_or_mastercard",
+        "topping_up_by_card",
+        "disposable_card_limits",
+        "compromised_card",
+        "atm_support",
+        "direct_debit_payment_not_recognised",
+        "passcode_forgotten",
+        "declined_cash_withdrawal",
+        "pending_card_payment",
+        "lost_or_stolen_phone",
+        "request_refund",
+        "declined_transfer",
+        "Refund_not_showing_up",
+        "declined_card_payment",
+        "pending_transfer",
+        "terminate_account",
+        "card_swallowed",
+        "transaction_charged_twice",
+        "verify_source_of_funds",
+        "transfer_timing",
+        "reverted_card_payment?",
+        "change_pin",
+        "beneficiary_not_allowed",
+        "transfer_fee_charged",
+        "receiving_money",
+        "failed_transfer",
+        "transfer_into_account",
+        "verify_top_up",
+        "getting_spare_card",
+        "top_up_by_cash_or_cheque",
+        "order_physical_card",
+        "virtual_card_not_working",
+        "wrong_exchange_rate_for_cash_withdrawal",
+        "get_disposable_virtual_card",
+        "top_up_failed",
+        "balance_not_updated_after_bank_transfer",
+        "cash_withdrawal_not_recognised",
+        "exchange_charge",
+        "top_up_by_card_charge",
+        "activate_my_card",
+        "cash_withdrawal_charge",
+        "card_about_to_expire",
+        "apple_pay_or_google_pay",
+        "verify_my_identity",
+        "country_support",
+    ]),
 ];
 
 /// Wrapper that forces 8-byte alignment for embedded bytes. `include_bytes!`
@@ -637,14 +718,19 @@ mod tests {
         let names: Vec<&str> = nb.manifests().iter().map(|m| m.name.as_str()).collect();
         assert_eq!(
             names,
-            ["slop_detector", "code_vs_english", "lang_detector"]
+            [
+                "slop_detector",
+                "code_vs_english",
+                "lang_detector",
+                "intent_classifier",
+            ]
         );
     }
 
     /// Parity contract: nanobyte::infer must produce the same class index and
     /// near-identical confidence as swarm/train::predict on the same model + text.
     /// This is the real correctness test — the absolute classification depends on
-    /// model accuracy (94% / 89% / 97%) and is brittle to test directly.
+    /// model accuracy and is brittle to test directly.
     #[test]
     fn infer_matches_swarm_predict_for_all_starters() {
         let path = starter_path();
@@ -704,7 +790,12 @@ mod tests {
         let names: Vec<&str> = nb.manifests().iter().map(|m| m.name.as_str()).collect();
         assert_eq!(
             names,
-            ["slop_detector", "code_vs_english", "lang_detector"]
+            [
+                "slop_detector",
+                "code_vs_english",
+                "lang_detector",
+                "intent_classifier",
+            ]
         );
     }
 
@@ -729,7 +820,12 @@ mod tests {
         let models: Vec<&str> = out.iter().map(|c| c.model.as_str()).collect();
         assert_eq!(
             models,
-            ["slop_detector", "code_vs_english", "lang_detector"]
+            [
+                "slop_detector",
+                "code_vs_english",
+                "lang_detector",
+                "intent_classifier",
+            ]
         );
         for c in &out {
             assert!((0.0..=1.0).contains(&c.confidence), "{c:?}");

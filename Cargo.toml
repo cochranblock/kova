@@ -129,6 +129,14 @@ required-features = ["tests"]
 name = "pack-starter"
 path = "src/bin/pack-starter.rs"
 
+[[bin]]
+name = "train-intent"
+path = "src/bin/train-intent.rs"
+
+[[bin]]
+name = "bench-classify"
+path = "src/bin/bench-classify.rs"
+
 [profile.dev]
 opt-level = 1              # dev builds still fast to run
 debug = true               # full debuginfo

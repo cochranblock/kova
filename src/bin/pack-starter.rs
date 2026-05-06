@@ -25,7 +25,12 @@ struct ModelConfig {
     total_params: Option<u64>,
 }
 
-const MODELS: &[&str] = &["slop_detector", "code_vs_english", "lang_detector"];
+const MODELS: &[&str] = &[
+    "slop_detector",
+    "code_vs_english",
+    "lang_detector",
+    "intent_classifier",
+];
 
 fn main() {
     if let Err(e) = run() {

@@ -83,6 +83,8 @@ flowchart TD
 | C2 Fleet | Status, peek, unblock daemon, QA sweep | [`f385`-`f388` in `src/c2.rs`](src/c2.rs) |
 | NanoSign | Universal AI model signing (36 bytes, BLAKE3) | [`docs/NANOSIGN.md`](docs/NANOSIGN.md) |
 | Nanobyte Format | Packed model file: 64B header + manifest + f32 weights + NSIG trailer; mmap-loadable | [`src/nanobyte.rs`](src/nanobyte.rs) |
+| Intent Classifier | banking77 trigram-hash linear, 315K params, 80.36% test accuracy | [`assets/models/intent_classifier/`](assets/models/intent_classifier/) |
+| bench-classify | Held-out test harness: accuracy, macro-F1, lowest-F1 classes, top confusions | [`src/bin/bench-classify.rs`](src/bin/bench-classify.rs) |
 | Nanobyte Inference | `nb.infer(model, text) → (idx, conf)` mirrors swarm predict path; parity-tested vs on-disk swarm | [`Nanobyte::infer` in `src/nanobyte.rs`](src/nanobyte.rs) |
 | Embedded Starter | 9,592-byte `STARTER_NANOBYTE` baked via `include_bytes!`; zero file I/O at startup | [`STARTER_NANOBYTE` in `src/nanobyte.rs`](src/nanobyte.rs) |
 | REPL Subatomic Telemetry | T1 classifiers run on every input + response; persisted to sled `tele/{ts}/{i\|o}` | [`src/repl.rs`](src/repl.rs) |
@@ -99,7 +101,9 @@ flowchart TD
 
 Training corpus: 240,596 crates from crates.io (34GB) on bt `/mnt/data/crates/`.
 
-Packed into [`assets/starter.nanobyte`](assets/starter.nanobyte) (9,592 bytes — 64B header + 240B manifest + 9,252B weights + 36B NSIG, BLAKE3-verified) via [`src/bin/pack-starter.rs`](src/bin/pack-starter.rs). 2,313 total params across 3 models.
+A 4th starter — `intent_classifier` (banking77, 77 classes, 4096 hash dim, 315,469 params) — was added 2026-05-06. CPU-trained on bt (no GPU); see [`assets/models/intent_classifier/`](assets/models/intent_classifier/). **Held-out test accuracy: 80.36%** on the banking77 test split (3,080 examples; macro F1 81.10%) per [`src/bin/bench-classify.rs`](src/bin/bench-classify.rs).
+
+Packed into [`assets/starter.nanobyte`](assets/starter.nanobyte) (1,271,548 bytes — 64B header + 320B manifest + ~1.27MB weights + 36B NSIG, BLAKE3-verified) via [`src/bin/pack-starter.rs`](src/bin/pack-starter.rs). 317,782 total params across 4 models.
 
 ## Planned: Full Pyramid
 

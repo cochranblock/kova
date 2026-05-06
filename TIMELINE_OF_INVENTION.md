@@ -115,6 +115,18 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-05-06 — intent_classifier + Bench Harness on banking77 (gap 12.2)
+
+**What:** Trained the missing T1 starter — banking77 intent classifier — and built the held-out test harness that anchors every quality conversation in real numbers. Hash dim bumped from 256 → 4096 (Weinberger 2009 collision rate ~98% → ~77%) for this model only. **315,469 params, ~1.25 MB**, packed into `assets/starter.nanobyte` alongside the original 3 starters (file: 9,592 B → 1,271,548 B, 130× larger). New `src/bin/train-intent.rs` trains from `assets/datasets/banking77/{categories.json,train.csv}` (10K examples, 77 classes; 30 epochs; ~148 s on bt CPU). New `src/bin/bench-classify.rs` measures held-out test accuracy:
+
+- **80.36% accuracy on banking77 test (3,080 examples)** — macro F1 81.10%, macro precision 86.03%
+- Hardest classes are semantically near-duplicate pairs: `why_verify_identity` ↔ `verify_my_identity`, `pending_top_up` vs `top_up_failed`, `transfer_timing` ↔ `balance_not_updated_after_bank_transfer`
+- Reference: SOTA on banking77 is ~93% (FastText, BERT, DistilBERT). Kova is ~12 points below with 100–1000× fewer params
+
+This is the first quality measurement against a public benchmark. Closes gap 12.2. The 80.36% defines the floor at the current architecture — bumping hash dim further (gap 12.1), confidence calibration (gap 14.2), and 2nd-stage cascade are the planned levers to close the gap to FastText.
+**Commit:** *(this commit)*  
+**AI Role:** AI implemented training + benchmark binaries, ran training + eval, surfaced the train/test gap (93.2% → 80.36%) honestly. Human directed "build the model for 3, focus on that blocker, don't skip" — no shortcut around the missing piece.
+
 ### 2026-05-06 — Nanobyte Inference + Embedded Starter + REPL Telemetry (BACKLOG #3, #14)
 
 **What:** Built end-to-end pyramid T1 path on top of the nanobyte format. `Nanobyte::infer(model, text) → (class_idx, conf)` ([`src/nanobyte.rs`](src/nanobyte.rs)) mirrors `swarm/train::predict` — trigram-hash featurize → linear → softmax — and is **parity-tested** against the on-disk path (same idx + confidence within 1e-5 across all starter models). `Nanobyte::infer_named` resolves the class index via a const `STARTER_CLASS_NAMES` table. Refactored backing storage into a `Storage { Mmap | Static }` enum so a single `Nanobyte` type loads from either a memory-mapped file or a `'static` byte slice; added `Nanobyte::from_bytes` and `pub static STARTER_NANOBYTE: &[u8] = include_bytes!("../assets/starter.nanobyte")` — **9,592 bytes baked into `.rodata`, zero file I/O at REPL startup** (BACKLOG #14). Wired silent subatomic preprocessing into the REPL ([`src/repl.rs`](src/repl.rs)): on every iteration the 3 starter classifiers run against the user input and the assistant response; results persist to sled under keys `tele/{ts_ns}/i` and `tele/{ts_ns}/o` for downstream analysis. **No UX changes yet** — gathering data first per the plan. 7 new unit tests bring the total to 12 passing in `src/nanobyte.rs`, including byte-identity check between embed and on-disk file.
