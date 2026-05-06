@@ -83,8 +83,11 @@ const SHARED_FIELDS: &[FieldDef] = &[
     FieldDef { slot: "phone",    expected_key: "phone" },
     FieldDef { slot: "linkedin", expected_key: "linkedin" },
     FieldDef { slot: "github",   expected_key: "github" },
-    FieldDef { slot: "address",  expected_key: "address" },
-    FieldDef { slot: "city",     expected_key: "address" },
+    // Address sub-fields — matches atsisbroken's structured Profile
+    // (street1 / city / state / postal_code / country). Bare "address"
+    // reserved for the legacy single-line slot.
+    FieldDef { slot: "address",  expected_key: "street1" },
+    FieldDef { slot: "city",     expected_key: "city" },
     FieldDef { slot: "zip",      expected_key: "postal_code" },
     FieldDef { slot: "auth",     expected_key: "work_authorization" },
     FieldDef { slot: "why",      expected_key: "freetext" },
@@ -138,9 +141,14 @@ pub fn expected_keys(vendor: AtsVendor, opts: &FixtureOpts) -> Vec<(String, &'st
                 // Lever — combined name; no last/address sub-fields.
                 (AtsVendor::Lever, "first") => "full_name",
                 (AtsVendor::Lever, "last" | "address" | "city" | "zip") => return None,
-                // Ashby — combined name (R2-verified at Lago); no last/city/zip.
+                // Ashby — combined name (R2-verified at Lago); no
+                // last/city/zip. The address slot here is the
+                // generic "Where are you based?" single-line text,
+                // which classifies to the legacy "address" slot,
+                // not the structured street1.
                 (AtsVendor::Ashby, "first") => "full_name",
                 (AtsVendor::Ashby, "last" | "city" | "zip") => return None,
+                (AtsVendor::Ashby, "address") => "address",
                 // Everyone else uses the canonical SHARED_FIELDS key.
                 _ => f.expected_key,
             };
