@@ -1,7 +1,13 @@
 // Unlicense — cochranblock.org
 // Contributors: GotEmCoach, KOVA, Claude Opus 4.6
 
-//! pyramid — Hierarchical MoE with Sponge Mesh correction.
+//! codegen_moe — Hierarchical MoE for code generation, with Sponge Mesh correction.
+//!
+//! Renamed from `pyramid` on 2026-05-06 (gap analysis sim 15.1) — the name
+//! "pyramid" now refers exclusively to the subatomic T1/T2/T3 architecture
+//! (`src/swarm/` + `src/nanobyte.rs`) per `docs/PYRAMID_ARCHITECTURE.md`.
+//! Long-term these converge: today's `Expert` Claude-API calls become T3
+//! cellular models in the subatomic pyramid (KOVA_BLUEPRINT Phase 4).
 //!
 //! Architecture:
 //!   Layer 2: Router (1 model, broadest) — decomposes task into subtasks
@@ -90,14 +96,14 @@ pub struct PyramidResult {
 /// Run the full pyramid pipeline for a task.
 pub fn run(task: Task, provider: &crate::providers::T129) -> PyramidResult {
     let start = std::time::Instant::now();
-    println!("[pyramid] task: {}", task.description);
-    println!("[pyramid] target: {:?}", task.target);
+    println!("[codegen_moe] task: {}", task.description);
+    println!("[codegen_moe] target: {:?}", task.target);
 
     // Layer 2: Router decomposes task into subtasks
     let subtasks = Router::decompose(&task);
-    println!("[pyramid] router decomposed into {} subtasks", subtasks.len());
+    println!("[codegen_moe] router decomposed into {} subtasks", subtasks.len());
     for st in &subtasks {
-        println!("[pyramid]   {:?}: {}", st.kind, truncate(&st.context, 60));
+        println!("[codegen_moe]   {:?}: {}", st.kind, truncate(&st.context, 60));
     }
 
     // Layer 1+0: Assemblers dispatch to experts, collect outputs
@@ -106,11 +112,11 @@ pub fn run(task: Task, provider: &crate::providers::T129) -> PyramidResult {
 
     for subtask in &subtasks {
         let assembler = Assembler::for_subtask(subtask);
-        println!("\n[pyramid] assembler: {:?} → {:?}", assembler.kind, subtask.kind);
+        println!("\n[codegen_moe] assembler: {:?} → {:?}", assembler.kind, subtask.kind);
 
         // Shared expert generates boilerplate (always runs)
         let shared = SharedExpert::generate(subtask, provider);
-        println!("[pyramid]   shared expert: {} bytes", shared.code.len());
+        println!("[codegen_moe]   shared expert: {} bytes", shared.code.len());
 
         // Phase 6: Parallel expert execution via mpsc
         let experts = Expert::for_subtask(subtask);
@@ -126,7 +132,7 @@ pub fn run(task: Task, provider: &crate::providers::T129) -> PyramidResult {
                 let mesh_clone = SpongeMesh::new(3, std::time::Duration::from_secs(2));
 
                 std::thread::spawn(move || {
-                    println!("[pyramid]   routing to: {:?}", expert.kind);
+                    println!("[codegen_moe]   routing to: {:?}", expert.kind);
 
                     // Phase 3: dispatch_with_context — expert sees its own errors
                     let expert_kind = expert.kind.clone();
@@ -142,7 +148,7 @@ pub fn run(task: Task, provider: &crate::providers::T129) -> PyramidResult {
                     match result {
                         MeshResult::Success(mut output) => {
                             println!(
-                                "[pyramid]   {:?}: {} bytes ({}ms, {} retries)",
+                                "[codegen_moe]   {:?}: {} bytes ({}ms, {} retries)",
                                 expert_kind,
                                 output.code.len(),
                                 output.generation_ms,
@@ -156,7 +162,7 @@ pub fn run(task: Task, provider: &crate::providers::T129) -> PyramidResult {
                             last_error,
                         } => {
                             eprintln!(
-                                "[pyramid]   {:?} FAILED after {} retries: {}",
+                                "[codegen_moe]   {:?} FAILED after {} retries: {}",
                                 expert_kind, retries, last_error
                             );
                         }
@@ -176,7 +182,7 @@ pub fn run(task: Task, provider: &crate::providers::T129) -> PyramidResult {
 
     // Phase 2: Validation gate — cargo check on assembled output
     let compile_ok = if !all_outputs.is_empty() {
-        println!("\n[pyramid] validation gate: cargo check");
+        println!("\n[codegen_moe] validation gate: cargo check");
         validate_outputs(&all_outputs, &task.project_name)
     } else {
         false
@@ -186,7 +192,7 @@ pub fn run(task: Task, provider: &crate::providers::T129) -> PyramidResult {
     let total_ms = start.elapsed().as_millis() as u64;
 
     println!(
-        "\n[pyramid] complete: {} files, {}ms, {} retries, compile={}",
+        "\n[codegen_moe] complete: {} files, {}ms, {} retries, compile={}",
         all_outputs.len(),
         total_ms,
         total_retries,
@@ -207,7 +213,7 @@ fn validate_outputs(outputs: &[LayerOutput], project_name: &str) -> bool {
     let tmp = match tempfile::TempDir::new() {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("[pyramid] validation: temp dir failed: {}", e);
+            eprintln!("[codegen_moe] validation: temp dir failed: {}", e);
             return false;
         }
     };
@@ -261,16 +267,16 @@ fn validate_outputs(outputs: &[LayerOutput], project_name: &str) -> bool {
             if !ok {
                 let stderr = String::from_utf8_lossy(&out.stderr);
                 eprintln!(
-                    "[pyramid] validation FAILED:\n{}",
+                    "[codegen_moe] validation FAILED:\n{}",
                     truncate(&stderr, 500)
                 );
             } else {
-                println!("[pyramid] validation PASSED");
+                println!("[codegen_moe] validation PASSED");
             }
             ok
         }
         Err(e) => {
-            eprintln!("[pyramid] validation: cargo check failed to run: {}", e);
+            eprintln!("[codegen_moe] validation: cargo check failed to run: {}", e);
             false
         }
     }
@@ -296,7 +302,7 @@ pub fn write_outputs(result: &PyramidResult, out_dir: &std::path::Path) -> std::
         }
         let merged = code_parts.join("\n\n");
         std::fs::write(&dest, &merged)?;
-        println!("[pyramid] wrote {}", dest.display());
+        println!("[codegen_moe] wrote {}", dest.display());
     }
 
     // Run cargo fmt if available

@@ -104,7 +104,7 @@ pub mod micro;
 pub mod moe;
 pub mod node_cmd;
 #[cfg(feature = "inference")]
-pub mod pyramid;
+pub mod codegen_moe;
 #[cfg(feature = "rag")]
 pub mod rag;
 #[cfg(feature = "inference")]

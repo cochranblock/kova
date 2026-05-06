@@ -55,10 +55,10 @@ enum Cmd {
     #[cfg(feature = "inference")]
     #[command(name = "moe")]
     Moe(MoeArgs),
-    /// Pyramid: hierarchical MoE with Sponge Mesh correction. Task → Router → Assemblers → Experts.
+    /// Codegen-MoE: hierarchical MoE for code generation, with Sponge Mesh correction. Task → Router → Assemblers → Experts.
     #[cfg(feature = "inference")]
-    #[command(name = "pyramid")]
-    Pyramid(PyramidArgs),
+    #[command(name = "codegen-moe")]
+    CodegenMoe(CodegenMoeArgs),
     /// Extract training data from repos for expert fine-tuning.
     #[command(name = "extract")]
     Extract(ExtractArgs),
@@ -720,7 +720,7 @@ struct MoeArgs {
 
 #[cfg(feature = "inference")]
 #[derive(clap::Args)]
-struct PyramidArgs {
+struct CodegenMoeArgs {
     /// What to build. e.g. "federal API scout like whobelooking"
     prompt: Vec<String>,
     /// Project target: cli, web, lib, full
@@ -2315,7 +2315,7 @@ fn main() -> anyhow::Result<()> {
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
-        | Some(Cmd::Pyramid(_))
+        | Some(Cmd::CodegenMoe(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
         | Some(Cmd::Micro(_)) => {
@@ -2348,14 +2348,14 @@ fn main() -> anyhow::Result<()> {
                     kova::moe::f341(&a.prompt.join(" "), config);
                     Ok(())
                 }
-                Cmd::Pyramid(a) => {
+                Cmd::CodegenMoe(a) => {
                     let target = match a.target.as_str() {
-                        "web" => kova::pyramid::TaskTarget::Web,
-                        "lib" => kova::pyramid::TaskTarget::Lib,
-                        "full" => kova::pyramid::TaskTarget::Full,
-                        _ => kova::pyramid::TaskTarget::Cli,
+                        "web" => kova::codegen_moe::TaskTarget::Web,
+                        "lib" => kova::codegen_moe::TaskTarget::Lib,
+                        "full" => kova::codegen_moe::TaskTarget::Full,
+                        _ => kova::codegen_moe::TaskTarget::Cli,
                     };
-                    let task = kova::pyramid::Task {
+                    let task = kova::codegen_moe::Task {
                         description: a.prompt.join(" "),
                         project_name: a.output.as_ref()
                             .and_then(|p| p.file_name())
@@ -2367,7 +2367,7 @@ fn main() -> anyhow::Result<()> {
                         api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
                         model: std::env::var("KOVA_MODEL").unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
                     };
-                    kova::pyramid::run(task, &provider);
+                    kova::codegen_moe::run(task, &provider);
                     Ok(())
                 }
                 Cmd::Academy(a) => {
@@ -2424,7 +2424,7 @@ fn main() -> anyhow::Result<()> {
                         let base = a.base.unwrap_or_else(|| {
                             dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
                         });
-                        let pairs = kova::pyramid::extract::extract_all(&base);
+                        let pairs = kova::codegen_moe::extract::extract_all(&base);
                         if let Some(out) = a.output {
                             let json = serde_json::to_string_pretty(&pairs).unwrap_or_default();
                             std::fs::write(&out, json)?;
@@ -2664,7 +2664,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         Some(Cmd::T193(_))
         | Some(Cmd::T181(_))
         | Some(Cmd::Moe(_))
-        | Some(Cmd::Pyramid(_))
+        | Some(Cmd::CodegenMoe(_))
         | Some(Cmd::Academy(_))
         | Some(Cmd::Gauntlet(_))
         | Some(Cmd::Micro(_))

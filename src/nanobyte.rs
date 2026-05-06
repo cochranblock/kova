@@ -288,9 +288,20 @@ pub const STARTER_CLASS_NAMES: &[(&str, &[&str])] = &[
     ("lang_detector", &["rust", "python", "javascript", "go", "shell"]),
 ];
 
-/// Bytes of `assets/starter.nanobyte` baked into the binary at compile time.
-/// Zero file I/O at runtime — the slice lives in the binary's `.rodata`.
-pub static STARTER_NANOBYTE: &[u8] = include_bytes!("../assets/starter.nanobyte");
+/// Wrapper that forces 8-byte alignment for embedded bytes. `include_bytes!`
+/// returns a `&'static [u8; N]` placed in `.rodata` with only 1-byte alignment;
+/// our `slice_f32` requires 4-byte alignment to reinterpret the weights region
+/// as `&[f32]`. Whether the unaligned form happens to land 4-aligned at link
+/// time is layout-dependent and not portable across feature flags or targets.
+#[repr(align(8))]
+struct AlignedNanobyte<T: ?Sized>(T);
+
+static STARTER_ALIGNED: AlignedNanobyte<[u8; include_bytes!("../assets/starter.nanobyte").len()]> =
+    AlignedNanobyte(*include_bytes!("../assets/starter.nanobyte"));
+
+/// Bytes of `assets/starter.nanobyte` baked into the binary at compile time,
+/// 8-byte aligned. Zero file I/O at runtime — the slice lives in `.rodata`.
+pub static STARTER_NANOBYTE: &[u8] = &STARTER_ALIGNED.0;
 
 /// Load the embedded starter nanobyte. Pure in-memory; no `fs` access.
 pub fn starter() -> Result<Nanobyte> {
