@@ -1,10 +1,22 @@
-# NanoSign — Universal AI Model Signing
+# NanoSign — Universal AI Model Integrity Hash
 
 > 36 bytes. Any model format. One hash. Zero infrastructure.
 
-## The Problem
+## What This Is
 
-AI model files ship unsigned. You download a `.safetensors` or `.gguf` from the internet and trust it blindly. No integrity verification. No tamper detection. Existing solutions (GPG signatures, X.509 certificates, sigstore) require infrastructure, key management, and ceremony. Nobody uses them for model files.
+A **content-addressed integrity stamp** for model files. Append 36 bytes (`NSIG` magic + BLAKE3 hash) to any model file. Re-hash on load. Reject mismatches. That's it.
+
+## What This Is **Not**
+
+NanoSign is **not** a signing scheme in the cryptographic sense — there is no signer identity, no private key, no transparency log, no revocation. The name "NanoSign" is historical; semantically it is an *integrity hash trailer*, not a signature. See [Scope and Threat Model](#scope-and-threat-model) below.
+
+For authenticity / signer-identity / transparency — what you want is **[Sigstore Model Transparency v1.0](https://blog.sigstore.dev/model-transparency-v1.0/)** (OpenSSF AI/ML WG, April 2025). NSIG can compose underneath it as the content hash that gets signed, but NSIG alone does not provide those properties.
+
+## The Problem (Tampering, Not Authenticity)
+
+Model files ship without integrity verification. You download a `.safetensors` or `.gguf` and trust the bytes match what the publisher uploaded. Network corruption, mirror tampering, or a compromised CDN can silently substitute weights. Most existing solutions (GPG signatures, X.509 certs, full Sigstore deployments) require infrastructure that nobody bothers to set up for model files in practice.
+
+NanoSign solves the smallest version of this problem: *the bytes I'm reading now are bit-identical to the bytes whoever stamped this file intended to ship.* That's a useful primitive even though it's strictly weaker than authenticity.
 
 ## The Solution
 
@@ -32,25 +44,26 @@ The file is self-verifying. No external registry. No key server. No setup.
 | -36 | 4 bytes | `NSIG` (ASCII: `0x4E 0x53 0x49 0x47`) |
 | -32 | 32 bytes | BLAKE3 hash of bytes `[0..len-36]` |
 
-**Signing (bake):**
+**Stamping (bake):**
 1. Read or generate the model file
 2. Compute `blake3::hash(file_bytes)`
 3. Append `b"NSIG"` + hash (36 bytes) to the file
 
 **Verification (load):**
 1. Read last 36 bytes of the file
-2. First 4 bytes must be `NSIG` — if not, file is unsigned (not an error, just unsigned)
+2. First 4 bytes must be `NSIG` — if not, file is unstamped (not an error, just unstamped)
 3. Remaining 32 bytes = expected hash
 4. Compute `blake3::hash(file_bytes[0..len-36])`
-5. Compare. Match = verified. Mismatch = tampered or corrupted. Reject.
+5. Compare. Match = integrity-verified. Mismatch = tampered or corrupted. Reject.
 
 **Properties:**
-- Self-contained: the signature is IN the file, not beside it
+- Self-contained: the trailer is IN the file, not beside it
 - Format-agnostic: works with any binary format (safetensors, GGUF, ONNX, PyTorch, nanobyte)
 - Backward-compatible: existing tools ignore trailing bytes they don't recognize
 - Fast: BLAKE3 runs at memory bandwidth (~6 GB/s). A 4GB model verifies in <1 second
 - Tiny: 36 bytes overhead. On a 4GB model, that's 0.0000009% size increase
 - No dependencies beyond `blake3` (pure Rust, no C, no OpenSSL)
+- **Integrity, not authenticity** — see [Scope and Threat Model](#scope-and-threat-model)
 
 ### Why BLAKE3
 
@@ -70,7 +83,62 @@ SHA-256 would also work. BLAKE3 is chosen because:
 
 SHA-256 is acceptable if you already depend on it. The format is hash-agnostic in spirit — but the spec says BLAKE3 to avoid negotiation overhead. One hash, no options, no confusion.
 
+## Scope and Threat Model
+
+NanoSign is an unkeyed content hash. Knowing what it does and does *not* protect is the difference between a useful primitive and false security.
+
+### What NanoSign defends against
+
+- **Network/transit corruption.** A flipped bit between mirror and disk → hash mismatch → rejected.
+- **Storage corruption.** Bitrot on the disk holding the model → mismatch → rejected.
+- **Accidental modification.** Someone edits the file with a hex editor and forgets to re-stamp → rejected.
+- **CDN / mirror substitution by an attacker who lacks the originator's stamping pipeline.** If the attacker also re-hashes, see below.
+
+### What NanoSign does **not** defend against
+
+- **Authenticity / forgery.** There is no key. *Anyone* who tampers with a file can also re-hash it and ship a "valid" trailer. A valid NSIG trailer proves only that *someone* hashed the bytes — not *who*.
+- **Adversarial training data.** A model trained on poisoned examples produces a perfectly valid hash. NSIG sees bytes; it cannot see semantics.
+- **Weight-space backdoors / trojans.** Malicious weights pass an integrity check trivially. Detecting these requires behavioral evaluation, not hashing.
+- **Supply-chain compromise of the stamping pipeline itself.** If an attacker compromises the originator's build system, they get to stamp arbitrary weights with the originator's blessing. NSIG has no log to detect this after the fact.
+- **Revocation.** A known-bad hash cannot be marked "do not load" centrally — there is no transparency log to consult.
+
+### When NSIG is enough
+
+- Self-distributed models inside a trusted boundary (your laptop, your cluster, your CI).
+- Embedded models inside a binary you already trust (e.g. `include_bytes!` on `assets/starter.nanobyte` — the hash protects against build-time corruption and detects if someone alters the binary's `.rodata` post-link).
+- A first-pass integrity check before more expensive validation.
+
+### When NSIG is **not** enough
+
+- You want to know *who* trained / packaged the model.
+- You're shipping models across organizational trust boundaries.
+- Compliance requires authenticated provenance (FedRAMP, FIPS, SLSA Level ≥ 2, NIST SP 800-218A authenticated provisioning).
+- You need to revoke a poisoned release without re-issuing all consumers.
+
+### The compose-with-Sigstore upgrade path
+
+NSIG and Sigstore Model Transparency v1.0 are complementary, not alternatives:
+
+```
+[ MODEL BYTES + NSIG TRAILER ]   ← integrity (kova / pixel-forge)
+              │
+              ▼
+[ in-toto attestation referencing the BLAKE3 hash above ]
+              │
+              ▼
+[ Fulcio short-lived cert + Rekor log entry ]   ← authenticity (Sigstore)
+```
+
+The 32-byte BLAKE3 from NSIG becomes the content digest inside the in-toto attestation. NSIG handles "the bytes haven't changed since stamp time"; Sigstore handles "and the stamp came from this identity, logged at this time, and you can verify both later." Future `nanosign-v2` will document this composition.
+
+### Compliance framing
+
+- **NIST SP 800-218A** (SSDF profile for generative AI, Apr 2024) requires integrity verification of training/fine-tuning data (PW.3) but does *not* yet specify a weight-signing scheme. NSIG addresses the integrity half; Sigstore composition addresses authenticity.
+- **EO 14028 §4(e)** maps to SSDF tasks but does not (as of 2026-05) mandate weight-level signing — only software supply chain. Document NSIG as integrity, document Sigstore composition as the authenticity story.
+
 ## Reference Implementation
+
+> **Note on terminology in the API.** The functions are named `sign` / `verify` / `strip` — these names are sticky (already used by `kova`, `pixel-forge`, and any future consumers) and refer mechanically to "append the integrity trailer" / "check the integrity trailer" / "remove the integrity trailer." The names predate the cryptographic-signing reframing in this doc and are preserved for compatibility. Read every occurrence of "sign" in the API as "stamp" or "hash-and-append."
 
 ### Rust (3 lines)
 
@@ -186,7 +254,7 @@ This is optional. The file is self-verifying without any registry.
 [package]
 name = "nanosign"
 version = "0.1.0"
-description = "Universal AI model signing. 36 bytes. Any format."
+description = "Universal AI model integrity hash trailer. 36 bytes. Any format."
 license = "Unlicense"
 repository = "https://github.com/cochranblock/nanosign"
 
