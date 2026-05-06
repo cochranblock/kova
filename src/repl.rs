@@ -90,6 +90,10 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
     let system_prompt = f139(&project_dir);
     let max_iterations = crate::config::orchestration_max_fix_retries() + 20;
 
+    // Subatomic pyramid (T1) — preprocessing classifier bank. Verified once at
+    // startup; ~9KB embedded, BLAKE3-checked. Telemetry-only for now (BACKLOG #3).
+    let starter_nb = crate::nanobyte::starter().ok();
+
     // Print banner.
     eprintln!("\x1b[36m╭─────────────────────────────╮\x1b[0m");
     eprintln!("\x1b[36m│\x1b[0m  \x1b[1mKova\x1b[0m — augment engine     \x1b[36m│\x1b[0m");
@@ -167,6 +171,18 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
         if let Ok(store) = crate::storage::t12::f39(&store_path) {
             let _ = crate::context::f73(&store, "user", input);
             let _ = crate::context::f73(&store, "assistant", &response);
+
+            // Subatomic preprocessing telemetry. Silent — gather data, no UX changes.
+            if let Some(nb) = starter_nb.as_ref() {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                let inputs = crate::nanobyte::classify_with_starters(nb, input);
+                let outputs = crate::nanobyte::classify_with_starters(nb, &response);
+                let _ = store.f40(format!("tele/{ts}/i").as_bytes(), &inputs);
+                let _ = store.f40(format!("tele/{ts}/o").as_bytes(), &outputs);
+            }
         }
 
         eprintln!();

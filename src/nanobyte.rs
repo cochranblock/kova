@@ -17,6 +17,7 @@ use std::io::Write;
 use std::path::Path;
 
 use memmap2::Mmap;
+use serde::{Deserialize, Serialize};
 
 /// File magic: ASCII `NANO`.
 pub const MAGIC: [u8; 4] = *b"NANO";
@@ -93,41 +94,64 @@ pub struct PackInput<'a> {
     pub routing: Option<&'a [f32]>,
 }
 
-/// Loaded nanobyte file. Owns the mmap.
+/// Backing storage for a loaded nanobyte. Either a memory-mapped file or a
+/// `'static` byte slice (e.g. from `include_bytes!`).
+enum Storage {
+    Mmap(Mmap),
+    Static(&'static [u8]),
+}
+
+impl Storage {
+    fn as_slice(&self) -> &[u8] {
+        match self {
+            Storage::Mmap(m) => &m[..],
+            Storage::Static(s) => s,
+        }
+    }
+}
+
+/// Loaded nanobyte file. Holds its backing storage alive.
 pub struct Nanobyte {
-    mmap: Mmap,
+    storage: Storage,
     manifests: Vec<Manifest>,
     /// Absolute byte offset of the weights region within the file.
     weights_start: u64,
 }
 
 impl Nanobyte {
-    /// Open and verify a nanobyte file. Validates magic, version, and NSIG signature.
+    /// Open and verify a nanobyte file via mmap. Validates magic, version, and NSIG.
     pub fn load(path: &Path) -> Result<Self> {
         let file = fs::File::open(path)?;
         // SAFETY: callers must not mutate the file while a Nanobyte holds it.
         let mmap = unsafe { Mmap::map(&file)? };
-        Self::from_mmap(mmap)
+        Self::from_storage(Storage::Mmap(mmap))
     }
 
-    fn from_mmap(mmap: Mmap) -> Result<Self> {
-        let len = mmap.len();
+    /// Verify and parse a nanobyte from a `'static` byte slice (e.g. `include_bytes!`).
+    /// Zero-copy: the slice is borrowed for the lifetime of the returned `Nanobyte`.
+    pub fn from_bytes(bytes: &'static [u8]) -> Result<Self> {
+        Self::from_storage(Storage::Static(bytes))
+    }
+
+    fn from_storage(storage: Storage) -> Result<Self> {
+        let buf = storage.as_slice();
+        let len = buf.len();
         if len < HEADER_SIZE + NSIG_SIZE {
             return Err(Error::TooSmall(len));
         }
 
         let payload_end = len - NSIG_SIZE;
-        let trailer = &mmap[payload_end..];
+        let trailer = &buf[payload_end..];
         if trailer[..4] != NSIG_MAGIC {
             return Err(Error::Unsigned);
         }
         let expected = &trailer[4..];
-        let actual = blake3::hash(&mmap[..payload_end]);
+        let actual = blake3::hash(&buf[..payload_end]);
         if actual.as_bytes() != expected {
             return Err(Error::BadSignature);
         }
 
-        let h = &mmap[..HEADER_SIZE];
+        let h = &buf[..HEADER_SIZE];
         let mut magic = [0u8; 4];
         magic.copy_from_slice(&h[0..4]);
         if magic != MAGIC {
@@ -154,12 +178,12 @@ impl Nanobyte {
         let mut manifests = Vec::with_capacity(num_models);
         for i in 0..num_models {
             let start = manifest_offset as usize + i * MANIFEST_ENTRY_SIZE;
-            let entry = &mmap[start..start + MANIFEST_ENTRY_SIZE];
+            let entry = &buf[start..start + MANIFEST_ENTRY_SIZE];
             manifests.push(decode_manifest(entry));
         }
 
         Ok(Self {
-            mmap,
+            storage,
             manifests,
             weights_start: manifest_end,
         })
@@ -179,7 +203,7 @@ impl Nanobyte {
     /// Return weights for a model as `&[f32]`.
     pub fn weights(&self, name: &str) -> Result<&[f32]> {
         let m = self.find(name)?;
-        slice_f32(&self.mmap, self.weights_start + m.offset, m.size)
+        slice_f32(self.storage.as_slice(), self.weights_start + m.offset, m.size)
     }
 
     /// Return routing weights for a model (T2/T3 only). `None` if model has no routing block.
@@ -189,11 +213,116 @@ impl Nanobyte {
             return Ok(None);
         }
         Ok(Some(slice_f32(
-            &self.mmap,
+            self.storage.as_slice(),
             self.weights_start + m.routing_offset,
             m.routing_size,
         )?))
     }
+
+    /// Run a packed subatomic classifier over `text`. Returns `(class_idx, confidence)`.
+    ///
+    /// Mirrors [`crate::swarm::train::predict`]: trigram-hash featurize → linear → softmax.
+    /// The packed weights blob is `[W (nc * fd) | b (nc)]`, row-major (`W[c * fd + d]`).
+    pub fn infer(&self, model_name: &str, text: &str) -> Result<(usize, f32)> {
+        let m = self.find(model_name)?;
+        let nc = m.num_classes as usize;
+        let fd = m.feature_dim as usize;
+        let packed = self.weights(model_name)?;
+        if packed.len() != nc * fd + nc {
+            return Err(Error::BadManifest);
+        }
+        let (w, b) = packed.split_at(nc * fd);
+
+        let feat = crate::swarm::train::featurize(text, fd);
+        let mut logits = vec![0.0f32; nc];
+        for c in 0..nc {
+            let mut sum = b[c];
+            let row = &w[c * fd..(c + 1) * fd];
+            for d in 0..fd {
+                sum += row[d] * feat[d];
+            }
+            logits[c] = sum;
+        }
+
+        let max_logit = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let mut sum_exp = 0.0f32;
+        for v in logits.iter_mut() {
+            *v = (*v - max_logit).exp();
+            sum_exp += *v;
+        }
+        for v in logits.iter_mut() {
+            *v /= sum_exp;
+        }
+
+        let (idx, conf) = logits
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, p)| (i, *p))
+            .unwrap_or((0, 0.0));
+        Ok((idx, conf))
+    }
+
+    /// Run [`infer`](Self::infer) and resolve the class index to a name via [`STARTER_CLASS_NAMES`].
+    /// Errors with [`Error::NotFound`] if the model isn't in the class-name table.
+    pub fn infer_named(&self, model_name: &str, text: &str) -> Result<(&'static str, f32)> {
+        let names = STARTER_CLASS_NAMES
+            .iter()
+            .find(|(n, _)| *n == model_name)
+            .map(|(_, names)| *names)
+            .ok_or_else(|| Error::NotFound(model_name.to_string()))?;
+        let (idx, conf) = self.infer(model_name, text)?;
+        let name = names.get(idx).copied().unwrap_or("?");
+        Ok((name, conf))
+    }
+}
+
+/// Class-name lookup for models packed in `assets/starter.nanobyte`.
+///
+/// Kept as a static map rather than embedded in the manifest so the on-disk
+/// format stays version-stable. When the format gains a string-table region
+/// (V2), this becomes derivable and can be removed.
+pub const STARTER_CLASS_NAMES: &[(&str, &[&str])] = &[
+    ("slop_detector", &["clean", "slop"]),
+    ("code_vs_english", &["english", "code"]),
+    ("lang_detector", &["rust", "python", "javascript", "go", "shell"]),
+];
+
+/// Bytes of `assets/starter.nanobyte` baked into the binary at compile time.
+/// Zero file I/O at runtime — the slice lives in the binary's `.rodata`.
+pub static STARTER_NANOBYTE: &[u8] = include_bytes!("../assets/starter.nanobyte");
+
+/// Load the embedded starter nanobyte. Pure in-memory; no `fs` access.
+pub fn starter() -> Result<Nanobyte> {
+    Nanobyte::from_bytes(STARTER_NANOBYTE)
+}
+
+/// One model's classification of a piece of text. Persisted as REPL telemetry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Classification {
+    pub model: String,
+    pub class_idx: usize,
+    pub class_name: String,
+    pub confidence: f32,
+}
+
+/// Run every model in [`STARTER_CLASS_NAMES`] against `text` and collect results.
+/// Models missing from the nanobyte are skipped silently; this is for telemetry,
+/// not control flow.
+pub fn classify_with_starters(nb: &Nanobyte, text: &str) -> Vec<Classification> {
+    STARTER_CLASS_NAMES
+        .iter()
+        .filter_map(|(model, names)| {
+            let (idx, conf) = nb.infer(model, text).ok()?;
+            let class_name = names.get(idx).copied().unwrap_or("?").to_string();
+            Some(Classification {
+                model: (*model).to_string(),
+                class_idx: idx,
+                class_name,
+                confidence: conf,
+            })
+        })
+        .collect()
 }
 
 fn slice_f32(mmap: &[u8], offset: u64, size: u64) -> Result<&[f32]> {
@@ -479,6 +608,148 @@ mod tests {
     fn weights_region_4_aligned_for_any_n() {
         for n in 0..=16 {
             assert_eq!((HEADER_SIZE + n * MANIFEST_ENTRY_SIZE) % 4, 0);
+        }
+    }
+
+    fn starter_path() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/starter.nanobyte")
+    }
+
+    #[test]
+    fn starter_loads_three_models() {
+        let path = starter_path();
+        if !path.exists() {
+            eprintln!("skipping: {} missing — run `cargo run --bin pack-starter`", path.display());
+            return;
+        }
+        let nb = Nanobyte::load(&path).expect("starter.nanobyte must verify");
+        let names: Vec<&str> = nb.manifests().iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["slop_detector", "code_vs_english", "lang_detector"]
+        );
+    }
+
+    /// Parity contract: nanobyte::infer must produce the same class index and
+    /// near-identical confidence as swarm/train::predict on the same model + text.
+    /// This is the real correctness test — the absolute classification depends on
+    /// model accuracy (94% / 89% / 97%) and is brittle to test directly.
+    #[test]
+    fn infer_matches_swarm_predict_for_all_starters() {
+        let path = starter_path();
+        let assets = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/models");
+        if !path.exists() {
+            return;
+        }
+        let nb = Nanobyte::load(&path).unwrap();
+
+        let probes = [
+            "fn main() { println!(\"hello\"); }",
+            "The quick brown fox jumps over the lazy dog.",
+            "def main():\n    print(\"hi\")",
+            "let xs: Vec<u32> = (0..10).collect();",
+            "import os\nprint(os.getcwd())",
+            "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"hi\") }",
+        ];
+
+        for model in ["slop_detector", "code_vs_english", "lang_detector"] {
+            let on_disk = assets.join(model);
+            if !on_disk.exists() {
+                continue;
+            }
+            for text in probes {
+                let (nb_idx, nb_conf) = nb.infer(model, text).unwrap();
+                let (sw_idx, _sw_name, sw_conf) =
+                    crate::swarm::train::predict(&on_disk, text).unwrap();
+                assert_eq!(
+                    nb_idx, sw_idx,
+                    "{model}: nanobyte idx {nb_idx} != swarm idx {sw_idx} for {text:?}"
+                );
+                assert!(
+                    (nb_conf - sw_conf).abs() < 1e-5,
+                    "{model}: nanobyte conf {nb_conf} differs from swarm {sw_conf} for {text:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn infer_named_resolves_class_strings() {
+        let path = starter_path();
+        if !path.exists() {
+            return;
+        }
+        let nb = Nanobyte::load(&path).unwrap();
+        let (name, conf) = nb
+            .infer_named("slop_detector", "let x = 1;")
+            .expect("slop_detector must be in STARTER_CLASS_NAMES");
+        assert!(["clean", "slop"].contains(&name), "got {name:?}");
+        assert!((0.0..=1.0).contains(&conf));
+    }
+
+    #[test]
+    fn embedded_starter_loads() {
+        let nb = starter().expect("STARTER_NANOBYTE must verify at startup");
+        let names: Vec<&str> = nb.manifests().iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["slop_detector", "code_vs_english", "lang_detector"]
+        );
+    }
+
+    /// The embedded bytes and the on-disk file must be byte-identical (the
+    /// embed is generated from the file at build time). If they diverge, the
+    /// pack-starter binary needs to be re-run before this commit.
+    #[test]
+    fn embedded_matches_on_disk() {
+        let path = starter_path();
+        if !path.exists() {
+            return;
+        }
+        let on_disk = std::fs::read(&path).unwrap();
+        assert_eq!(STARTER_NANOBYTE, on_disk.as_slice());
+    }
+
+    #[test]
+    fn classify_with_starters_returns_one_per_model() {
+        let nb = starter().unwrap();
+        let out = classify_with_starters(&nb, "fn main() { println!(\"hi\"); }");
+        assert_eq!(out.len(), STARTER_CLASS_NAMES.len());
+        let models: Vec<&str> = out.iter().map(|c| c.model.as_str()).collect();
+        assert_eq!(
+            models,
+            ["slop_detector", "code_vs_english", "lang_detector"]
+        );
+        for c in &out {
+            assert!((0.0..=1.0).contains(&c.confidence), "{c:?}");
+            assert!(!c.class_name.is_empty());
+        }
+    }
+
+    #[test]
+    fn embedded_infer_matches_mmap_infer() {
+        let path = starter_path();
+        if !path.exists() {
+            return;
+        }
+        let mmapped = Nanobyte::load(&path).unwrap();
+        let embedded = starter().unwrap();
+        for text in [
+            "fn main() { let x = 1; }",
+            "the cat sat on the mat",
+            "import os; os.path.join('a', 'b')",
+        ] {
+            for model in ["slop_detector", "code_vs_english", "lang_detector"] {
+                let m = mmapped.infer(model, text).unwrap();
+                let e = embedded.infer(model, text).unwrap();
+                assert_eq!(m.0, e.0, "{model} idx differs for {text:?}");
+                assert!(
+                    (m.1 - e.1).abs() < 1e-6,
+                    "{model} conf differs for {text:?}: mmap {} vs embedded {}",
+                    m.1,
+                    e.1
+                );
+            }
         }
     }
 }

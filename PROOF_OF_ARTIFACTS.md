@@ -83,6 +83,9 @@ flowchart TD
 | C2 Fleet | Status, peek, unblock daemon, QA sweep | [`f385`-`f388` in `src/c2.rs`](src/c2.rs) |
 | NanoSign | Universal AI model signing (36 bytes, BLAKE3) | [`docs/NANOSIGN.md`](docs/NANOSIGN.md) |
 | Nanobyte Format | Packed model file: 64B header + manifest + f32 weights + NSIG trailer; mmap-loadable | [`src/nanobyte.rs`](src/nanobyte.rs) |
+| Nanobyte Inference | `nb.infer(model, text) → (idx, conf)` mirrors swarm predict path; parity-tested vs on-disk swarm | [`Nanobyte::infer` in `src/nanobyte.rs`](src/nanobyte.rs) |
+| Embedded Starter | 9,592-byte `STARTER_NANOBYTE` baked via `include_bytes!`; zero file I/O at startup | [`STARTER_NANOBYTE` in `src/nanobyte.rs`](src/nanobyte.rs) |
+| REPL Subatomic Telemetry | T1 classifiers run on every input + response; persisted to sled `tele/{ts}/{i\|o}` | [`src/repl.rs`](src/repl.rs) |
 
 ## Proven: Subatomic Models on AMD GPU
 

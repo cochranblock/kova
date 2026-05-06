@@ -115,10 +115,16 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-05-06 — Nanobyte Inference + Embedded Starter + REPL Telemetry (BACKLOG #3, #14)
+
+**What:** Built end-to-end pyramid T1 path on top of the nanobyte format. `Nanobyte::infer(model, text) → (class_idx, conf)` ([`src/nanobyte.rs`](src/nanobyte.rs)) mirrors `swarm/train::predict` — trigram-hash featurize → linear → softmax — and is **parity-tested** against the on-disk path (same idx + confidence within 1e-5 across all starter models). `Nanobyte::infer_named` resolves the class index via a const `STARTER_CLASS_NAMES` table. Refactored backing storage into a `Storage { Mmap | Static }` enum so a single `Nanobyte` type loads from either a memory-mapped file or a `'static` byte slice; added `Nanobyte::from_bytes` and `pub static STARTER_NANOBYTE: &[u8] = include_bytes!("../assets/starter.nanobyte")` — **9,592 bytes baked into `.rodata`, zero file I/O at REPL startup** (BACKLOG #14). Wired silent subatomic preprocessing into the REPL ([`src/repl.rs`](src/repl.rs)): on every iteration the 3 starter classifiers run against the user input and the assistant response; results persist to sled under keys `tele/{ts_ns}/i` and `tele/{ts_ns}/o` for downstream analysis. **No UX changes yet** — gathering data first per the plan. 7 new unit tests bring the total to 12 passing in `src/nanobyte.rs`, including byte-identity check between embed and on-disk file.
+**Commit:** *(this commit)*
+**AI Role:** AI implemented inference, the storage refactor, embedded loader, classification helper, REPL telemetry hook, and tests. Human directed the design forks (embedded const map vs format extension for class names, internal storage enum vs generic, silent telemetry vs visible UX) and verified parity contract before shipping.
+
 ### 2026-05-06 — Nanobyte Format + Starter Pack (BACKLOG #1, #2)
 
 **What:** Implemented packed model file format ([`src/nanobyte.rs`](src/nanobyte.rs)): 64-byte header + 80-byte/entry manifest + contiguous f32 weights region + 36-byte NSIG trailer (BLAKE3 of all preceding bytes). `Nanobyte::load()` mmaps the file via `memmap2`, verifies BLAKE3, parses manifests; `weights(name)` / `routing(name)` return `&[f32]` slices into the mapped buffer; `consolidate(&[PackInput])` packs models atomically (tmp file + rename). Pack-starter binary ([`src/bin/pack-starter.rs`](src/bin/pack-starter.rs)) reads the 3 trained subatomics from `assets/models/`, concats `[W | b]` per model, and emits [`assets/starter.nanobyte`](assets/starter.nanobyte) — **9,592 bytes, 3 models, 2,313 total params** (slop_detector + code_vs_english + lang_detector). 5 unit tests cover roundtrip, tamper detection, unsigned rejection, bad-magic rejection, and weights-region alignment. Module passes clippy `-D warnings`.
-**Commit:** *(this commit)*
+**Commit:** `44caf37`
 **AI Role:** AI implemented the format, packer, and tests. Human directed the spec ([`docs/KOVA_BLUEPRINT.md`](docs/KOVA_BLUEPRINT.md) §2 + [`docs/NANOSIGN.md`](docs/NANOSIGN.md)) and applied crosswalk lessons from pixel-forge's sibling `src/nanosign.rs` — confirming both implementations align so BACKLOG #8 (extract `nanosign` crate) cleanly dedupes them later.
 
 ### 2026-04-03 — Subatomic Models Trained + NanoSign + P23 + Blueprint
