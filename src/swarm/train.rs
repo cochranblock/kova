@@ -580,7 +580,15 @@ pub fn f392() -> Vec<Example> {
 }
 
 /// Train all three starter subatomic models. Saves to output_dir.
-pub fn train_starter(project_dir: &Path, output_dir: &Path) -> Result<(), String> {
+///
+/// `feature_dim` is the trigram-hash bucket count. The legacy 256 was kept for
+/// historical compatibility but produces a ~98% collision rate per Weinberger
+/// 2009 (gap analysis 12.1). Pass 8192 (or higher) for the recommended default.
+pub fn train_starter(
+    project_dir: &Path,
+    output_dir: &Path,
+    feature_dim: usize,
+) -> Result<(), String> {
     std::fs::create_dir_all(output_dir).map_err(|e| format!("mkdir: {}", e))?;
 
     // 1. Slop detector (binary: clean=0, slop=1).
@@ -589,7 +597,7 @@ pub fn train_starter(project_dir: &Path, output_dir: &Path) -> Result<(), String
         name: "slop_detector".into(),
         num_classes: 2,
         class_names: vec!["clean".into(), "slop".into()],
-        feature_dim: FEATURE_DIM,
+        feature_dim,
         epochs: 30,
         lr: 0.01,
     };
@@ -601,7 +609,7 @@ pub fn train_starter(project_dir: &Path, output_dir: &Path) -> Result<(), String
         name: "code_vs_english".into(),
         num_classes: 2,
         class_names: vec!["english".into(), "code".into()],
-        feature_dim: FEATURE_DIM,
+        feature_dim,
         epochs: 30,
         lr: 0.01,
     };
@@ -613,7 +621,7 @@ pub fn train_starter(project_dir: &Path, output_dir: &Path) -> Result<(), String
         name: "lang_detector".into(),
         num_classes: 5,
         class_names: vec!["rust".into(), "python".into(), "javascript".into(), "go".into(), "shell".into()],
-        feature_dim: FEATURE_DIM,
+        feature_dim,
         epochs: 50,
         lr: 0.005,
     };

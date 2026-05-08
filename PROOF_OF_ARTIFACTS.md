@@ -93,17 +93,27 @@ flowchart TD
 
 3 models trained on bt's RX 5700 XT via [any-gpu](https://github.com/cochranblock/any-gpu) Vulkan. Weights in [`assets/models/`](assets/models/).
 
+Original training (256-dim hash):
+
 | Model | Params | Accuracy | Train Time | Inference | Source |
 |-------|--------|----------|-----------|-----------|--------|
 | slop_detector | 514 | 89.4% | 18.4s | ~5us | [`assets/models/slop_detector/`](assets/models/slop_detector/) |
 | code_vs_english | 514 | 94.2% | 4.2s | ~4us | [`assets/models/code_vs_english/`](assets/models/code_vs_english/) |
 | lang_detector | 1,285 | 97.0% | 12.9s | ~6us | [`assets/models/lang_detector/`](assets/models/lang_detector/) |
 
+Retrained 2026-05-07 at 8192-dim hash (gap 12.1, [`src/bin/retrain-starters.rs`](src/bin/retrain-starters.rs)). Mixed result — see TOI for analysis:
+
+| Model | Params (new) | Train Acc (new) | Δ |
+|-------|--------------|-----------------|---|
+| slop_detector | 16,386 | 88.5% | -0.9 |
+| code_vs_english | 16,386 | **97.1%** | **+2.9** |
+| lang_detector | 40,965 | 93.3% | -3.7 (overparameterized — only 105 train examples) |
+
 Training corpus: 240,596 crates from crates.io (34GB) on bt `/mnt/data/crates/`.
 
 A 4th starter — `intent_classifier` (banking77, 77 classes, 4096 hash dim, 315,469 params) — was added 2026-05-06. CPU-trained on bt (no GPU); see [`assets/models/intent_classifier/`](assets/models/intent_classifier/). **Held-out test accuracy: 80.36%** on the banking77 test split (3,080 examples; macro F1 81.10%) per [`src/bin/bench-classify.rs`](src/bin/bench-classify.rs).
 
-Packed into [`assets/starter.nanobyte`](assets/starter.nanobyte) (1,271,548 bytes — 64B header + 320B manifest + ~1.27MB weights + 36B NSIG, BLAKE3-verified) via [`src/bin/pack-starter.rs`](src/bin/pack-starter.rs). 317,782 total params across 4 models.
+Packed into [`assets/starter.nanobyte`](assets/starter.nanobyte) (1,557,244 bytes — 64B header + 320B manifest + ~1.55MB weights + 36B NSIG, BLAKE3-verified) via [`src/bin/pack-starter.rs`](src/bin/pack-starter.rs). 389,206 total params across 4 models (3 starters at 8192-dim hash + intent_classifier at 4096-dim).
 
 ## Planned: Full Pyramid
 

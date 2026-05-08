@@ -137,6 +137,10 @@ path = "src/bin/train-intent.rs"
 name = "bench-classify"
 path = "src/bin/bench-classify.rs"
 
+[[bin]]
+name = "retrain-starters"
+path = "src/bin/retrain-starters.rs"
+
 [profile.dev]
 opt-level = 1              # dev builds still fast to run
 debug = true               # full debuginfo

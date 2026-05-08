@@ -1,1 +1,12 @@
-{"name":"code_vs_english","feature_dim":256,"num_classes":2,"class_names":["english", "code"],"total_params":514,"best_accuracy":0.9423077,"architecture":"trigram_hash_linear","trained_on":"AMD Radeon RX 5700 XT via any-gpu Vulkan"}
+{
+  "architecture": "trigram_hash_linear",
+  "best_accuracy": 0.9714781641960144,
+  "class_names": [
+    "english",
+    "code"
+  ],
+  "feature_dim": 8192,
+  "name": "code_vs_english",
+  "num_classes": 2,
+  "total_params": 16386
+}

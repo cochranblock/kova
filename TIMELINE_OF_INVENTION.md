@@ -115,6 +115,24 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-05-07 — Hash Dim Bump 256 → 8192 for Original 3 Starters (gap 12.1)
+
+**What:** Retrained `slop_detector`, `code_vs_english`, `lang_detector` at FEATURE_DIM=8192 (was 256). New `src/bin/retrain-starters.rs` shells out to `kova::swarm::train::train_starter`, which now takes `feature_dim` as a parameter (was a hardcoded const). Repacked `assets/starter.nanobyte` with all 4 models (size 1,271,548 → 1,557,244 bytes). 12 nanobyte tests pass including parity vs `swarm::train::predict` on every model.
+
+Honest mixed-result table (training-set self-reported accuracy; not held-out):
+
+| Model | Old (256-dim) | New (8192-dim) | Δ |
+|---|---|---|---|
+| slop_detector | 89.4% (514 params) | 88.5% (16,386 params) | -0.9 |
+| code_vs_english | 94.2% (514 params) | **97.1%** (16,386 params) | **+2.9** |
+| lang_detector | 97.0% (1,285 params) | 93.3% (40,965 params) | **-3.7** |
+
+The gap-analysis hypothesis (collision rate caps quality) holds for `code_vs_english` (4,032 train examples → +2.9pp gain). It does NOT hold cleanly for the other two — `slop_detector` is flat-to-slightly-down, and `lang_detector` actively regresses. Most likely cause for `lang_detector`: **only 105 training examples** for 5 classes with 40K params — ~400× overparameterized. The model is still in early SGD trajectory at epoch 50 (started at 21.9%, still climbing). More data or better init/regularization needed before this dim is really useful here. Documented as a follow-up: gap 12.1.b — "lang_detector overparameterized at 8192 dim, training corpus needs expansion before dim bump pays off."
+
+`intent_classifier` (banking77, gap 12.2 commit) was deliberately *not* re-bumped from 4096 to 8192 in this pass — that doubles its embed size, and the 80.36% banking77 result was already the meaningful anchor. A separate measured iteration can attempt the bump.
+**Commit:** *(this commit)*  
+**AI Role:** AI implemented retraining bin + the train_starter signature change, ran retrain, surfaced the mixed-result reality. Human directed item 4 (don't skip).
+
 ### 2026-05-06 — intent_classifier + Bench Harness on banking77 (gap 12.2)
 
 **What:** Trained the missing T1 starter — banking77 intent classifier — and built the held-out test harness that anchors every quality conversation in real numbers. Hash dim bumped from 256 → 4096 (Weinberger 2009 collision rate ~98% → ~77%) for this model only. **315,469 params, ~1.25 MB**, packed into `assets/starter.nanobyte` alongside the original 3 starters (file: 9,592 B → 1,271,548 B, 130× larger). New `src/bin/train-intent.rs` trains from `assets/datasets/banking77/{categories.json,train.csv}` (10K examples, 77 classes; 30 epochs; ~148 s on bt CPU). New `src/bin/bench-classify.rs` measures held-out test accuracy:
