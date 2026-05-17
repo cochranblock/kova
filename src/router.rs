@@ -5,7 +5,7 @@
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 use std::path::Path;
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
 use std::thread;
 
 const CLASSIFY_PROMPT: &str = r#"Classify the user's message as exactly one of: code_gen, refactor, explain, fix, run, custom, needs_clarification.

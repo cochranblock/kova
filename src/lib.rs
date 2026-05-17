@@ -202,14 +202,17 @@ pub fn f315() -> anyhow::Result<()> {
     let target_dir = project.join("target");
     let mut build_cmd = Command::new("cargo");
     build_cmd
-        .args(["build", "--release", "--features", "serve"])
+        .args(["build", "--release", "--features", "serve,inference"])
         .current_dir(project)
-        .env("CARGO_TARGET_DIR", &target_dir);
+        .env("CARGO_TARGET_DIR", &target_dir)
+        // Skip WASM thin-client build: not needed for smoke/logic tests and
+        // the wasm-bindgen CLI version must exactly match the Rust dep version.
+        .env("KOVA_SKIP_WASM", "1");
     if on_macos {
         build_cmd.args(["--target", "aarch64-apple-darwin"]);
-        println!("kova test: cargo build --release --features serve --target aarch64-apple-darwin...");
+        println!("kova test: cargo build --release --features serve,inference --target aarch64-apple-darwin...");
     } else {
-        println!("kova test: cargo build --release --features serve (native)...");
+        println!("kova test: cargo build --release --features serve,inference (native)...");
     }
     let (ok, stderr) = match build_cmd.output() {
         Ok(o) => {

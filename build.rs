@@ -32,7 +32,9 @@ fn build_wasm() {
     println!("cargo:rerun-if-changed=src/web_client");
     println!("cargo:rerun-if-changed=wasm/Cargo.toml");
 
-    // Build WASM thin client for wasm32
+    // Build WASM thin client for wasm32.
+    // Unset CARGO_TARGET_DIR: the parent cargo build sets it to the main workspace's
+    // target/ dir, which would deadlock (both builds trying to hold the same .cargo-lock).
     let status = Command::new("cargo")
         .args([
             "build",
@@ -43,6 +45,7 @@ fn build_wasm() {
             "--release",
         ])
         .current_dir(manifest_dir)
+        .env_remove("CARGO_TARGET_DIR")
         .status()
         .expect("failed to run cargo build for wasm client");
 
