@@ -1216,8 +1216,7 @@ fn f407(call: &t103) -> t104 {
         rendered.push_str(&format!("{} {} {}\n", marker, status, content));
     }
 
-    let store_path = checkpoint_db_path();
-    let db = match sled::open(&store_path) {
+    let db = match open_checkpoint_db() {
         Ok(d) => d,
         Err(e) => {
             return t104 {
@@ -1287,8 +1286,7 @@ fn f408(call: &t103) -> t104 {
         "status": "queued",
     });
 
-    let store_path = checkpoint_db_path();
-    match sled::open(&store_path) {
+    match open_checkpoint_db() {
         Ok(db) => match db.open_tree(SUBAGENT_TREE) {
             Ok(tree) => {
                 if let Err(e) = tree.insert(task_id.as_bytes(), entry.to_string().as_bytes()) {
@@ -1885,15 +1883,24 @@ fn find_pixel_forge() -> Option<PathBuf> {
 /// Sled tree name for file checkpoints.
 const CHECKPOINT_TREE: &str = "checkpoints";
 
-/// Checkpoint DB path. Tests override via CHECKPOINT_DB thread-local.
-fn checkpoint_db_path() -> std::path::PathBuf {
+/// Open (or reuse) the checkpoint sled::Db.
+/// Tests pre-open the db via with_test_sled and store it in CHECKPOINT_DB so
+/// that f383 and f384 share one connection — sled's background threads hold the
+/// file lock briefly after Db drops, causing EAGAIN on a rapid reopen.
+/// Production falls through to sled::open each time (no caching needed there).
+fn open_checkpoint_db() -> Result<sled::Db, sled::Error> {
     CHECKPOINT_DB.with(|cell| {
-        cell.borrow().clone().unwrap_or_else(crate::config::sled_path)
+        if let Some((_, db)) = cell.borrow().as_ref() {
+            return Ok(db.clone()); // reuse the cached connection (sled::Db is Arc-backed)
+        }
+        sled::open(crate::config::sled_path())
     })
 }
 
 std::thread_local! {
-    static CHECKPOINT_DB: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+    // Stores (path, open Db) while inside with_test_sled; None in production.
+    static CHECKPOINT_DB: std::cell::RefCell<Option<(std::path::PathBuf, sled::Db)>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// f383=checkpoint. Snapshot file contents into sled before write/edit.
@@ -1906,8 +1913,7 @@ fn f383(path: &Path) {
         Err(_) => return,
     };
 
-    let store_path = checkpoint_db_path();
-    let db = match sled::open(&store_path) {
+    let db = match open_checkpoint_db() {
         Ok(db) => db,
         Err(_) => return,
     };
@@ -1941,8 +1947,7 @@ fn f384(call: &t103, project_dir: &Path) -> t104 {
         Err(e) => return e,
     };
 
-    let store_path = checkpoint_db_path();
-    let db = match sled::open(&store_path) {
+    let db = match open_checkpoint_db() {
         Ok(db) => db,
         Err(e) => {
             return t104 {
@@ -2442,15 +2447,18 @@ This JSON is missing a closing brace — should be skipped.
     // ── Checkpoint/Undo tests ──────────────────────────────
 
     /// Helper: set up an isolated sled DB for checkpoint tests.
+    /// Pre-opens the db and keeps it alive for the whole test so that f383 and
+    /// f384 share one connection — avoids sled's EAGAIN on rapid reopen.
     fn with_test_sled<F: FnOnce(&Path)>(f: F) {
         let sled_tmp = tempfile::TempDir::new().unwrap();
         let sled_path = sled_tmp.path().join("test_sled.db");
+        let db = sled::open(&sled_path).expect("open test sled");
         CHECKPOINT_DB.with(|cell| {
-            *cell.borrow_mut() = Some(sled_path.clone());
+            *cell.borrow_mut() = Some((sled_path.clone(), db));
         });
         f(&sled_path);
         CHECKPOINT_DB.with(|cell| {
-            *cell.borrow_mut() = None;
+            *cell.borrow_mut() = None; // drops the Db handle, releasing the lock cleanly
         });
     }
 
@@ -2463,7 +2471,7 @@ This JSON is missing a closing brace — should be skipped.
 
             f383(&file);
 
-            let db = sled::open(sled_path).unwrap();
+            let db = open_checkpoint_db().unwrap();
             let tree = db.open_tree(CHECKPOINT_TREE).unwrap();
 
             let latest_key = format!("checkpoint_latest:{}", file.to_string_lossy());
@@ -2579,7 +2587,7 @@ This JSON is missing a closing brace — should be skipped.
 
     #[test]
     fn f141_write_creates_checkpoint() {
-        with_test_sled(|sled_path| {
+        with_test_sled(|_sled_path| {
             let tmp = tempfile::TempDir::new().unwrap();
             let project = tmp.path().canonicalize().unwrap();
             let file = project.join("cp_test.txt");
@@ -2598,7 +2606,7 @@ This JSON is missing a closing brace — should be skipped.
 
             assert_eq!(std::fs::read_to_string(&file).unwrap(), "new content");
 
-            let db = sled::open(sled_path).unwrap();
+            let db = open_checkpoint_db().unwrap();
             let tree = db.open_tree(CHECKPOINT_TREE).unwrap();
             let latest_key = format!("checkpoint_latest:{}", file.to_string_lossy());
             let ck = tree.get(latest_key.as_bytes()).unwrap().unwrap();
