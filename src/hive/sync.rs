@@ -14,17 +14,17 @@ pub fn push_path(cfg: &Config, node: &Node, rel_path: &str) -> Result<(), String
     let (src, dst) = if Path::new(&src).is_dir() {
         (format!("{}/", src), format!("{}/", dst))
     } else {
-        if let Some(parent) = Path::new(rel_path).parent() {
-            if !parent.as_os_str().is_empty() {
-                let _ = Command::new("ssh")
-                    .args([
-                        "-o", "ConnectTimeout=3",
-                        "-o", "BatchMode=yes",
-                        &node.host,
-                        &format!("mkdir -p {}/{}", cfg.remote_base, parent.display()),
-                    ])
-                    .output();
-            }
+        if let Some(parent) = Path::new(rel_path).parent()
+            && !parent.as_os_str().is_empty()
+        {
+            let _ = Command::new("ssh")
+                .args([
+                    "-o", "ConnectTimeout=3",
+                    "-o", "BatchMode=yes",
+                    &node.host,
+                    &format!("mkdir -p {}/{}", cfg.remote_base, parent.display()),
+                ])
+                .output();
         }
         (src, dst)
     };

@@ -16,7 +16,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-/// Feature dimension for trigram hash. 256 gives good separation at tiny param count.
+#[cfg(test)]
 const FEATURE_DIM: usize = 256;
 
 /// Training example: text + class label.
@@ -134,8 +134,8 @@ pub fn f389(config: &SubatomicConfig, examples: &[Example], output_dir: &Path) -
                 probs[c] = (logits[c] - max_logit).exp();
                 sum_exp += probs[c];
             }
-            for c in 0..nc {
-                probs[c] /= sum_exp;
+            for p in probs.iter_mut().take(nc) {
+                *p /= sum_exp;
             }
 
             // Loss: -log(prob[target]).
@@ -693,8 +693,8 @@ pub fn predict(model_dir: &Path, text: &str) -> Result<(usize, String, f32), Str
         probs[c] = (logits[c] - max_logit).exp();
         sum_exp += probs[c];
     }
-    for c in 0..nc {
-        probs[c] /= sum_exp;
+    for p in probs.iter_mut().take(nc) {
+        *p /= sum_exp;
     }
 
     let pred = probs

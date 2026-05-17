@@ -307,10 +307,9 @@ fn walk_jsonl(dir: &Path) -> Vec<PathBuf> {
 /// out_dir:
 ///   - `all.jsonl`           — every example, regardless of kova mapping
 ///   - `mapped.jsonl`        — only examples with a kova equivalent (for the
-///                             tier-1 tool_router classifier — these are the
-///                             tools kova can currently dispatch)
+///     tier-1 tool_router classifier — these are the tools kova can dispatch)
 ///   - `by_tool/<name>.jsonl` — per-tool buckets, named by kova snake_case
-///                             (mapped examples only)
+///     (mapped examples only)
 ///   - `stats.json`          — T218 dump of the mining run
 ///
 /// Returns total examples written across all files.

@@ -230,6 +230,8 @@ const COMPACT_KEEP_RECENT: usize = 4;
 /// Send old turns to inference with a summarize prompt, replace them with the summary.
 /// Returns the (possibly compacted) conversation. If under threshold, returns as-is.
 pub fn f380(conversation: &str, budget: &t111, model_path: &Path) -> String {
+    #[cfg(not(feature = "inference"))]
+    let _ = model_path;
     let available = budget.remaining();
     let current_tokens = f170(conversation);
     let threshold = (available as f64 * COMPACT_THRESHOLD) as usize;

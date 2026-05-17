@@ -152,30 +152,30 @@ pub fn f393(cfg: &t177) -> anyhow::Result<t182> {
 
     // Remote node histories (optional)
     if cfg.remote {
+        let re_zsh_remote = Regex::new(r"^: \d+:\d+;(.+)$").unwrap();
         for node in &["gd", "lf", "bt", "st", "mm"] {
             let output = std::process::Command::new("ssh")
                 .args(["-o", "ConnectTimeout=5", node,
                        "cat ~/.bash_history ~/.zsh_history 2>/dev/null"])
                 .output();
-            if let Ok(out) = output {
-                if out.status.success() {
-                    let text = String::from_utf8_lossy(&out.stdout);
-                    let re_zsh = Regex::new(r"^: \d+:\d+;(.+)$").unwrap();
-                    for line in text.lines() {
-                        let cmd = if let Some(caps) = re_zsh.captures(line) {
-                            caps.get(1).unwrap().as_str().to_string()
-                        } else {
-                            line.trim().to_string()
-                        };
-                        if !cmd.is_empty() && !is_secret_line(&cmd) {
-                            commands.push(t178 {
-                                cmd,
-                                source: format!("ssh:{node}"),
-                            });
-                        }
+            if let Ok(out) = output
+                && out.status.success()
+            {
+                let text = String::from_utf8_lossy(&out.stdout);
+                for line in text.lines() {
+                    let cmd = if let Some(caps) = re_zsh_remote.captures(line) {
+                        caps.get(1).unwrap().as_str().to_string()
+                    } else {
+                        line.trim().to_string()
+                    };
+                    if !cmd.is_empty() && !is_secret_line(&cmd) {
+                        commands.push(t178 {
+                            cmd,
+                            source: format!("ssh:{node}"),
+                        });
                     }
-                    hist_sources += 1;
                 }
+                hist_sources += 1;
             }
         }
     }
@@ -235,7 +235,7 @@ pub fn f393(cfg: &t177) -> anyhow::Result<t182> {
     let mut used_names = alias_names.clone();
 
     for (i, (norm, raw, freq, tok, save)) in scored.iter().enumerate() {
-        let (alias_name, alias_body) = generate_alias(&norm, &raw, &mut used_names);
+        let (alias_name, alias_body) = generate_alias(norm, raw, &used_names);
         used_names.insert(alias_name.clone());
         suggestions.push(t180 {
             rank: i + 1,
@@ -279,7 +279,7 @@ fn f394(path: &Path) -> Vec<t178> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         let cmd = if let Some(caps) = re_zsh.captures(&line) {
             caps.get(1).unwrap().as_str().to_string()
         } else {
@@ -305,7 +305,7 @@ fn f395(path: &Path) -> Vec<t178> {
     // Match "command":"<value>" in JSON lines
     let re_cmd = Regex::new(r#""command"\s*:\s*"((?:[^"\\]|\\.)*)""#).unwrap();
 
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         // Fast pre-filter: skip lines without "command"
         if !line.contains("\"command\"") {
             continue;
@@ -410,19 +410,19 @@ fn f396(
 
     // Scan copilot command history
     let copilot_hist = home.join(".copilot/command-history-state.json");
-    if copilot_hist.exists() {
-        if let Ok(content) = std::fs::read_to_string(&copilot_hist) {
-            let re = Regex::new(r#""command"\s*:\s*"([^"]+)""#).unwrap();
-            for caps in re.captures_iter(&content) {
-                let cmd = caps.get(1).unwrap().as_str();
-                if re_cmdlike.is_match(cmd) {
-                    let norm = normalize_cmd(cmd);
-                    if !alias_map.contains_key(&norm) {
-                        mentions.push(t182r {
-                            file: "Copilot:command-history".to_string(),
-                            command: cmd.to_string(),
-                        });
-                    }
+    if copilot_hist.exists()
+        && let Ok(content) = std::fs::read_to_string(&copilot_hist)
+    {
+        let re = Regex::new(r#""command"\s*:\s*"([^"]+)""#).unwrap();
+        for caps in re.captures_iter(&content) {
+            let cmd = caps.get(1).unwrap().as_str();
+            if re_cmdlike.is_match(cmd) {
+                let norm = normalize_cmd(cmd);
+                if !alias_map.contains_key(&norm) {
+                    mentions.push(t182r {
+                        file: "Copilot:command-history".to_string(),
+                        command: cmd.to_string(),
+                    });
                 }
             }
         }

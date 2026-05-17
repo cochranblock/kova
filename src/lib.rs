@@ -185,33 +185,33 @@ pub fn f315() -> anyhow::Result<()> {
         anyhow::bail!("TRIPLE SIMS: one or more simulations failed");
     }
 
-    println!("kova test: cargo test -p kova 3x...");
+    println!("kova test: cargo test -p kova-engine 3x...");
     let project_buf = project.to_path_buf();
     let (ok, stderr) = crate::exopack::triple_sims::f61_with_args(
         &project_buf,
         3,
-        &["-p", "kova", "--features", "serve,tests"],
+        &["-p", "kova-engine", "--features", "tests"],
     );
     if !ok {
         anyhow::bail!("{}", stderr);
     }
 
-    println!("kova test: cargo build --release --features serve --target aarch64-apple-darwin...");
+    // Cross-compile for aarch64-apple-darwin on macOS (the Mac Mini deployment target).
+    // On Linux/other, build native release — no cross-toolchain available.
+    let on_macos = cfg!(target_os = "macos");
     let target_dir = project.join("target");
-    let target_triple = "aarch64-apple-darwin";
-    let (ok, stderr) = match Command::new("cargo")
-        .args([
-            "build",
-            "--release",
-            "--features",
-            "serve",
-            "--target",
-            target_triple,
-        ])
+    let mut build_cmd = Command::new("cargo");
+    build_cmd
+        .args(["build", "--release", "--features", "serve"])
         .current_dir(project)
-        .env("CARGO_TARGET_DIR", &target_dir)
-        .output()
-    {
+        .env("CARGO_TARGET_DIR", &target_dir);
+    if on_macos {
+        build_cmd.args(["--target", "aarch64-apple-darwin"]);
+        println!("kova test: cargo build --release --features serve --target aarch64-apple-darwin...");
+    } else {
+        println!("kova test: cargo build --release --features serve (native)...");
+    }
+    let (ok, stderr) = match build_cmd.output() {
         Ok(o) => {
             let s = String::from_utf8_lossy(&o.stderr).into_owned();
             (o.status.success(), s)
@@ -225,9 +225,12 @@ pub fn f315() -> anyhow::Result<()> {
     println!("kova test: release smoke (bootstrap + c2 nodes)...");
     let tmp = tempfile::TempDir::new()?;
     let home = tmp.path().to_path_buf();
-    let kova_bin = project
-        .join(format!("target/{}/release/kova", target_triple))
-        .with_extension(std::env::consts::EXE_EXTENSION);
+    let kova_bin = if on_macos {
+        project.join("target/aarch64-apple-darwin/release/kova")
+    } else {
+        project.join("target/release/kova")
+    }
+    .with_extension(std::env::consts::EXE_EXTENSION);
     if !kova_bin.exists() {
         anyhow::bail!("release binary not found: {:?}", kova_bin);
     }

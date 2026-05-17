@@ -163,6 +163,7 @@ pub enum T204 {
 }
 
 /// Main TUI app state.
+#[allow(dead_code)]
 struct App {
     mode: T201,
     input: String,
@@ -391,7 +392,7 @@ impl App {
         self.scroll = u16::MAX;
     }
 
-    /// Parse response into structured message blocks.
+    #[allow(dead_code)]
     fn parse_and_push_response(&mut self, response: &str) {
         let mut current_text = String::new();
         let mut in_code_block = false;
