@@ -2464,7 +2464,7 @@ This JSON is missing a closing brace — should be skipped.
 
     #[test]
     fn f383_checkpoint_stores_content() {
-        with_test_sled(|sled_path| {
+        with_test_sled(|_sled_path| {
             let tmp = tempfile::TempDir::new().unwrap();
             let file = tmp.path().join("test.txt");
             std::fs::write(&file, "original content").unwrap();
