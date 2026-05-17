@@ -83,6 +83,11 @@ enum Cmd {
     /// MCP server (Model Context Protocol). Stdio transport for AI tool interop.
     #[command(name = "mcp")]
     Mcp(McpArgs),
+    /// Train the tier-1 tool_router classifier (sub-100K params). Use --data
+    /// with a mined JSONL or --mine-projects to mine ~/.claude/projects first.
+    /// Saves to <output>/tool_router/ (default ~/.kova/models/).
+    #[command(name = "train-router")]
+    TrainRouter(TrainRouterArgs),
     /// CI mode. Headless quality gate: run check/clippy/test, watch for changes.
     #[command(name = "ci")]
     Ci(CiArgs),
@@ -160,6 +165,42 @@ struct McpArgs {
     /// Project directory (default: cwd).
     #[arg(short, long)]
     project: Option<std::path::PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct TrainRouterArgs {
+    /// Training data JSONL (rows of T217). If absent, --mine-projects must be set.
+    #[arg(long)]
+    data: Option<std::path::PathBuf>,
+    /// Mine ~/.claude/projects/ directly instead of loading from JSONL.
+    #[arg(long)]
+    mine_projects: bool,
+    /// Output directory; the trained model is written to <output>/tool_router/.
+    /// Defaults to ~/.kova/models/.
+    #[arg(long)]
+    output: Option<std::path::PathBuf>,
+    /// Trigram feature dimension (per swarm/train.rs).
+    #[arg(long, default_value_t = 8192)]
+    feature_dim: usize,
+    /// Training epochs.
+    #[arg(long, default_value_t = 30)]
+    epochs: usize,
+    /// Learning rate.
+    #[arg(long, default_value_t = 0.01)]
+    lr: f64,
+    /// Per-class cap: undersample classes that have more examples than this.
+    /// Defaults to disabled (use all examples) — the Bash bias issue.
+    #[arg(long)]
+    max_per_class: Option<usize>,
+    /// Per-class floor: oversample classes that have fewer than this many
+    /// examples by cycling through their available examples. 0 disables.
+    #[arg(long, default_value_t = 0)]
+    min_per_class: usize,
+    /// Mix in the canonical synthetic intent→tool pairs from
+    /// swarm::tool_router::SYNTH_ROUTER_PAIRS. Real transcripts skew toward
+    /// Bash; synthetic data teaches the lexical signals for rare verbs.
+    #[arg(long)]
+    mix_synthetic: bool,
 }
 
 #[derive(clap::Args)]
@@ -2295,6 +2336,135 @@ echo "kova ssh entry installed"
     Ok(())
 }
 
+fn run_train_router(args: TrainRouterArgs) -> anyhow::Result<()> {
+    use kova::swarm::train::Example;
+    use kova::swarm::tool_router::{f424, tool_to_class, RouterTrainConfig};
+
+    let mut examples: Vec<Example> = if let Some(data) = args.data.clone() {
+        let (ex, skipped) = kova::swarm::tool_router::f426(&data)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        println!(
+            "train-router: loaded {} examples from {} ({} skipped)",
+            ex.len(),
+            data.display(),
+            skipped
+        );
+        ex
+    } else if args.mine_projects {
+        let home = std::env::var("HOME")
+            .map_err(|e| anyhow::anyhow!("HOME unset: {}", e))?;
+        let projects = std::path::PathBuf::from(home).join(".claude/projects");
+        if !projects.exists() {
+            anyhow::bail!("{} does not exist", projects.display());
+        }
+        let (raw, stats) = kova::training_mine::f413(&projects);
+        println!("{}", kova::training_mine::f416(&stats));
+        let ex: Vec<Example> = raw
+            .into_iter()
+            .filter_map(|t| {
+                let kova_name = t.tool_name_kova?;
+                let label = tool_to_class(&kova_name)?;
+                Some(Example {
+                    text: t.prompt,
+                    label,
+                })
+            })
+            .collect();
+        println!("train-router: {} examples after kova-mapping filter", ex.len());
+        ex
+    } else {
+        anyhow::bail!("train-router: provide --data <jsonl> or --mine-projects");
+    };
+
+    if args.mix_synthetic {
+        let synth = kova::swarm::tool_router::synth_examples();
+        println!(
+            "train-router: mixing in {} synthetic intent→tool pairs",
+            synth.len()
+        );
+        examples.extend(synth);
+    }
+
+    if examples.is_empty() {
+        anyhow::bail!("train-router: no usable examples after filtering");
+    }
+
+    // Class balance: optional undersample (max-per-class) + oversample
+    // (min-per-class). Both off by default — caller opts in.
+    if args.max_per_class.is_some() || args.min_per_class > 0 {
+        let total_classes = kova::swarm::tool_router::KOVA_ROUTER_TOOLS.len();
+        let mut by_class: Vec<Vec<Example>> = (0..total_classes).map(|_| Vec::new()).collect();
+        for ex in examples {
+            if ex.label < total_classes {
+                by_class[ex.label].push(ex);
+            }
+        }
+        let mut balanced: Vec<Example> = Vec::new();
+        for (idx, mut bucket) in by_class.into_iter().enumerate() {
+            let original = bucket.len();
+            // Undersample: deterministic stride-based pick rather than RNG —
+            // keeps training reproducible across runs with same data + seed.
+            if let Some(cap) = args.max_per_class
+                && bucket.len() > cap
+            {
+                let len = bucket.len();
+                let stride = len as f64 / cap as f64;
+                let kept: Vec<Example> = (0..cap)
+                    .map(|i| {
+                        let pick = ((i as f64 * stride) as usize).min(len - 1);
+                        Example {
+                            text: bucket[pick].text.clone(),
+                            label: bucket[pick].label,
+                        }
+                    })
+                    .collect();
+                bucket = kept;
+            }
+            // Oversample: cycle through bucket until we hit min_per_class.
+            // Skip empty buckets — there's nothing to cycle from.
+            if !bucket.is_empty() && bucket.len() < args.min_per_class {
+                let mut out: Vec<Example> = Vec::with_capacity(args.min_per_class);
+                let mut i = 0;
+                while out.len() < args.min_per_class {
+                    let src = &bucket[i % bucket.len()];
+                    out.push(Example {
+                        text: src.text.clone(),
+                        label: src.label,
+                    });
+                    i += 1;
+                }
+                bucket = out;
+            }
+            let kept = bucket.len();
+            let class_name = kova::swarm::tool_router::class_to_tool(idx).unwrap_or("?");
+            println!(
+                "  class {idx:2} {class_name:24}  {original:5} -> {kept:5}"
+            );
+            balanced.extend(bucket);
+        }
+        println!("train-router: {} examples after balancing", balanced.len());
+        examples = balanced;
+    }
+
+    let output = args
+        .output
+        .unwrap_or_else(|| kova::config::kova_dir().join("models"));
+    std::fs::create_dir_all(&output)
+        .map_err(|e| anyhow::anyhow!("mkdir {}: {}", output.display(), e))?;
+
+    let cfg = RouterTrainConfig {
+        feature_dim: args.feature_dim,
+        epochs: args.epochs,
+        lr: args.lr,
+    };
+    let model_dir = f424(&examples, &output, &cfg).map_err(|e| anyhow::anyhow!("{}", e))?;
+    println!(
+        "train-router: trained model saved to {}",
+        model_dir.display()
+    );
+    Ok(())
+}
+
 fn run_export(args: ExportArgs) -> anyhow::Result<()> {
     match args.cmd {
         ExportCmd::Training { format, output } => {
@@ -2409,6 +2579,7 @@ fn main() -> anyhow::Result<()> {
         Some(Cmd::Rag(_))
         | Some(Cmd::Traces(_))
         | Some(Cmd::Mcp(_))
+        | Some(Cmd::TrainRouter(_))
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
         | Some(Cmd::Extract(_))
@@ -2484,6 +2655,7 @@ fn main() -> anyhow::Result<()> {
                     kova::mcp::f176(&project);
                     Ok(())
                 }
+                Cmd::TrainRouter(a) => run_train_router(a),
                 Cmd::Ci(a) => run_ci(a),
                 Cmd::Export(a) => run_export(a),
                 Cmd::Tokens => {
@@ -2673,6 +2845,7 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         Some(Cmd::Rag(_))
         | Some(Cmd::Traces(_))
         | Some(Cmd::Mcp(_))
+        | Some(Cmd::TrainRouter(_))
         | Some(Cmd::Ci(_))
         | Some(Cmd::Export(_))
         | Some(Cmd::Extract(_))

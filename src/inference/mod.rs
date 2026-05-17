@@ -14,6 +14,7 @@
 
 pub mod cluster;
 pub mod local;
+pub mod mock;
 pub mod providers;
 
 // Re-export everything from local for backward compat (callers use crate::inference::f76 etc).
@@ -45,6 +46,7 @@ pub fn f382(
     match mode.as_str() {
         "local" => f76(model_path, system_prompt, history, user_input),
         "remote" => remote_stream(system_prompt, user_input),
+        "mock" => mock::f422(model_path, system_prompt, history, user_input),
         _ => {
             // Auto: local if model exists, remote otherwise.
             if model_path.exists() {

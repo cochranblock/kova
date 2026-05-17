@@ -43,9 +43,31 @@ harvest = ["dep:chromiumoxide", "dep:futures", "dep:tokio-tungstenite", "dep:ima
 # conventions (Greenhouse / Lever / Workday / iCIMS / Ashby). No deps.
 # Source attributions live in atsisbroken's docs/ATS_FIXTURE_SOURCES.md.
 ats_fixtures = []
+# cc_features: Claude Code feature replication via MCP stdio. Diamond-pattern
+# black-box tests: kova-test spawns `kova mcp` and drives it via JSON-RPC 2.0
+# over stdio (same external interface Claude Desktop uses).
+cc_features = []
+# training_mine_tests: Diamond-pattern suite for the transcript miner. Tests
+# the public training_mine API end-to-end via tempdirs; no #[cfg(test)] forks.
+training_mine_tests = []
+# tool_call_parser: Diamond-pattern suite for f140 (LLM-output parser). MCP
+# can't exercise it because JSON-RPC delivers pre-parsed args; this hits the
+# lib API directly.
+tool_call_parser = []
+# router_spec: Documentation-as-tests contract for the future tier-1
+# tool_router classifier. Reports PEND entries until the classifier ships.
+router_spec = []
+# agent_loop_tests: End-to-end agent loop suite. Spawns `kova chat` with
+# KOVA_INFERENCE=mock and asserts on tool dispatch + filesystem side effects.
+# Pulls in `inference` because the chat subcommand is gated on it.
+agent_loop_tests = ["inference"]
+# router_training_tests: Tier-1 tool_router classifier suite. Trains a fresh
+# model on synthetic prompt→tool data in a tempdir, verifies predictions match
+# the router_spec contract. No external dependencies.
+router_training_tests = []
 # tests: exopack suite for kova-test binary. Linux-portable (no xcap/pipewire).
 # For video/demo recording (Mac-only deps via xcap+pipewire), add them explicitly.
-tests = ["triple_sims", "interface", "baked_demo", "screenshot"]
+tests = ["triple_sims", "interface", "baked_demo", "screenshot", "cc_features", "training_mine_tests", "tool_call_parser", "router_spec", "agent_loop_tests", "router_training_tests"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

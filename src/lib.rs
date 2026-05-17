@@ -76,7 +76,10 @@ pub mod browser;
     feature = "video", feature = "demo", feature = "baked_demo",
     feature = "triple_sims", feature = "devtools", feature = "standards_check",
     feature = "checkpoint", feature = "compaction", feature = "dual_mode",
-    feature = "perm_gate", feature = "harvest", feature = "ats_fixtures"
+    feature = "perm_gate", feature = "harvest", feature = "ats_fixtures",
+    feature = "cc_features", feature = "training_mine_tests",
+    feature = "tool_call_parser", feature = "router_spec",
+    feature = "agent_loop_tests", feature = "router_training_tests"
 ))]
 pub mod exopack;
 
@@ -122,6 +125,7 @@ pub mod syntax;
 pub mod tools;
 pub mod tokenization;
 pub mod training_data;
+pub mod training_mine;
 
 #[cfg(test)]
 mod test_utils;
@@ -262,6 +266,46 @@ pub fn f315() -> anyhow::Result<()> {
     let stdout = String::from_utf8_lossy(&c2_out.stdout);
     if !stdout.contains("lf") {
         anyhow::bail!("kova c2 nodes: expected lf in output, got:\n{}", stdout);
+    }
+
+    println!("kova test: cc_features (Claude Code replication via MCP stdio)...");
+    let (cc_ok, cc_report) = crate::exopack::cc_features::f406(&kova_bin);
+    print!("{}", cc_report);
+    if !cc_ok {
+        anyhow::bail!("cc_features: one or more Claude Code feature scenarios failed");
+    }
+
+    println!("kova test: training_mine_tests (transcript miner suite)...");
+    let (tm_ok, tm_report) = crate::exopack::training_mine_tests::f417();
+    print!("{}", tm_report);
+    if !tm_ok {
+        anyhow::bail!("training_mine_tests: one or more miner scenarios failed");
+    }
+
+    println!("kova test: tool_call_parser (f140 LLM-output parser)...");
+    let (pp_ok, pp_report) = crate::exopack::tool_call_parser::f418();
+    print!("{}", pp_report);
+    if !pp_ok {
+        anyhow::bail!("tool_call_parser: one or more parser scenarios failed");
+    }
+
+    println!("kova test: router_spec (tier-1 tool_router contract)...");
+    let (_rs_ok, rs_report) = crate::exopack::router_spec::f419();
+    print!("{}", rs_report);
+    // router_spec is informational-only until the classifier exists; do not bail.
+
+    println!("kova test: agent_loop_tests (end-to-end via mock inference)...");
+    let (al_ok, al_report) = crate::exopack::agent_loop_tests::f423(&kova_bin);
+    print!("{}", al_report);
+    if !al_ok {
+        anyhow::bail!("agent_loop_tests: one or more agent loop scenarios failed");
+    }
+
+    println!("kova test: router_training_tests (tier-1 tool_router classifier)...");
+    let (rt_ok, rt_report) = crate::exopack::router_training_tests::f428();
+    print!("{}", rt_report);
+    if !rt_ok {
+        anyhow::bail!("router_training_tests: one or more router scenarios failed");
     }
 
     if std::env::var("KOVA_SKIP_BAKED_DEMO").is_ok() || std::env::var("KOVA_BAKED_DEMO").is_err() {

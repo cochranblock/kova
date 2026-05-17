@@ -309,6 +309,119 @@ pub static TOOLS: &[t101] = &[
             },
         ],
     },
+    t101 {
+        name: "todo_write",
+        description: "Replace the agent task list with a new set of todos. Each item has content (description), status (pending|in_progress|completed), and activeForm (present continuous, shown while running). Returns the new list. Mirrors Claude Code TodoWrite.",
+        params: &[
+            t102 {
+                name: "todos",
+                param_type: "string",
+                required: true,
+                description: "JSON array of {content, status, activeForm} objects. Replaces the full list.",
+            },
+        ],
+    },
+    t101 {
+        name: "agent",
+        description: "Dispatch a subagent task. Each subagent_type has its own persona and tool set. Mirrors Claude Code Agent. Queued by default; set KOVA_AGENT_EXEC=spawn to execute synchronously via a spawned kova subprocess.",
+        params: &[
+            t102 {
+                name: "description",
+                param_type: "string",
+                required: true,
+                description: "Short (3-5 word) label for the task.",
+            },
+            t102 {
+                name: "prompt",
+                param_type: "string",
+                required: true,
+                description: "Full task description for the subagent.",
+            },
+            t102 {
+                name: "subagent_type",
+                param_type: "string",
+                required: false,
+                description: "Subagent persona: general-purpose, code-reviewer, explore, plan, etc. Default: general-purpose.",
+            },
+            t102 {
+                name: "run_in_background",
+                param_type: "string",
+                required: false,
+                description: "If 'true', queue without waiting. Default: false.",
+            },
+        ],
+    },
+    t101 {
+        name: "ask_user_question",
+        description: "Surface a structured clarification to the user. Returns the question + options formatted for the MCP client to render. Mirrors Claude Code AskUserQuestion. No model; pure presentation.",
+        params: &[
+            t102 {
+                name: "question",
+                param_type: "string",
+                required: true,
+                description: "The question to ask.",
+            },
+            t102 {
+                name: "options",
+                param_type: "string",
+                required: false,
+                description: "Optional JSON array of {label, description} objects.",
+            },
+        ],
+    },
+    t101 {
+        name: "web_fetch",
+        description: "HTTP GET a URL, return the response body as text. Truncated at 65536 bytes. 10s timeout. http/https schemes only. Mirrors Claude Code WebFetch.",
+        params: &[
+            t102 {
+                name: "url",
+                param_type: "string",
+                required: true,
+                description: "URL to fetch (http:// or https:// only).",
+            },
+            t102 {
+                name: "max_bytes",
+                param_type: "number",
+                required: false,
+                description: "Max response bytes to return (default 65536).",
+            },
+        ],
+    },
+    t101 {
+        name: "web_search",
+        description: "Run a web search via a configurable engine URL template. Default: DuckDuckGo HTML. Returns the response body text. Mirrors Claude Code WebSearch.",
+        params: &[
+            t102 {
+                name: "query",
+                param_type: "string",
+                required: true,
+                description: "Search query.",
+            },
+            t102 {
+                name: "engine_url",
+                param_type: "string",
+                required: false,
+                description: "URL template with literal '{query}' placeholder. Default: https://duckduckgo.com/html/?q={query}",
+            },
+        ],
+    },
+    t101 {
+        name: "enter_plan_mode",
+        description: "Enter read-only plan mode. write_file, edit_file, exec, bash, and undo_edit are blocked until exit_plan_mode. Read/grep/glob/web/todo/agent/memory remain available. Mirrors Claude Code EnterPlanMode.",
+        params: &[],
+    },
+    t101 {
+        name: "exit_plan_mode",
+        description: "Exit plan mode with a proposed plan. Returns to normal mode where mutating tools are re-enabled. The plan text is echoed back so the caller can present it for approval. Mirrors Claude Code ExitPlanMode.",
+        params: &[
+            t102 {
+                name: "plan",
+                param_type: "string",
+                required: true,
+                description: "Markdown-formatted description of what the agent intends to do once mutations are unblocked.",
+            },
+        ],
+    },
 ];
 
 // ── Tool Call Parsing (f140) ─────────────────────────────
@@ -467,9 +580,38 @@ fn perm_gate(action: &str, detail: &str) -> bool {
     matches!(input.trim(), "y" | "Y" | "yes")
 }
 
+/// Process-local plan mode flag. When true, mutating tools return a structured
+/// "blocked: in plan mode" error rather than executing. Each `kova mcp`
+/// subprocess gets its own fresh AtomicBool (initialized false), so plan mode
+/// is naturally session-scoped. enter_plan_mode and exit_plan_mode flip it.
+static PLAN_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Check whether plan mode is currently active in this process.
+fn is_plan_mode() -> bool {
+    PLAN_MODE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Tools that mutate project or process state. Blocked when plan mode is on.
+fn is_mutating_tool(name: &str) -> bool {
+    matches!(name, "write_file" | "edit_file" | "exec" | "bash" | "undo_edit")
+}
+
 /// f141=dispatch_tool. Execute a tool call, return result.
 /// When KOVA_PERMS=guarded, gates exec and git commit/push with user prompt.
+/// When plan mode is active, mutating tools (is_mutating_tool) return a
+/// structured error instead of executing.
 pub fn f141(call: &t103, project_dir: &Path) -> t104 {
+    // Plan mode gate: block mutating tools with a clear, recoverable error.
+    if is_plan_mode() && is_mutating_tool(&call.tool) {
+        return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!(
+                "'{}' blocked: in plan mode. Call exit_plan_mode with a plan to leave.",
+                call.tool
+            ),
+        };
+    }
     match call.tool.as_str() {
         "read_file" => f142(call, project_dir),
         "write_file" => {
@@ -549,6 +691,13 @@ pub fn f141(call: &t103, project_dir: &Path) -> t104 {
         "rag_search" => f166(call),
         "pixel_forge" => f220(call),
         "undo_edit" => f384(call, project_dir),
+        "todo_write" => f407(call),
+        "agent" => f408(call),
+        "ask_user_question" => f409(call),
+        "web_fetch" => f410(call),
+        "web_search" => f411(call),
+        "enter_plan_mode" => f420(call),
+        "exit_plan_mode" => f421(call),
         _ => t104 {
             tool: call.tool.clone(),
             success: false,
@@ -973,6 +1122,15 @@ fn f155(call: &t103) -> t104 {
         Err(e) => return e,
     };
     let memory_path = crate::config::kova_dir().join("memory.md");
+    if let Some(parent) = memory_path.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("mkdir parent: {}", e),
+        };
+    }
     let existing = std::fs::read_to_string(&memory_path).unwrap_or_default();
     let new_content = if existing.is_empty() {
         format!("# Kova Memory\n\n{}\n", content)
@@ -990,6 +1148,437 @@ fn f155(call: &t103) -> t104 {
             success: false,
             output: format!("write: {}", e),
         },
+    }
+}
+
+// ── f407: todo_write, f408: agent ────────────────────────
+
+const TODOS_TREE: &str = "todos";
+const TODOS_KEY: &str = "current";
+const SUBAGENT_TREE: &str = "subagent_tasks";
+
+/// f407=todo_write. Replace the agent task list. Mirrors Claude Code TodoWrite.
+/// Input: `todos` = JSON array of {content, status, activeForm}.
+/// Returns the saved list formatted with status markers.
+fn f407(call: &t103) -> t104 {
+    let raw = match require_arg(call, "todos") {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+
+    let parsed: serde_json::Value = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(e) => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("todos: invalid JSON: {}", e),
+            };
+        }
+    };
+    let arr = match parsed.as_array() {
+        Some(a) => a,
+        None => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: "todos: expected JSON array".into(),
+            };
+        }
+    };
+
+    let mut rendered = String::new();
+    for (i, item) in arr.iter().enumerate() {
+        let content = item.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let status = item.get("status").and_then(|v| v.as_str()).unwrap_or("");
+        if content.is_empty() {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("todos[{}]: missing or empty content", i),
+            };
+        }
+        if !matches!(status, "pending" | "in_progress" | "completed") {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!(
+                    "todos[{}]: status must be pending|in_progress|completed (got '{}')",
+                    i, status
+                ),
+            };
+        }
+        let marker = match status {
+            "completed" => "[x]",
+            "in_progress" => "[~]",
+            _ => "[ ]",
+        };
+        rendered.push_str(&format!("{} {} {}\n", marker, status, content));
+    }
+
+    let store_path = checkpoint_db_path();
+    let db = match sled::open(&store_path) {
+        Ok(d) => d,
+        Err(e) => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("todos: sled open: {}", e),
+            };
+        }
+    };
+    let tree = match db.open_tree(TODOS_TREE) {
+        Ok(t) => t,
+        Err(e) => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("todos: tree open: {}", e),
+            };
+        }
+    };
+    if let Err(e) = tree.insert(TODOS_KEY.as_bytes(), raw.as_bytes()) {
+        return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("todos: write: {}", e),
+        };
+    }
+
+    t104 {
+        tool: call.tool.clone(),
+        success: true,
+        output: format!("{} todos saved\n{}", arr.len(), rendered.trim_end()),
+    }
+}
+
+/// f408=agent. Dispatch a subagent task. Mirrors Claude Code Agent.
+/// Queues to sled by default; with KOVA_AGENT_EXEC=spawn, attempts to spawn
+/// `kova chat` and capture the response. Always returns task metadata.
+fn f408(call: &t103) -> t104 {
+    let description = match require_arg(call, "description") {
+        Ok(s) => s.to_string(),
+        Err(e) => return e,
+    };
+    let prompt = match require_arg(call, "prompt") {
+        Ok(s) => s.to_string(),
+        Err(e) => return e,
+    };
+    let subagent_type = get_arg(call, "subagent_type")
+        .unwrap_or("general-purpose")
+        .to_string();
+    let bg_raw = get_arg(call, "run_in_background").unwrap_or("false");
+    let run_in_background = matches!(bg_raw.trim().to_lowercase().as_str(), "true" | "1" | "yes");
+
+    let task_id = format!(
+        "task_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+
+    let entry = serde_json::json!({
+        "task_id": task_id,
+        "description": description,
+        "prompt": prompt,
+        "subagent_type": subagent_type,
+        "run_in_background": run_in_background,
+        "status": "queued",
+    });
+
+    let store_path = checkpoint_db_path();
+    match sled::open(&store_path) {
+        Ok(db) => match db.open_tree(SUBAGENT_TREE) {
+            Ok(tree) => {
+                if let Err(e) = tree.insert(task_id.as_bytes(), entry.to_string().as_bytes()) {
+                    return t104 {
+                        tool: call.tool.clone(),
+                        success: false,
+                        output: format!("agent: persist failed: {}", e),
+                    };
+                }
+            }
+            Err(e) => {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: format!("agent: tree open: {}", e),
+                };
+            }
+        },
+        Err(e) => {
+            return t104 {
+                tool: call.tool.clone(),
+                success: false,
+                output: format!("agent: sled open: {}", e),
+            };
+        }
+    }
+
+    let exec_mode = std::env::var("KOVA_AGENT_EXEC").unwrap_or_default();
+    if exec_mode == "spawn" && !run_in_background {
+        // Optional synchronous execution: spawn `kova chat <prompt>` via the
+        // current binary. The output is captured and returned as the tool
+        // result. Requires KOVA_INFERENCE to be configured.
+        match try_spawn_subagent(&prompt) {
+            Ok(out) => {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: true,
+                    output: format!("{} ({}): {}", task_id, subagent_type, out),
+                };
+            }
+            Err(e) => {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: format!("{}: spawn failed: {}", task_id, e),
+                };
+            }
+        }
+    }
+
+    t104 {
+        tool: call.tool.clone(),
+        success: true,
+        output: format!(
+            "queued: {} ({}) — {}\nprompt: {}",
+            task_id, subagent_type, description, prompt
+        ),
+    }
+}
+
+/// Spawn a kova chat subprocess for synchronous subagent execution. Used only
+/// when KOVA_AGENT_EXEC=spawn. Returns the captured stdout text.
+fn try_spawn_subagent(prompt: &str) -> Result<String, String> {
+    let current_exe = std::env::current_exe().map_err(|e| format!("current_exe: {}", e))?;
+    let output = Command::new(&current_exe)
+        .arg("chat")
+        .env("KOVA_PROMPT", prompt)
+        .output()
+        .map_err(|e| format!("spawn: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "exit {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+// ── f409: ask_user_question ──────────────────────────────
+
+/// f409=ask_user_question. Surface a structured clarification. Pure presentation:
+/// validates inputs, returns the rendered question + options for the MCP client
+/// to display. The user's answer flows back as the next turn's prompt.
+fn f409(call: &t103) -> t104 {
+    let question = match require_arg(call, "question") {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let mut rendered = format!("Question: {}\n", question);
+    if let Some(opts_raw) = get_arg(call, "options") {
+        let parsed: serde_json::Value = match serde_json::from_str(opts_raw) {
+            Ok(v) => v,
+            Err(e) => {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: format!("options: invalid JSON: {}", e),
+                };
+            }
+        };
+        let arr = match parsed.as_array() {
+            Some(a) => a,
+            None => {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: "options: expected JSON array".into(),
+                };
+            }
+        };
+        for (i, opt) in arr.iter().enumerate() {
+            let label = opt.get("label").and_then(|v| v.as_str()).unwrap_or("");
+            if label.is_empty() {
+                return t104 {
+                    tool: call.tool.clone(),
+                    success: false,
+                    output: format!("options[{}]: missing label", i),
+                };
+            }
+            let desc = opt.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            if desc.is_empty() {
+                rendered.push_str(&format!("  {}. {}\n", i + 1, label));
+            } else {
+                rendered.push_str(&format!("  {}. {} — {}\n", i + 1, label, desc));
+            }
+        }
+    }
+    t104 {
+        tool: call.tool.clone(),
+        success: true,
+        output: rendered.trim_end().to_string(),
+    }
+}
+
+// ── f410: web_fetch, f411: web_search ────────────────────
+
+const WEB_FETCH_DEFAULT_MAX_BYTES: usize = 65536;
+const WEB_FETCH_TIMEOUT_SECS: u64 = 10;
+const WEB_SEARCH_DEFAULT_MAX_BYTES: usize = 32768;
+const WEB_SEARCH_DEFAULT_TEMPLATE: &str = "https://duckduckgo.com/html/?q={query}";
+
+/// Build the shared blocking client used for web tools. Short timeout, common
+/// user-agent header so search engines don't reject the request outright.
+fn web_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(WEB_FETCH_TIMEOUT_SECS))
+        .user_agent("kova/0.7 (+https://cochranblock.org)")
+        .build()
+        .map_err(|e| format!("http client: {}", e))
+}
+
+/// Shared fetch path for f410 and f411. Validates the scheme, sends a GET with
+/// the shared client, truncates the body to max_bytes at a UTF-8 boundary, and
+/// returns either the body text or a structured error message. Centralising
+/// this avoids the synthetic-t103 reuse trick.
+fn fetch_url(url: &str, max_bytes: usize) -> Result<String, String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(format!(
+            "url: only http:// and https:// are allowed (got '{}')",
+            url
+        ));
+    }
+    let client = web_client()?;
+    let resp = client.get(url).send().map_err(|e| format!("fetch: {}", e))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("http {}: {}", status.as_u16(), url));
+    }
+    let mut body = resp.text().map_err(|e| format!("body decode: {}", e))?;
+    if body.len() > max_bytes {
+        let mut cut = max_bytes;
+        while cut > 0 && !body.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        body.truncate(cut);
+        body.push_str(&format!("\n... [truncated at {} bytes]", cut));
+    }
+    Ok(body)
+}
+
+/// f410=web_fetch. HTTP GET, return response body text. Enforces http/https
+/// scheme, response truncated to max_bytes (default 65536).
+fn f410(call: &t103) -> t104 {
+    let url = match require_arg(call, "url") {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let max_bytes: usize = get_arg(call, "max_bytes")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(WEB_FETCH_DEFAULT_MAX_BYTES);
+    match fetch_url(url, max_bytes) {
+        Ok(body) => t104 {
+            tool: call.tool.clone(),
+            success: true,
+            output: body,
+        },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: e,
+        },
+    }
+}
+
+/// f411=web_search. Substitute `{query}` (URL-encoded) into engine_url template,
+/// GET it, return body. Default template hits DuckDuckGo HTML.
+fn f411(call: &t103) -> t104 {
+    let query = match require_arg(call, "query") {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let template = get_arg(call, "engine_url").unwrap_or(WEB_SEARCH_DEFAULT_TEMPLATE);
+    if !template.contains("{query}") {
+        return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: "engine_url: template must contain '{query}' placeholder".into(),
+        };
+    }
+    let encoded = url_encode_query(query);
+    let url = template.replace("{query}", &encoded);
+    match fetch_url(&url, WEB_SEARCH_DEFAULT_MAX_BYTES) {
+        Ok(body) => t104 {
+            tool: call.tool.clone(),
+            success: true,
+            output: body,
+        },
+        Err(e) => t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: e,
+        },
+    }
+}
+
+/// Percent-encode a string for use in a URL query parameter. RFC 3986 unreserved
+/// set kept literal; everything else encoded as %XX. Single-allocation pattern
+/// via std::fmt::Write — avoids the per-byte format!() heap churn.
+fn url_encode_query(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        let ok = matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~');
+        if ok {
+            out.push(b as char);
+        } else {
+            // write! into a String is infallible; unwrap is sound.
+            write!(out, "%{:02X}", b).unwrap();
+        }
+    }
+    out
+}
+
+// ── f420: enter_plan_mode, f421: exit_plan_mode ──────────
+
+/// f420=enter_plan_mode. Flip PLAN_MODE on. Idempotent — calling twice is a
+/// no-op and still returns success. Mirrors Claude Code EnterPlanMode.
+fn f420(call: &t103) -> t104 {
+    let already_on = PLAN_MODE.swap(true, std::sync::atomic::Ordering::Relaxed);
+    let msg = if already_on {
+        "already in plan mode (no-op)"
+    } else {
+        "entered plan mode (write_file, edit_file, exec, bash, undo_edit blocked until exit_plan_mode)"
+    };
+    t104 {
+        tool: call.tool.clone(),
+        success: true,
+        output: msg.into(),
+    }
+}
+
+/// f421=exit_plan_mode. Flip PLAN_MODE off and echo the plan back as the
+/// response. The caller (Claude/Cursor/user) renders the plan for approval.
+/// Idempotent — exiting when not in plan mode still succeeds.
+fn f421(call: &t103) -> t104 {
+    let plan = match require_arg(call, "plan") {
+        Ok(s) => s.to_string(),
+        Err(e) => return e,
+    };
+    let was_on = PLAN_MODE.swap(false, std::sync::atomic::Ordering::Relaxed);
+    let prefix = if was_on {
+        "exited plan mode"
+    } else {
+        "not in plan mode (no-op); plan recorded anyway"
+    };
+    t104 {
+        tool: call.tool.clone(),
+        success: true,
+        output: format!("{prefix}\nplan:\n{plan}"),
     }
 }
 

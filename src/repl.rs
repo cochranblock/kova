@@ -76,16 +76,24 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
         .or_else(|| std::env::var("KOVA_PROJECT").ok().map(PathBuf::from))
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
-    // Resolve model.
-    let model_path = crate::config::inference_model_path()
-        .ok_or_else(|| anyhow::anyhow!("No model found. Run: kova model install"))?;
-
-    if !model_path.exists() {
-        anyhow::bail!(
-            "Model not found at {}. Run: kova model install",
-            model_path.display()
-        );
-    }
+    // Resolve model. Mock mode (KOVA_INFERENCE=mock) accepts a synthetic
+    // path that doesn't need to exist on disk — used by end-to-end agent loop
+    // tests in exopack/agent_loop_tests.rs.
+    let mock_mode = std::env::var("KOVA_INFERENCE").as_deref() == Ok("mock");
+    let model_path = if mock_mode {
+        crate::config::inference_model_path()
+            .unwrap_or_else(|| std::path::PathBuf::from("/dev/null/mock"))
+    } else {
+        let p = crate::config::inference_model_path()
+            .ok_or_else(|| anyhow::anyhow!("No model found. Run: kova model install"))?;
+        if !p.exists() {
+            anyhow::bail!(
+                "Model not found at {}. Run: kova model install",
+                p.display()
+            );
+        }
+        p
+    };
 
     let system_prompt = f139(&project_dir);
     let max_iterations = crate::config::orchestration_max_fix_retries() + 20;

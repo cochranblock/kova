@@ -49,3 +49,21 @@ pub mod harvest;
 
 #[cfg(feature = "ats_fixtures")]
 pub mod ats_fixtures;
+
+#[cfg(feature = "cc_features")]
+pub mod cc_features;
+
+#[cfg(feature = "training_mine_tests")]
+pub mod training_mine_tests;
+
+#[cfg(feature = "tool_call_parser")]
+pub mod tool_call_parser;
+
+#[cfg(feature = "router_spec")]
+pub mod router_spec;
+
+#[cfg(feature = "agent_loop_tests")]
+pub mod agent_loop_tests;
+
+#[cfg(feature = "router_training_tests")]
+pub mod router_training_tests;
