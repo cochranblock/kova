@@ -1,0 +1,34 @@
+text,category
+this function panics on empty input,fix_bug
+getting a borrow checker error on the lifetime,fix_bug
+the output is wrong for unicode input,fix_bug
+the test suite fails on CI but not locally,fix_bug
+add a gRPC transport layer,add_feature
+implement the triple lens research dispatcher,add_feature
+add streaming output to the REPL,add_feature
+build the T2 molecular coordinator,add_feature
+how does the manifest entry layout work,explain_code
+explain the subatomic priority decay formula,explain_code
+what does the OnceLock in global_db guarantee,explain_code
+how does candle handle gradient updates here,explain_code
+extract the telemetry key builder into a helper,refactor
+remove the unused sled dependency,refactor
+consolidate the two CSV loaders,refactor
+add tests for the kova intent classifier,write_tests
+write property tests for the nanobyte reader,write_tests
+add regression tests for the bridge ANSI stripper,write_tests
+add a docstring to the bridge module,write_docs
+document the tele key format,write_docs
+write the KOVA_BLUEPRINT section on T2 routing,write_docs
+check this for races in the bridge I/O threads,review_code
+review the redb write transaction usage,review_code
+look for off by one errors in the manifest parser,review_code
+run cargo test with verbose output,run_command
+build release with the serve feature,run_command
+execute pack-starter to rebuild the nanobyte,run_command
+where is f431 decay_all called in the REPL,search_code
+find all unsafe blocks in bridge.rs,search_code
+which files import swarm::priority,search_code
+what is the current state of the bridge feature,project_info
+summarize what changed in the last commit,project_info
+how many models are packed into starter.nanobyte,project_info

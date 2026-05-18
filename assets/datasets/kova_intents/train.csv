@@ -1,0 +1,166 @@
+text,category
+there's a bug in the authentication flow,fix_bug
+this function panics when the input is empty,fix_bug
+the test is failing with a null pointer exception,fix_bug
+fix the off by one error in the loop,fix_bug
+something is broken in the serialization logic,fix_bug
+this crashes when the config file is missing,fix_bug
+the parser returns wrong results for edge cases,fix_bug
+I'm getting a stack overflow in recursive calls,fix_bug
+this deadlocks under concurrent access,fix_bug
+the output is wrong when the list has duplicate entries,fix_bug
+the connection drops after a few seconds,fix_bug
+this returns None when it should return Some,fix_bug
+there's a memory leak in the event loop,fix_bug
+the regex doesn't match valid inputs,fix_bug
+the build fails because of a type mismatch,fix_bug
+this function never terminates on empty input,fix_bug
+getting a borrow checker error I don't understand,fix_bug
+the integer overflows on large inputs,fix_bug
+the error message is wrong it says success but fails,fix_bug
+this only fails on Linux not on Mac,fix_bug
+add a REST endpoint for listing users,add_feature
+implement rate limiting on the API,add_feature
+build a caching layer for expensive queries,add_feature
+add support for CSV export,add_feature
+implement the search feature using trigram indexing,add_feature
+create a CLI subcommand for batch processing,add_feature
+add retry logic with exponential backoff,add_feature
+implement websocket support for live updates,add_feature
+build the PTY bridge for logging sessions,add_feature
+add a priority queue backed by redb,add_feature
+implement OAuth2 login,add_feature
+add dark mode support to the UI,add_feature
+build a job scheduler with cron expressions,add_feature
+implement drag and drop file upload,add_feature
+add pagination to the results endpoint,add_feature
+create a webhook notification system,add_feature
+implement soft delete for database records,add_feature
+add telemetry logging to the REPL,add_feature
+implement the intent classifier subatomic model,add_feature
+add compression to the model packing format,add_feature
+what does the f403 bridge function do,explain_code
+explain how the nanobyte format is structured,explain_code
+how does the trigram hash featurizer work,explain_code
+what is the purpose of the NSIG trailer,explain_code
+explain the priority queue decay algorithm,explain_code
+how does the PTY proxy handle raw mode,explain_code
+what does the REPL telemetry pipeline do,explain_code
+explain the subatomic model architecture,explain_code
+how does candle compute the linear classifier,explain_code
+what is the difference between tier T1 and T2 models,explain_code
+explain how redb transactions work,explain_code
+how does the ANSI stripping work in bridge.rs,explain_code
+what does global_db return and why is it a singleton,explain_code
+explain the manifest entry layout in nanobyte,explain_code
+how does the swarm train function handle class imbalance,explain_code
+what is the purpose of the OnceLock in storage,explain_code
+explain the compression map convention for f-numbers,explain_code
+how does the kova REPL dispatch to the agent loop,explain_code
+what does the BLAKE3 signature verify in nanosign,explain_code
+explain how the starter models are bootstrapped,explain_code
+clean up the error handling in the auth module,refactor
+rename sled_path to db_path everywhere,refactor
+simplify the nested match arms in the parser,refactor
+extract the retry logic into a shared helper,refactor
+consolidate the duplicate CSV loading code,refactor
+split the giant main function into smaller pieces,refactor
+move the config constants into their own file,refactor
+replace the Vec with a more appropriate collection,refactor
+inline the one-line helper that isn't needed,refactor
+restructure the module layout to reduce coupling,refactor
+rename f395 to train_starter for clarity,refactor
+remove dead code from the old sled integration,refactor
+simplify the ANSI stripper state machine,refactor
+replace the raw pointer arithmetic with safe slices,refactor
+consolidate the three CSV readers into one function,refactor
+write unit tests for the nanobyte reader,write_tests
+add integration tests for the bridge PTY proxy,write_tests
+test the priority queue bump and decay,write_tests
+write tests for strip_ansi edge cases,write_tests
+add a test for the pack-starter roundtrip,write_tests
+write property tests for the trigram featurizer,write_tests
+test the REPL telemetry logging path,write_tests
+add regression tests for the manifest parser,write_tests
+write tests for the kova intent classifier inference,write_tests
+add a test that the nanobyte signature verifies correctly,write_tests
+test the global_db singleton initialization,write_tests
+write tests for the score_key inversion,write_tests
+add tests for the slop detector on real examples,write_tests
+test that the CSV export matches the redb contents,write_tests
+write a fuzz target for the nanobyte reader,write_tests
+document the f403 bridge_run function,write_docs
+add a docstring to the nanobyte format spec,write_docs
+write the README section on kova intent classes,write_docs
+document the priority queue API in swarm/priority.rs,write_docs
+add docs to the compression map for new f-numbers,write_docs
+write a docstring for global_db explaining the singleton,write_docs
+document the telemetry key format in storage,write_docs
+add architecture comments to the subatomic model trainer,write_docs
+write a doc comment for the RawMode guard,write_docs
+document the categories.json schema for model dirs,write_docs
+add inline comments to the ANSI strip state machine,write_docs
+write docs for the export-tele pipeline,write_docs
+document the NSIG format with byte offsets,write_docs
+update KOVA_BLUEPRINT.md with the T2 coordinator design,write_docs
+add a usage example to the bridge CLI help text,write_docs
+review this pull request for correctness,review_code
+check the nanobyte reader for off by one errors,review_code
+look over the authentication changes for security issues,review_code
+review the priority queue implementation for races,review_code
+check this diff for any obvious bugs,review_code
+is there anything wrong with the ANSI stripper,review_code
+review the error handling in the bridge module,review_code
+look for any memory safety issues in the unsafe block,review_code
+check the CSV parsing for potential panics,review_code
+review the lock usage in the bridge I/O threads,review_code
+look over this for any clippy warnings I missed,review_code
+check the redb transaction handling for correctness,review_code
+is the f431 decay math correct,review_code
+review this for any potential data races,review_code
+check if the NSIG signature check handles truncated files,review_code
+run cargo test and show me the failures,run_command
+build the project in release mode,run_command
+run the bench-classify benchmark,run_command
+execute the pack-starter to rebuild starter.nanobyte,run_command
+run clippy and fix any warnings,run_command
+cargo build with the serve feature,run_command
+run the retrain-starters binary,run_command
+execute the train-intent script,run_command
+run kova bridge claude,run_command
+cargo check and show me the errors,run_command
+run the integration test suite,run_command
+execute the export-tele script,run_command
+run git diff to see what changed,run_command
+build and run the demo,run_command
+cargo fmt and then check,run_command
+where is the bridge function defined,search_code
+find all places that call global_db,search_code
+which file has the nanobyte manifest parser,search_code
+search for uses of sled_path,search_code
+where does the REPL log telemetry,search_code
+find the definition of f395,search_code
+which files import the priority module,search_code
+where is strip_ansi called,search_code
+find all the unsafe blocks in the codebase,search_code
+search for the STARTER_CLASS_NAMES constant,search_code
+where are the candle tensor ops in the trainer,search_code
+find files that use the banking77 dataset,search_code
+which test uses the tempfile crate,search_code
+where is the compression map documented,search_code
+find all TODO comments in the codebase,search_code
+what's the current state of the project,project_info
+show me what changed since the last commit,project_info
+what tests are passing,project_info
+summarize what bridge.rs does,project_info
+what is the work queue,project_info
+how many models are in starter.nanobyte,project_info
+what features are enabled in the serve build,project_info
+give me a status update on the nanobyte format,project_info
+what is the compression map,project_info
+show me the recent git log,project_info
+what is the current version of the kova engine,project_info
+how large is the starter.nanobyte file,project_info
+what crates does kova depend on,project_info
+which subcommands does kova expose,project_info
+what's left before the first release,project_info

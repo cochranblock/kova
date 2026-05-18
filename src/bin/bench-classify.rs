@@ -1,15 +1,14 @@
 //! bench-classify — measure starter classifiers against held-out test sets.
 //!
 //! Anchors gap 12.2 (no standard-benchmark validation) in real numbers.
-//! Currently runs `intent_classifier` against the banking77 test split
-//! (3,080 examples, 77 classes). Adding more (model, dataset) pairs is a
-//! one-line edit to BENCHES.
+//! Runs `intent_classifier` against the kova_intents test split (33 examples,
+//! 10 classes). Adding more (model, dataset) pairs is a one-line edit to BENCHES.
 //!
 //! Output: total accuracy, macro-precision, macro-recall, macro-F1, the
 //! 10 lowest-F1 classes, and the top confusion pairs.
 //
 // Unlicense — cochranblock.org
-// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6
+// Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, Claude Sonnet 4.6
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -25,8 +24,8 @@ struct Bench {
 
 const BENCHES: &[Bench] = &[Bench {
     model: "intent_classifier",
-    dataset: "banking77 (test split)",
-    csv_path: "datasets/banking77/test.csv",
+    dataset: "kova_intents (test split)",
+    csv_path: "datasets/kova_intents/test.csv",
 }];
 
 fn main() {
