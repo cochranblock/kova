@@ -115,6 +115,19 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-05-18 — Serve: Pure REST + OpenAPI JSON; Tele Pipeline; kova-test Fix
+
+**What:** Three changes shipped in `b5d8b64`:
+
+1. **Kill WASM client, pure REST.** Removed the browser-facing WASM client from the `serve` feature. The kova serve API is now a clean REST interface with a machine-readable OpenAPI JSON spec at `/openapi.json`. Rationale: serve is an API surface, not a GUI — WASM was the wrong layer. OpenAPI enables external tooling and Claude MCP integration without a bundled client.
+
+2. **Tele pipeline.** Telemetry data (inference traces, session events) now flows through a defined pipeline from collection point to redb storage. Structured types replace ad-hoc logging.
+
+3. **kova-test fix.** Resolved the release-build pipeline failure (WASM lock deadlock + bindgen mismatch + inference feature flag conflicts) blocking CI since the prior session. kova-test now builds and runs cleanly in release.
+
+**Commit:** `b5d8b64`
+**AI Role:** AI implemented the REST conversion, OpenAPI spec generation, tele pipeline wiring, and test fix. Human directed the architectural decision to drop WASM in favor of a clean API surface.
+
 ### 2026-05-17 — P13 Swarm Tokenization + Static Corpus Carver
 
 **What:** Two build items shipped in one session:
