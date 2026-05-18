@@ -4,15 +4,19 @@
 //! compiler_teacher — Stage 3 Flywheel. Captures (bad, error, good) training pairs
 //! from Sponge Mesh corrections. Every mesh retry that succeeds = one training pair.
 //!
-//! Storage: sled DB at ~/.kova/training/compiler_pairs
+//! Storage: redb at ~/.kova/training/compiler_pairs.redb
 //! Key: blake3 hash of the error. Value: bincode+zstd serialized CompilerPair.
 //!
 //! The flywheel: corrections → training pairs → better experts → fewer corrections.
 
-use super::ExpertKind;
+use redb::{Database, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::LazyLock;
+
+use super::ExpertKind;
+
+const PAIRS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("compiler_pairs");
 
 /// A single training pair from a Sponge Mesh correction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,17 +34,22 @@ pub struct CompilerHint {
     pub good_code: String,
 }
 
-static DB: LazyLock<Option<sled::Db>> = LazyLock::new(|| {
+static DB: LazyLock<Option<Database>> = LazyLock::new(|| {
     let path = training_db_path();
-    sled::open(&path)
-        .map_err(|e| eprintln!("[compiler_teacher] sled open failed: {}", e))
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!("[compiler_teacher] cannot create {}: {e}", parent.display());
+        }
+    }
+    Database::create(&path)
+        .map_err(|e| eprintln!("[compiler_teacher] redb open failed: {e}"))
         .ok()
 });
 
 fn training_db_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".kova/training/compiler_pairs")
+        .join(".kova/training/compiler_pairs.redb")
 }
 
 /// Save a (bad_code, error, good_code) training pair after a successful mesh retry.
@@ -59,55 +68,65 @@ pub fn save_pair(bad_code: &str, error: &str, good_code: &str, expert: &ExpertKi
     };
 
     let key = blake3::hash(error.as_bytes());
-    let encoded =
-        bincode::serde::encode_to_vec(&pair, bincode::config::standard()).unwrap_or_default();
-    let compressed = zstd::encode_all(encoded.as_slice(), 3).unwrap_or(encoded);
+    let Ok(encoded) = bincode::serde::encode_to_vec(&pair, bincode::config::standard()) else { return };
+    let Ok(compressed) = zstd::encode_all(encoded.as_slice(), 3) else { return };
 
-    if let Err(e) = db.insert(key.as_bytes(), compressed) {
-        eprintln!("[compiler_teacher] save failed: {}", e);
-    } else {
-        let _ = db.flush();
+    let Ok(txn) = db.begin_write() else { return };
+    {
+        let Ok(mut table) = txn.open_table(PAIRS_TABLE) else { return };
+        if let Err(e) = table.insert(key.as_bytes().as_slice(), compressed.as_slice()) {
+            eprintln!("[compiler_teacher] save failed: {e}");
+            return;
+        }
     }
+    let _ = txn.commit();
 }
 
 /// Look up a past failure hint for an expert type. Returns the most recent match.
 pub fn lookup_hint(expert: &ExpertKind) -> Option<CompilerHint> {
     let db = DB.as_ref()?;
     let expert_str = format!("{:?}", expert);
+    let txn = db.begin_read().ok()?;
+    let table = txn.open_table(PAIRS_TABLE).ok()?;
 
-    // Scan for matching expert — sled iteration is fast for small DBs
     let mut best: Option<CompilerPair> = None;
-    for item in db.iter() {
+    for item in table.iter().ok()? {
         let (_, v) = item.ok()?;
-        let decompressed = zstd::decode_all(v.as_ref()).unwrap_or_else(|_| v.to_vec());
-        let (pair, _): (CompilerPair, _) =
-            bincode::serde::decode_from_slice(&decompressed, bincode::config::standard()).ok()?;
-        if pair.expert == expert_str {
-            if best.as_ref().map_or(true, |b| pair.timestamp > b.timestamp) {
-                best = Some(pair);
-            }
+        let decompressed = zstd::decode_all(v.value()).unwrap_or_else(|_| v.value().to_vec());
+        let Ok((pair, _)) = bincode::serde::decode_from_slice::<CompilerPair, _>(
+            &decompressed,
+            bincode::config::standard(),
+        ) else {
+            continue;
+        };
+        if pair.expert == expert_str
+            && best.as_ref().map_or(true, |b: &CompilerPair| pair.timestamp > b.timestamp)
+        {
+            best = Some(pair);
         }
     }
 
-    best.map(|p| CompilerHint {
-        error: p.error,
-        good_code: p.good_code,
-    })
+    best.map(|p| CompilerHint { error: p.error, good_code: p.good_code })
 }
 
-/// Read all pairs from sled. Used by `kova train-data`.
+/// Read all pairs. Used by `kova train-data`.
 pub fn all_pairs() -> Vec<CompilerPair> {
-    let Some(db) = DB.as_ref() else {
-        return Vec::new();
+    let Some(db) = DB.as_ref() else { return Vec::new() };
+    let Ok(txn) = db.begin_read() else { return Vec::new() };
+    let table = match txn.open_table(PAIRS_TABLE) {
+        Ok(t) => t,
+        Err(_) => return Vec::new(),
     };
+    let Ok(iter) = table.iter() else { return Vec::new() };
 
     let mut pairs = Vec::new();
-    for item in db.iter() {
+    for item in iter {
         let Ok((_, v)) = item else { continue };
-        let decompressed = zstd::decode_all(v.as_ref()).unwrap_or_else(|_| v.to_vec());
-        if let Ok((pair, _)) =
-            bincode::serde::decode_from_slice::<CompilerPair, _>(&decompressed, bincode::config::standard())
-        {
+        let decompressed = zstd::decode_all(v.value()).unwrap_or_else(|_| v.value().to_vec());
+        if let Ok((pair, _)) = bincode::serde::decode_from_slice::<CompilerPair, _>(
+            &decompressed,
+            bincode::config::standard(),
+        ) {
             pairs.push(pair);
         }
     }
@@ -122,18 +141,13 @@ pub fn dump_training_data() {
         return;
     }
 
-    // Stats
-    let mut by_expert: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    let mut error_counts: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
+    let mut by_expert: std::collections::HashMap<&str, usize> = Default::default();
+    let mut error_counts: std::collections::HashMap<String, usize> = Default::default();
 
     for pair in &pairs {
         *by_expert.entry(&pair.expert).or_default() += 1;
-        // First line of error as key
         let first_line = pair.error.lines().next().unwrap_or("unknown");
-        *error_counts
-            .entry(first_line.to_string())
-            .or_default() += 1;
+        *error_counts.entry(first_line.to_string()).or_default() += 1;
     }
 
     eprintln!("=== Training Data Stats ===");
@@ -151,7 +165,6 @@ pub fn dump_training_data() {
         eprintln!("  [{}] {}", count, err);
     }
 
-    // JSONL output to stdout
     eprintln!("\n=== JSONL Output ===");
     for pair in &pairs {
         let json = serde_json::json!({

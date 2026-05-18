@@ -259,6 +259,9 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f391 | generate_code_vs_english_data | swarm/train | Scrape .rs/.md from repo for code vs english |
 | f392 | generate_lang_data | swarm/train | Rust/Python/JS/Go/Shell training examples |
 | f393 | triple_lens_research | c2 | P23: dispatch optimist/pessimist/paranoia/synthesis to fleet |
+| f394 | featurize | swarm/train | Convert text to fixed-size trigram-hash feature vector |
+| f395 | train_starter | swarm/train | Train all 3 starter subatomic models, save to output_dir |
+| f396 | predict | swarm/train | Load trained model, run inference on a single input |
 | f400 | tmux_init | c2 | Swarm bootloader: scan .kova markers, create tmux session, launch agent |
 | f401 | tmux_layout | c2 | Export fleet layout as markdown table |
 | f402 | auto_deploy | c2 | Drop .kova markers into all git repos in scan dirs |
@@ -359,6 +362,8 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | T213 | SpriteQc |
 | T214 | QuantizedLayer |
 | T215 | QuantizedModel |
+| t216 | Example | swarm/train |
+| t217 | SubatomicConfig | swarm/train |
 
 ## Struct fields (sN) — plan t3
 

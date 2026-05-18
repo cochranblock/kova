@@ -164,6 +164,14 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
             continue;
         }
 
+        // Subatomic T1: classify input type for routing hint.
+        if let Some(nb) = starter_nb.as_ref() {
+            if let Ok((class_idx, conf)) = nb.infer("code_vs_english", input) {
+                let label = if class_idx == 1 { "code" } else { "english" };
+                eprintln!("\x1b[90m[input: {label}, {conf:.2}]\x1b[0m");
+            }
+        }
+
         // Run agent loop.
         eprintln!();
         let response = crate::agent_loop::f148(
@@ -174,13 +182,20 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
             max_iterations,
         );
 
-        // Store in sled for history persistence.
-        let store_path = crate::config::sled_path();
-        if let Ok(store) = crate::storage::t12::f39(&store_path) {
+        // Subatomic T1: slop detection on output.
+        if let Some(nb) = starter_nb.as_ref() {
+            if let Ok((class_idx, conf)) = nb.infer("slop_detector", &response) {
+                if class_idx == 1 && conf > 0.65 {
+                    eprintln!("\x1b[33m[slop: {conf:.2} — review output]\x1b[0m");
+                }
+            }
+        }
+
+        if let Ok(store) = crate::storage::t12::f39() {
             let _ = crate::context::f73(&store, "user", input);
             let _ = crate::context::f73(&store, "assistant", &response);
 
-            // Subatomic preprocessing telemetry. Silent — gather data, no UX changes.
+            // Subatomic T1 telemetry — raw text + classification bank stored for retraining.
             if let Some(nb) = starter_nb.as_ref() {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -190,6 +205,8 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
                 let outputs = crate::nanobyte::classify_with_starters(nb, &response);
                 let _ = store.f40(format!("tele/{ts}/i").as_bytes(), &inputs);
                 let _ = store.f40(format!("tele/{ts}/o").as_bytes(), &outputs);
+                let _ = store.f40(format!("tele/{ts}/raw_i").as_bytes(), &input);
+                let _ = store.f40(format!("tele/{ts}/raw_o").as_bytes(), &response);
             }
         }
 

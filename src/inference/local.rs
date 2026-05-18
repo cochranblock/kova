@@ -2,6 +2,7 @@
 //! f76=chat_stream, f80=chat_complete.
 //! Replaces Kalosm — direct candle for auditability + shared engine with pixel-forge.
 
+#![allow(private_interfaces)]
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 

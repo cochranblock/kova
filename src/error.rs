@@ -18,7 +18,7 @@ pub enum T176 {
     Inference(String),
 
     #[error("cluster: {0}")]
-    T193(String),
+    Cluster(String),
 
     #[error("cargo: {0}")]
     Cargo(String),
@@ -30,7 +30,7 @@ pub enum T176 {
     Config(String),
 
     #[error("provider: {0}")]
-    T129(String),
+    Provider(String),
 
     #[error("tool: {0}")]
     Tool(String),
@@ -45,12 +45,6 @@ pub enum T176 {
 impl From<String> for T176 {
     fn from(s: String) -> Self {
         T176::Other(s)
-    }
-}
-
-impl From<&str> for T176 {
-    fn from(s: &str) -> Self {
-        T176::Other(s.to_string())
     }
 }
 
@@ -75,7 +69,7 @@ mod tests {
 
     #[test]
     fn from_string() {
-        let e: T176 = "something broke".into();
+        let e: T176 = T176::Other("something broke".into());
         assert!(e.to_string().contains("something broke"));
     }
 

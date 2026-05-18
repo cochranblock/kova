@@ -237,6 +237,151 @@ pub fn f184(examples: &[T116], path: &Path) -> anyhow::Result<usize> {
 }
 
 /// Escape a field for CSV: wrap in quotes if it contains comma, quote, CR, or newline.
+/// f185 = export_tele. Dump raw prompt/response pairs from redb telemetry as JSONL.
+///
+/// Each line: `{"ts":<nanos>,"role":"user"|"assistant","text":"...","classifications":[...]}`
+/// Output: `~/.kova/training_data/tele.jsonl` by default, or `output` if given.
+pub fn f185(output: Option<PathBuf>) -> anyhow::Result<usize> {
+    use std::io::Write;
+
+    let out_path = output.unwrap_or_else(|| f318().join("tele.jsonl"));
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let store = match crate::storage::t12::f39() {
+        Ok(s) => s,
+        Err(_) => {
+            // No global DB (e.g. in test environments). Write empty file and return 0.
+            std::fs::File::create(&out_path)?;
+            println!("[tele] no telemetry DB available — wrote empty file → {}", out_path.display());
+            return Ok(0);
+        }
+    };
+
+    // Collect all tele/ entries, group by timestamp.
+    let entries = store
+        .f44(b"tele/")
+        .map_err(|e| anyhow::anyhow!("scan failed: {e}"))?;
+
+    // Parse keys like b"tele/{ts}/raw_i" and b"tele/{ts}/raw_o".
+    // Group by ts, pair raw text with classification results.
+    use std::collections::HashMap;
+    struct TeleEntry {
+        raw_i: Option<String>,
+        raw_o: Option<String>,
+        clf_i: Vec<crate::nanobyte::Classification>,
+        clf_o: Vec<crate::nanobyte::Classification>,
+    }
+    let mut groups: HashMap<u128, TeleEntry> = HashMap::new();
+
+    for (key_bytes, val_bytes) in &entries {
+        let key = std::str::from_utf8(key_bytes).unwrap_or("");
+        // key format: "tele/{ts}/{suffix}"
+        let parts: Vec<&str> = key.splitn(3, '/').collect();
+        if parts.len() != 3 {
+            continue;
+        }
+        let Ok(ts) = parts[1].parse::<u128>() else { continue };
+        let suffix = parts[2];
+        let entry = groups.entry(ts).or_insert(TeleEntry {
+            raw_i: None,
+            raw_o: None,
+            clf_i: vec![],
+            clf_o: vec![],
+        });
+        match suffix {
+            "raw_i" => {
+                if let Ok(Some(s)) =
+                    bincode::serde::decode_from_slice::<String, _>(
+                        &zstd::decode_all(val_bytes.as_slice()).unwrap_or_default(),
+                        bincode::config::standard(),
+                    )
+                    .map(|(v, _)| Some(v))
+                    .or::<()>(Ok(None))
+                {
+                    entry.raw_i = Some(s);
+                }
+            }
+            "raw_o" => {
+                if let Ok(Some(s)) =
+                    bincode::serde::decode_from_slice::<String, _>(
+                        &zstd::decode_all(val_bytes.as_slice()).unwrap_or_default(),
+                        bincode::config::standard(),
+                    )
+                    .map(|(v, _)| Some(v))
+                    .or::<()>(Ok(None))
+                {
+                    entry.raw_o = Some(s);
+                }
+            }
+            "i" => {
+                if let Ok(clf) = bincode::serde::decode_from_slice::<
+                    Vec<crate::nanobyte::Classification>,
+                    _,
+                >(
+                    &zstd::decode_all(val_bytes.as_slice()).unwrap_or_default(),
+                    bincode::config::standard(),
+                ) {
+                    entry.clf_i = clf.0;
+                }
+            }
+            "o" => {
+                if let Ok(clf) = bincode::serde::decode_from_slice::<
+                    Vec<crate::nanobyte::Classification>,
+                    _,
+                >(
+                    &zstd::decode_all(val_bytes.as_slice()).unwrap_or_default(),
+                    bincode::config::standard(),
+                ) {
+                    entry.clf_o = clf.0;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut file = std::fs::File::create(&out_path)?;
+    let mut count = 0usize;
+    let mut sorted_ts: Vec<u128> = groups.keys().copied().collect();
+    sorted_ts.sort_unstable();
+
+    for ts in sorted_ts {
+        let entry = &groups[&ts];
+        if let Some(text) = &entry.raw_i {
+            let row = serde_json::json!({
+                "ts": ts,
+                "role": "user",
+                "text": text,
+                "classifications": entry.clf_i.iter().map(|c| serde_json::json!({
+                    "model": c.model,
+                    "class": c.class_name,
+                    "conf": c.confidence,
+                })).collect::<Vec<_>>(),
+            });
+            writeln!(file, "{row}")?;
+            count += 1;
+        }
+        if let Some(text) = &entry.raw_o {
+            let row = serde_json::json!({
+                "ts": ts,
+                "role": "assistant",
+                "text": text,
+                "classifications": entry.clf_o.iter().map(|c| serde_json::json!({
+                    "model": c.model,
+                    "class": c.class_name,
+                    "conf": c.confidence,
+                })).collect::<Vec<_>>(),
+            });
+            writeln!(file, "{row}")?;
+            count += 1;
+        }
+    }
+
+    println!("[tele] wrote {count} rows → {}", out_path.display());
+    Ok(count)
+}
+
 fn csv_escape(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
         format!("\"{}\"", s.replace('"', "\"\""))

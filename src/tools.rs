@@ -1153,9 +1153,7 @@ fn f155(call: &t103) -> t104 {
 
 // ── f407: todo_write, f408: agent ────────────────────────
 
-const TODOS_TREE: &str = "todos";
 const TODOS_KEY: &str = "current";
-const SUBAGENT_TREE: &str = "subagent_tasks";
 
 /// f407=todo_write. Replace the agent task list. Mirrors Claude Code TodoWrite.
 /// Input: `todos` = JSON array of {content, status, activeForm}.
@@ -1216,32 +1214,19 @@ fn f407(call: &t103) -> t104 {
         rendered.push_str(&format!("{} {} {}\n", marker, status, content));
     }
 
-    let db = match open_checkpoint_db() {
-        Ok(d) => d,
-        Err(e) => {
-            return t104 {
-                tool: call.tool.clone(),
-                success: false,
-                output: format!("todos: sled open: {}", e),
-            };
-        }
-    };
-    let tree = match db.open_tree(TODOS_TREE) {
-        Ok(t) => t,
-        Err(e) => {
-            return t104 {
-                tool: call.tool.clone(),
-                success: false,
-                output: format!("todos: tree open: {}", e),
-            };
-        }
-    };
-    if let Err(e) = tree.insert(TODOS_KEY.as_bytes(), raw.as_bytes()) {
-        return t104 {
-            tool: call.tool.clone(),
-            success: false,
-            output: format!("todos: write: {}", e),
+    if let Some(db) = checkpoint_db() {
+        let Ok(txn) = db.begin_write() else {
+            return t104 { tool: call.tool.clone(), success: false, output: "todos: db write failed".into() };
         };
+        {
+            let Ok(mut table) = txn.open_table(TODOS_TABLE) else {
+                return t104 { tool: call.tool.clone(), success: false, output: "todos: table open failed".into() };
+            };
+            if let Err(e) = table.insert(TODOS_KEY.as_bytes(), raw.as_bytes()) {
+                return t104 { tool: call.tool.clone(), success: false, output: format!("todos: write: {}", e) };
+            }
+        }
+        let _ = txn.commit();
     }
 
     t104 {
@@ -1286,32 +1271,19 @@ fn f408(call: &t103) -> t104 {
         "status": "queued",
     });
 
-    match open_checkpoint_db() {
-        Ok(db) => match db.open_tree(SUBAGENT_TREE) {
-            Ok(tree) => {
-                if let Err(e) = tree.insert(task_id.as_bytes(), entry.to_string().as_bytes()) {
-                    return t104 {
-                        tool: call.tool.clone(),
-                        success: false,
-                        output: format!("agent: persist failed: {}", e),
-                    };
-                }
-            }
-            Err(e) => {
-                return t104 {
-                    tool: call.tool.clone(),
-                    success: false,
-                    output: format!("agent: tree open: {}", e),
-                };
-            }
-        },
-        Err(e) => {
-            return t104 {
-                tool: call.tool.clone(),
-                success: false,
-                output: format!("agent: sled open: {}", e),
+    if let Some(db) = checkpoint_db() {
+        let Ok(txn) = db.begin_write() else {
+            return t104 { tool: call.tool.clone(), success: false, output: "agent: db write failed".into() };
+        };
+        {
+            let Ok(mut table) = txn.open_table(SUBAGENT_TABLE) else {
+                return t104 { tool: call.tool.clone(), success: false, output: "agent: table open failed".into() };
             };
+            if let Err(e) = table.insert(task_id.as_bytes(), entry.to_string().as_bytes()) {
+                return t104 { tool: call.tool.clone(), success: false, output: format!("agent: persist failed: {}", e) };
+            }
         }
+        let _ = txn.commit();
     }
 
     let exec_mode = std::env::var("KOVA_AGENT_EXEC").unwrap_or_default();
@@ -1880,47 +1852,36 @@ fn find_pixel_forge() -> Option<PathBuf> {
 
 // ── f383: checkpoint, f384: undo_edit ───────────────────
 
-/// Sled tree name for file checkpoints.
-const CHECKPOINT_TREE: &str = "checkpoints";
+use redb::{Database, TableDefinition};
 
-/// Open (or reuse) the checkpoint sled::Db.
-/// Tests pre-open the db via with_test_sled and store it in CHECKPOINT_DB so
-/// that f383 and f384 share one connection — sled's background threads hold the
-/// file lock briefly after Db drops, causing EAGAIN on a rapid reopen.
-/// Production falls through to sled::open each time (no caching needed there).
-fn open_checkpoint_db() -> Result<sled::Db, sled::Error> {
-    CHECKPOINT_DB.with(|cell| {
-        if let Some((_, db)) = cell.borrow().as_ref() {
-            return Ok(db.clone()); // reuse the cached connection (sled::Db is Arc-backed)
-        }
-        sled::open(crate::config::sled_path())
-    })
+const CHECKPOINT_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("checkpoints");
+const TODOS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("todos");
+const SUBAGENT_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("subagent_tasks");
+
+/// Return the DB to use for checkpoints.
+/// Tests inject an isolated redb via CHECKPOINT_DB thread-local; production
+/// uses the global shared DB. redb needs only one Database handle per file.
+fn checkpoint_db() -> Option<std::sync::Arc<Database>> {
+    CHECKPOINT_DB.with(|cell| cell.borrow().clone())
+        .or_else(crate::storage::global_db)
 }
 
 std::thread_local! {
-    // Stores (path, open Db) while inside with_test_sled; None in production.
-    static CHECKPOINT_DB: std::cell::RefCell<Option<(std::path::PathBuf, sled::Db)>> =
+    // Holds an isolated test Database during with_test_redb; None in production.
+    static CHECKPOINT_DB: std::cell::RefCell<Option<std::sync::Arc<Database>>> =
         const { std::cell::RefCell::new(None) };
 }
 
-/// f383=checkpoint. Snapshot file contents into sled before write/edit.
+/// f383=checkpoint. Snapshot file contents into redb before write/edit.
 /// Key format: checkpoint:{filepath}:{unix_timestamp_ms}
 /// Also stores latest checkpoint pointer: checkpoint_latest:{filepath}
 fn f383(path: &Path) {
-    // Only checkpoint if file exists (new files have nothing to restore).
     let content = match std::fs::read(path) {
         Ok(c) => c,
         Err(_) => return,
     };
 
-    let db = match open_checkpoint_db() {
-        Ok(db) => db,
-        Err(_) => return,
-    };
-    let tree = match db.open_tree(CHECKPOINT_TREE) {
-        Ok(t) => t,
-        Err(_) => return,
-    };
+    let Some(db) = checkpoint_db() else { return };
 
     let path_str = path.to_string_lossy();
     let ts = std::time::SystemTime::now()
@@ -1931,8 +1892,13 @@ fn f383(path: &Path) {
     let key = format!("checkpoint:{}:{}", path_str, ts);
     let latest_key = format!("checkpoint_latest:{}", path_str);
 
-    let _ = tree.insert(key.as_bytes(), content);
-    let _ = tree.insert(latest_key.as_bytes(), key.as_bytes());
+    let Ok(txn) = db.begin_write() else { return };
+    {
+        let Ok(mut table) = txn.open_table(CHECKPOINT_TABLE) else { return };
+        let _ = table.insert(key.as_bytes(), content.as_slice());
+        let _ = table.insert(latest_key.as_bytes(), key.as_bytes());
+    }
+    let _ = txn.commit();
 
     eprintln!(
         "\x1b[90m[checkpoint: {}]\x1b[0m",
@@ -1947,56 +1913,46 @@ fn f384(call: &t103, project_dir: &Path) -> t104 {
         Err(e) => return e,
     };
 
-    let db = match open_checkpoint_db() {
-        Ok(db) => db,
-        Err(e) => {
-            return t104 {
-                tool: call.tool.clone(),
-                success: false,
-                output: format!("sled open: {}", e),
-            }
-        }
-    };
-    let tree = match db.open_tree(CHECKPOINT_TREE) {
-        Ok(t) => t,
-        Err(e) => {
-            return t104 {
-                tool: call.tool.clone(),
-                success: false,
-                output: format!("tree open: {}", e),
-            }
+    let Some(db) = checkpoint_db() else {
+        return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: "db unavailable".into(),
         }
     };
 
     let path_str = path.to_string_lossy();
     let latest_key = format!("checkpoint_latest:{}", path_str);
 
+    let Ok(txn) = db.begin_read() else {
+        return t104 { tool: call.tool.clone(), success: false, output: "db read failed".into() }
+    };
+    let Ok(table) = txn.open_table(CHECKPOINT_TABLE) else {
+        return t104 { tool: call.tool.clone(), success: false, output: format!("no checkpoint for {}", path.display()) }
+    };
+
     // Look up the latest checkpoint key.
-    let checkpoint_key = match tree.get(latest_key.as_bytes()) {
-        Ok(Some(key_bytes)) => key_bytes,
-        _ => {
-            return t104 {
-                tool: call.tool.clone(),
-                success: false,
-                output: format!("no checkpoint for {}", path.display()),
-            }
-        }
+    let checkpoint_key = match table.get(latest_key.as_bytes()) {
+        Ok(Some(v)) => v.value().to_vec(),
+        _ => return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: format!("no checkpoint for {}", path.display()),
+        },
     };
 
     // Retrieve the checkpoint content.
-    let content = match tree.get(&checkpoint_key) {
-        Ok(Some(data)) => data,
-        _ => {
-            return t104 {
-                tool: call.tool.clone(),
-                success: false,
-                output: "checkpoint data missing".into(),
-            }
-        }
+    let content = match table.get(checkpoint_key.as_slice()) {
+        Ok(Some(data)) => data.value().to_vec(),
+        _ => return t104 {
+            tool: call.tool.clone(),
+            success: false,
+            output: "checkpoint data missing".into(),
+        },
     };
 
     // Restore the file.
-    match std::fs::write(&path, content.as_ref()) {
+    match std::fs::write(&path, &content) {
         Ok(_) => {
             let preview_len = content.len().min(200);
             let preview = String::from_utf8_lossy(&content[..preview_len]);
@@ -2446,47 +2402,44 @@ This JSON is missing a closing brace — should be skipped.
 
     // ── Checkpoint/Undo tests ──────────────────────────────
 
-    /// Helper: set up an isolated sled DB for checkpoint tests.
-    /// Pre-opens the db and keeps it alive for the whole test so that f383 and
-    /// f384 share one connection — avoids sled's EAGAIN on rapid reopen.
-    fn with_test_sled<F: FnOnce(&Path)>(f: F) {
-        let sled_tmp = tempfile::TempDir::new().unwrap();
-        let sled_path = sled_tmp.path().join("test_sled.db");
-        let db = sled::open(&sled_path).expect("open test sled");
-        CHECKPOINT_DB.with(|cell| {
-            *cell.borrow_mut() = Some((sled_path.clone(), db));
-        });
-        f(&sled_path);
-        CHECKPOINT_DB.with(|cell| {
-            *cell.borrow_mut() = None; // drops the Db handle, releasing the lock cleanly
-        });
+    /// Helper: set up an isolated redb for checkpoint tests.
+    fn with_test_redb<F: FnOnce()>(f: F) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db = std::sync::Arc::new(
+            Database::create(tmp.path().join("test.redb")).expect("open test redb"),
+        );
+        CHECKPOINT_DB.with(|cell| { *cell.borrow_mut() = Some(db); });
+        f();
+        CHECKPOINT_DB.with(|cell| { *cell.borrow_mut() = None; });
     }
 
     #[test]
     fn f383_checkpoint_stores_content() {
-        with_test_sled(|_sled_path| {
+        with_test_redb(|| {
             let tmp = tempfile::TempDir::new().unwrap();
             let file = tmp.path().join("test.txt");
             std::fs::write(&file, "original content").unwrap();
 
             f383(&file);
 
-            let db = open_checkpoint_db().unwrap();
-            let tree = db.open_tree(CHECKPOINT_TREE).unwrap();
+            let db = checkpoint_db().unwrap();
+            let txn = db.begin_read().unwrap();
+            let table = txn.open_table(CHECKPOINT_TABLE).unwrap();
 
             let latest_key = format!("checkpoint_latest:{}", file.to_string_lossy());
-            let checkpoint_key = tree.get(latest_key.as_bytes()).unwrap();
+            let checkpoint_key = table.get(latest_key.as_bytes()).unwrap();
             assert!(checkpoint_key.is_some(), "latest checkpoint pointer should exist");
 
-            let data = tree.get(&checkpoint_key.unwrap()).unwrap();
+            let ck = checkpoint_key.unwrap().value().to_vec();
+            let data = table.get(ck.as_slice()).unwrap();
             assert!(data.is_some(), "checkpoint data should exist");
-            assert_eq!(data.unwrap().as_ref(), b"original content");
+            assert_eq!(data.unwrap().value(), b"original content");
         });
     }
 
     #[test]
     fn f384_undo_restores_file() {
-        with_test_sled(|_| {
+        with_test_redb(|| {
             let tmp = tempfile::TempDir::new().unwrap();
             let project = tmp.path().canonicalize().unwrap();
             let file = project.join("undo_test.txt");
@@ -2508,7 +2461,7 @@ This JSON is missing a closing brace — should be skipped.
 
     #[test]
     fn f384_undo_no_checkpoint() {
-        with_test_sled(|_| {
+        with_test_redb(|| {
             let tmp = tempfile::TempDir::new().unwrap();
             let call = t103 {
                 tool: "undo_edit".into(),
@@ -2587,7 +2540,7 @@ This JSON is missing a closing brace — should be skipped.
 
     #[test]
     fn f141_write_creates_checkpoint() {
-        with_test_sled(|_sled_path| {
+        with_test_redb(|| {
             let tmp = tempfile::TempDir::new().unwrap();
             let project = tmp.path().canonicalize().unwrap();
             let file = project.join("cp_test.txt");
@@ -2603,15 +2556,15 @@ This JSON is missing a closing brace — should be skipped.
             };
             let result = f141(&call, &project);
             assert!(result.success);
-
             assert_eq!(std::fs::read_to_string(&file).unwrap(), "new content");
 
-            let db = open_checkpoint_db().unwrap();
-            let tree = db.open_tree(CHECKPOINT_TREE).unwrap();
+            let db = checkpoint_db().unwrap();
+            let txn = db.begin_read().unwrap();
+            let table = txn.open_table(CHECKPOINT_TABLE).unwrap();
             let latest_key = format!("checkpoint_latest:{}", file.to_string_lossy());
-            let ck = tree.get(latest_key.as_bytes()).unwrap().unwrap();
-            let data = tree.get(&ck).unwrap().unwrap();
-            assert_eq!(data.as_ref(), b"checkpoint me");
+            let ck = table.get(latest_key.as_bytes()).unwrap().unwrap().value().to_vec();
+            let data = table.get(ck.as_slice()).unwrap().unwrap();
+            assert_eq!(data.value(), b"checkpoint me");
         });
     }
 }

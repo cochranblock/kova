@@ -12,7 +12,7 @@ pub fn f85(project_dir: &Path, hint: Option<&str>) -> PathBuf {
 }
 
 /// f84=format_diff. Unified diff of old vs new.
-#[cfg(any(feature = "gui", feature = "serve"))]
+#[cfg(feature = "serve")]
 pub fn f84(old: &str, new: &str) -> String {
     use similar::{ChangeTag, TextDiff};
     let diff = TextDiff::from_lines(old, new);

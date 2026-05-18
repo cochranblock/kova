@@ -115,6 +115,40 @@ Each entry follows this format:
 
 ## Entries
 
+### 2026-05-17 — P13 Swarm Tokenization + Static Corpus Carver
+
+**What:** Two build items shipped in one session:
+
+1. **P13 tokenize swarm module.** Five public symbols renamed in `src/swarm/train.rs` and 7 dependent files: `Example→t216`, `SubatomicConfig→t217`, `featurize→f394`, `train_starter→f395`, `predict→f396`. `#[allow(non_camel_case_types)]` added to struct defs (token names are intentionally lowercase per compression protocol). Updated `docs/compression_map.md`. Cross-references updated in `src/main.rs`, `src/bin/train-intent.rs`, `src/bin/retrain-starters.rs`, `src/swarm/tool_router.rs`, `src/exopack/router_training_tests.rs`, `src/nanobyte.rs`. Build clean.
+
+2. **Static corpus carver (`src/bin/carve_static.rs`).** Walks 240,596-crate corpus at `/mnt/data/crates/`, extracts `.rs` files from `.crate` tar.gz archives in memory via `tar` + `flate2`, syn-parses them, emits labeled JSONL for 15 subatomic models: `async_detector`, `arg_count`, `return_type`, `visibility`, `self_receiver`, `field_count`, `variant_count`, `error_enum`, `method_count`, `has_debug`, `has_clone`, `has_serialize`, `has_deserialize`, `has_default`, `has_partial_eq`. Gated behind `--features carve` (syn + tar optional deps) to keep main build lean. Smoke test: 100 crates → 1,979 examples across all 15 models in <1s release.
+
+Also corrected remaining "sled" references throughout PROOF_OF_ARTIFACTS.md and BACKLOG.md to redb (the project migrated from unmaintained sled 0.34 to redb 2 in the prior session; POA/BACKLOG still had stale "sled" language).
+
+**Commit:** *(this commit)*
+**AI Role:** AI implemented symbol renames, carver binary, and all doc corrections. Human directed "sled??? redb replace please, toi and poa update."
+
+### 2026-05-17 — sled → redb Migration + REPL Pyramid Wiring + Correctness Hardening
+
+**What:** Three interlocking improvements shipped in one session:
+
+1. **sled → redb migration.** Replaced the unmaintained sled 0.34 with redb 2 across all 7 storage consumers (`storage.rs`, `trace.rs`, `feedback.rs`, `tools.rs`, `rag.rs`, `compiler_teacher.rs`, `Cargo.toml`). Core design: `OnceLock<Option<Arc<Database>>>` singleton in `storage.rs` satisfies redb's exclusive-file-access requirement. Modules at the shared `sled_path()` call `global_db()`; modules at distinct paths (compiler_teacher, rag) open their own Database. Test isolation via `t12::temporary()` — a `TempDir`-owned Database dropped at the end of each test. `scan_prefix` replacement: collect-then-delete in one write transaction. `flush()` calls removed (no-op in redb; fsync is on `commit()`).
+
+2. **REPL subatomic T1 wiring.** `code_vs_english` classifier now prints `[input: code, 0.94]` in dim gray before inference. `slop_detector` prints `[slop: 0.81 — review output]` in yellow after inference when confidence > 0.65. Both classifiers run from the embedded `starter.nanobyte` with zero file I/O. Silent telemetry bank (full classification on every input + output) stored to redb.
+
+3. **User story analysis + master Rust engineer review.** `USER_STORY_ANALYSIS.md` updated: 4 personas (P1 solo dev, P2 fleet operator, P3 model trainer, P4 first-time user), 13 user stories (DONE/PARTIAL/MISSING), gap matrix, backlog reprioritization. Added senior Rust engineer code review with 10 findings, 6 fixed immediately.
+
+**Correctness fixes landed (all tests passing):**
+- `compiler_teacher.rs`: `unwrap_or_default()` on bincode encode silently emitted empty training pairs (data loss). Fixed to `let Ok(encoded) = ... else { return }`.
+- `storage.rs`: removed dead `_p: impl AsRef<Path>` from `f39` (callers were passing a no-op arg). Blanket `#[allow(dead_code, unused_imports)]` narrowed to just `non_camel_case_types`. `create_dir_all` now logs failures instead of silently swallowing.
+- `nanobyte.rs`: `decode_manifest` changed from returning `Manifest` with `.unwrap()` slice conversions to returning `Result<Manifest>` with `?` propagation to `from_storage`.
+- `trace.rs`: LLM call key was using XOR of timestamp fields as a "random" discriminant (deterministic, collision-prone). Replaced with `AtomicU32` monotonic counter — guaranteed unique per process lifetime. Variable renamed `rand_bytes` → `discriminant`.
+- `error.rs`: renamed opaque `T176::T193` and `T176::T129` variants to `T176::Cluster` and `T176::Provider`. Removed `From<&str>` escape hatch — string-literal errors now require explicit `T176::Other("msg".into())`.
+- `trace.rs + pipeline/mod.rs`: `T93.stage: String` and `T93.outcome: String` converted to typed `Stage` and `Outcome` enums with `Display` + `#[serde(rename_all = "lowercase")]`. Invalid states are now unrepresentable. Wire format unchanged.
+
+**Commit:** *(this commit)*
+**AI Role:** AI designed and implemented all migration code, wrote the user story analysis, and identified + fixed all 6 correctness issues. Human directed "transition to redb", "fix all of it", "update TOI and POA".
+
 ### 2026-05-07 — Hash Dim Bump 256 → 8192 for Original 3 Starters (gap 12.1)
 
 **What:** Retrained `slop_detector`, `code_vs_english`, `lang_detector` at FEATURE_DIM=8192 (was 256). New `src/bin/retrain-starters.rs` shells out to `kova::swarm::train::train_starter`, which now takes `feature_dim` as a parameter (was a hardcoded const). Repacked `assets/starter.nanobyte` with all 4 models (size 1,271,548 → 1,557,244 bytes). 12 nanobyte tests pass including parity vs `swarm::train::predict` on every model.
@@ -302,20 +336,4 @@ This is the first quality measurement against a public benchmark. Closes gap 12.
 **Commit:** `248dfe5`
 **AI Role:** AI generated egui layout. Human directed UX flow and copy.
 
-### 2026-03-16 — GPU Scheduling for Training Jobs
-
-**What:** `kova c2 gpu` — GPU scheduling across cluster nodes for training job allocation.
-**Commit:** `c986dbc`
-**AI Role:** AI implemented scheduler. Human designed priority system and resource constraints.
-
-### 2026-03-10 — Initial Commit
-
-**What:** Full augment engine: REPL, agent loop, tools, inference, cargo/git tokenization, node commands, pipeline, C2 orchestration.
-**Why:** Replace fragmented AI tooling with a single, self-contained binary that does everything.
-**AI Role:** AI generated code across all modules. Human architected every subsystem, directed integration, verified each component works end-to-end.
-
----
-
-*185+ commits in 17 days. Every decision human-directed. Every output AI-executed and human-verified.*
-
-*Part of the [CochranBlock](https://cochranblock.org) zero-cloud architecture. All source under the Unlicense.*
+### 20

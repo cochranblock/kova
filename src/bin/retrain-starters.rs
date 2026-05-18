@@ -15,7 +15,7 @@
 
 use std::path::Path;
 
-use kova::swarm::train::train_starter;
+use kova::swarm::train::f395;
 
 const FEATURE_DIM: usize = 8192;
 
@@ -34,6 +34,6 @@ fn run() -> Result<(), String> {
         FEATURE_DIM,
         model_root.display()
     );
-    train_starter(project, &model_root, FEATURE_DIM)?;
+    f395(project, &model_root, FEATURE_DIM)?;
     Ok(())
 }

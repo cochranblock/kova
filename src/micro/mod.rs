@@ -29,11 +29,11 @@ pub mod tournament;
 pub mod train;
 pub mod train_harness;
 pub mod validate;
-#[cfg(feature = "mobile-llm")]
+#[cfg(feature = "inference")]
 pub mod candle_train;
-#[cfg(feature = "mobile-llm")]
+#[cfg(feature = "inference")]
 pub mod kova_model;
-#[cfg(feature = "mobile-llm")]
+#[cfg(feature = "inference")]
 pub mod moe_tournament;
-#[cfg(feature = "mobile-llm")]
+#[cfg(feature = "inference")]
 pub mod quantize;

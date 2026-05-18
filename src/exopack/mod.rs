@@ -67,3 +67,6 @@ pub mod agent_loop_tests;
 
 #[cfg(feature = "router_training_tests")]
 pub mod router_training_tests;
+
+#[cfg(feature = "tele_tests")]
+pub mod tele_tests;

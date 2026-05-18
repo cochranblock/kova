@@ -364,9 +364,7 @@ impl App {
                     max_iter,
                 );
 
-                // Store in sled.
-                let store_path = crate::config::sled_path();
-                if let Ok(store) = crate::storage::t12::f39(&store_path) {
+                if let Ok(store) = crate::storage::t12::f39() {
                     let _ = crate::context::f73(&store, "user", &input);
                     let _ = crate::context::f73(&store, "assistant", &response);
                 }

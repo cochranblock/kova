@@ -19,7 +19,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-use crate::swarm::train::{f389, predict, Example, SubatomicConfig};
+use crate::swarm::train::{f389, f396, t216, t217};
 
 /// Stable class ordering for the tier-1 tool_router classifier. Index in this
 /// array = class label. Append-only — never reorder; doing so invalidates
@@ -60,14 +60,14 @@ pub fn f427() -> PathBuf {
 }
 
 /// f426=load_mined_examples. Parse a JSONL file produced by training_mine::f414
-/// (rows of T217). Returns Examples ready for the trainer:
+/// (rows of T217). Returns t216s ready for the trainer:
 ///   - kova-mapped examples become (prompt, class_idx) pairs
 ///   - unmapped examples (tool_name_kova=None) are skipped
 ///   - examples whose mapped name isn't in KOVA_ROUTER_TOOLS are skipped
 ///
-/// Returns (Vec<Example>, skipped_count). Skips are returned so the caller can
+/// Returns (Vec<t216>, skipped_count). Skips are returned so the caller can
 /// surface "data integrity" stats on training kickoff.
-pub fn f426(jsonl_path: &Path) -> Result<(Vec<Example>, usize), String> {
+pub fn f426(jsonl_path: &Path) -> Result<(Vec<t216>, usize), String> {
     let file = fs::File::open(jsonl_path)
         .map_err(|e| format!("open {}: {}", jsonl_path.display(), e))?;
     let reader = BufReader::new(file);
@@ -113,7 +113,7 @@ pub fn f426(jsonl_path: &Path) -> Result<(Vec<Example>, usize), String> {
                 continue;
             }
         };
-        examples.push(Example {
+        examples.push(t216 {
             text: prompt,
             label,
         });
@@ -148,7 +148,7 @@ impl Default for RouterTrainConfig {
 /// Wrapper over `swarm::train::f389` — sets the class ordering, validates the
 /// examples are non-empty, and forwards.
 pub fn f424(
-    examples: &[Example],
+    examples: &[t216],
     output_dir: &Path,
     cfg: &RouterTrainConfig,
 ) -> Result<PathBuf, String> {
@@ -156,7 +156,7 @@ pub fn f424(
         return Err("tool_router training: no examples".into());
     }
     let class_names: Vec<String> = KOVA_ROUTER_TOOLS.iter().map(|s| (*s).to_string()).collect();
-    let train_cfg = SubatomicConfig {
+    let train_cfg = t217 {
         name: "tool_router".into(),
         num_classes: KOVA_ROUTER_TOOLS.len(),
         class_names,
@@ -170,7 +170,7 @@ pub fn f424(
 /// f425=classify_tool. Run a trained tool_router checkpoint on a prompt.
 /// Returns (kova_tool_name, confidence). Wraps `swarm::train::predict`.
 pub fn f425(model_dir: &Path, prompt: &str) -> Result<(String, f32), String> {
-    let (_label, class_name, confidence) = predict(model_dir, prompt)?;
+    let (_label, class_name, confidence) = f396(model_dir, prompt)?;
     Ok((class_name, confidence))
 }
 
@@ -348,13 +348,13 @@ pub const SYNTH_ROUTER_PAIRS: &[(&str, &str)] = &[
     ("finalize the plan and unblock writes", "exit_plan_mode"),
 ];
 
-/// Build Examples from SYNTH_ROUTER_PAIRS. Used by both the CLI
+/// Build t216s from SYNTH_ROUTER_PAIRS. Used by both the CLI
 /// (`--mix-synthetic`) and the router_training_tests exopack suite.
-pub fn synth_examples() -> Vec<crate::swarm::train::Example> {
+pub fn synth_examples() -> Vec<crate::swarm::train::t216> {
     SYNTH_ROUTER_PAIRS
         .iter()
         .filter_map(|(prompt, tool)| {
-            tool_to_class(tool).map(|label| crate::swarm::train::Example {
+            tool_to_class(tool).map(|label| crate::swarm::train::t216 {
                 text: (*prompt).into(),
                 label,
             })

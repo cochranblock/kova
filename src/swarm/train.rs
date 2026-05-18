@@ -8,7 +8,8 @@
 //! For feature_dim=256, 2 classes: 514 params. For 5 classes: 1,285 params.
 //!
 //! f389=train_subatomic, f390=generate_slop_data, f391=generate_code_vs_english_data,
-//! f392=generate_lang_data.
+//! f392=generate_lang_data, f394=featurize, f395=train_starter, f396=predict,
+//! t216=t216, t217=t217.
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6
 
@@ -20,13 +21,15 @@ use std::path::{Path, PathBuf};
 const FEATURE_DIM: usize = 256;
 
 /// Training example: text + class label.
-pub struct Example {
+#[allow(non_camel_case_types)]
+pub struct t216 {
     pub text: String,
     pub label: usize,
 }
 
 /// Subatomic model config.
-pub struct SubatomicConfig {
+#[allow(non_camel_case_types)]
+pub struct t217 {
     pub name: String,
     pub num_classes: usize,
     pub class_names: Vec<String>,
@@ -43,7 +46,7 @@ fn trigram_hash(a: char, b: char, c: char, dim: usize) -> usize {
 }
 
 /// Convert text to fixed-size feature vector via character trigram hashing.
-pub fn featurize(text: &str, dim: usize) -> Vec<f32> {
+pub fn f394(text: &str, dim: usize) -> Vec<f32> {
     let mut features = vec![0.0f32; dim];
     let chars: Vec<char> = text.chars().collect();
     if chars.len() < 3 {
@@ -72,7 +75,7 @@ pub fn featurize(text: &str, dim: usize) -> Vec<f32> {
 /// Architecture: feature_dim → num_classes linear layer.
 /// Total params: feature_dim * num_classes + num_classes.
 /// Training: SGD with softmax cross-entropy loss.
-pub fn f389(config: &SubatomicConfig, examples: &[Example], output_dir: &Path) -> Result<PathBuf, String> {
+pub fn f389(config: &t217, examples: &[t216], output_dir: &Path) -> Result<PathBuf, String> {
     if examples.is_empty() {
         return Err("no training examples".into());
     }
@@ -103,7 +106,7 @@ pub fn f389(config: &SubatomicConfig, examples: &[Example], output_dir: &Path) -
     }
 
     // Featurize all examples.
-    let features: Vec<Vec<f32>> = examples.iter().map(|e| featurize(&e.text, dim)).collect();
+    let features: Vec<Vec<f32>> = examples.iter().map(|e| f394(&e.text, dim)).collect();
 
     // Train via SGD with softmax cross-entropy.
     let lr = config.lr as f32;
@@ -273,12 +276,12 @@ const SLOP_TEMPLATES: &[&str] = &[
 
 /// f390=generate_slop_data. Generate training data for slop detector.
 /// Label 0 = clean, label 1 = slop.
-pub fn f390() -> Vec<Example> {
+pub fn f390() -> Vec<t216> {
     let mut examples = Vec::new();
 
     // Clean examples.
     for s in CLEAN_SENTENCES {
-        examples.push(Example {
+        examples.push(t216 {
             text: s.to_string(),
             label: 0,
         });
@@ -287,7 +290,7 @@ pub fn f390() -> Vec<Example> {
     // Slop examples: insert banned words into templates.
     for word in SLOP_WORDS {
         for template in SLOP_TEMPLATES {
-            examples.push(Example {
+            examples.push(t216 {
                 text: template.replace("{slop}", word),
                 label: 1,
             });
@@ -307,7 +310,7 @@ pub fn f390() -> Vec<Example> {
         "Each worker node has its own sled database.",
     ];
     for s in &coding_clean {
-        examples.push(Example {
+        examples.push(t216 {
             text: s.to_string(),
             label: 0,
         });
@@ -319,7 +322,7 @@ pub fn f390() -> Vec<Example> {
 /// f391=generate_code_vs_english_data. Generate training data for code-vs-english classifier.
 /// Label 0 = english, label 1 = code.
 /// Scrapes .rs and .md files from the given project directory.
-pub fn f391(project_dir: &Path) -> Vec<Example> {
+pub fn f391(project_dir: &Path) -> Vec<t216> {
     let mut examples = Vec::new();
 
     // Scrape .rs files for code examples.
@@ -329,7 +332,7 @@ pub fn f391(project_dir: &Path) -> Vec<Example> {
                 for line in content.lines() {
                     let trimmed = line.trim();
                     if trimmed.len() > 10 && trimmed.len() < 200 && !trimmed.starts_with("//") {
-                        examples.push(Example {
+                        examples.push(t216 {
                             text: trimmed.to_string(),
                             label: 1,
                         });
@@ -362,7 +365,7 @@ pub fn f391(project_dir: &Path) -> Vec<Example> {
                         && !trimmed.starts_with("- ")
                         && !trimmed.contains("```")
                     {
-                        examples.push(Example {
+                        examples.push(t216 {
                             text: trimmed.to_string(),
                             label: 0,
                         });
@@ -402,7 +405,7 @@ pub fn f391(project_dir: &Path) -> Vec<Example> {
         "export PATH=\"$HOME/.cargo/bin:$PATH\"",
     ];
     for s in &synthetic_code {
-        examples.push(Example {
+        examples.push(t216 {
             text: s.to_string(),
             label: 1,
         });
@@ -422,7 +425,7 @@ pub fn f391(project_dir: &Path) -> Vec<Example> {
         "The agent loop continues until the model stops calling tools.",
     ];
     for s in &synthetic_english {
-        examples.push(Example {
+        examples.push(t216 {
             text: s.to_string(),
             label: 0,
         });
@@ -433,7 +436,7 @@ pub fn f391(project_dir: &Path) -> Vec<Example> {
 
 /// f392=generate_lang_data. Generate training data for language detector.
 /// Labels: 0=rust, 1=python, 2=javascript, 3=go, 4=shell.
-pub fn f392() -> Vec<Example> {
+pub fn f392() -> Vec<t216> {
     let mut examples = Vec::new();
 
     // Rust examples.
@@ -465,7 +468,7 @@ pub fn f392() -> Vec<Example> {
         "let rx = mpsc::channel::<Arc<str>>();",
     ];
     for s in &rust {
-        examples.push(Example { text: s.to_string(), label: 0 });
+        examples.push(t216 { text: s.to_string(), label: 0 });
     }
 
     // Python examples.
@@ -492,7 +495,7 @@ pub fn f392() -> Vec<Example> {
         "self.weights = nn.Parameter(torch.randn(256, 128))",
     ];
     for s in &python {
-        examples.push(Example { text: s.to_string(), label: 1 });
+        examples.push(t216 { text: s.to_string(), label: 1 });
     }
 
     // JavaScript examples.
@@ -519,7 +522,7 @@ pub fn f392() -> Vec<Example> {
         "import { createServer } from 'http';",
     ];
     for s in &javascript {
-        examples.push(Example { text: s.to_string(), label: 2 });
+        examples.push(t216 { text: s.to_string(), label: 2 });
     }
 
     // Go examples.
@@ -546,7 +549,7 @@ pub fn f392() -> Vec<Example> {
         "mu.Lock() defer mu.Unlock()",
     ];
     for s in &go {
-        examples.push(Example { text: s.to_string(), label: 3 });
+        examples.push(t216 { text: s.to_string(), label: 3 });
     }
 
     // Shell examples.
@@ -573,7 +576,7 @@ pub fn f392() -> Vec<Example> {
         "ln -sf /usr/local/bin/kova /usr/bin/kova",
     ];
     for s in &shell {
-        examples.push(Example { text: s.to_string(), label: 4 });
+        examples.push(t216 { text: s.to_string(), label: 4 });
     }
 
     examples
@@ -584,7 +587,7 @@ pub fn f392() -> Vec<Example> {
 /// `feature_dim` is the trigram-hash bucket count. The legacy 256 was kept for
 /// historical compatibility but produces a ~98% collision rate per Weinberger
 /// 2009 (gap analysis 12.1). Pass 8192 (or higher) for the recommended default.
-pub fn train_starter(
+pub fn f395(
     project_dir: &Path,
     output_dir: &Path,
     feature_dim: usize,
@@ -593,7 +596,7 @@ pub fn train_starter(
 
     // 1. Slop detector (binary: clean=0, slop=1).
     let slop_data = f390();
-    let slop_config = SubatomicConfig {
+    let slop_config = t217 {
         name: "slop_detector".into(),
         num_classes: 2,
         class_names: vec!["clean".into(), "slop".into()],
@@ -605,7 +608,7 @@ pub fn train_starter(
 
     // 2. Code vs english (binary: english=0, code=1).
     let cve_data = f391(project_dir);
-    let cve_config = SubatomicConfig {
+    let cve_config = t217 {
         name: "code_vs_english".into(),
         num_classes: 2,
         class_names: vec!["english".into(), "code".into()],
@@ -617,7 +620,7 @@ pub fn train_starter(
 
     // 3. Language detector (5 classes: rust=0, python=1, js=2, go=3, shell=4).
     let lang_data = f392();
-    let lang_config = SubatomicConfig {
+    let lang_config = t217 {
         name: "lang_detector".into(),
         num_classes: 5,
         class_names: vec!["rust".into(), "python".into(), "javascript".into(), "go".into(), "shell".into()],
@@ -632,7 +635,7 @@ pub fn train_starter(
 }
 
 /// Load a trained model and run inference on a single input.
-pub fn predict(model_dir: &Path, text: &str) -> Result<(usize, String, f32), String> {
+pub fn f396(model_dir: &Path, text: &str) -> Result<(usize, String, f32), String> {
     // Load config.
     let config_path = model_dir.join("config.json");
     let config_str = std::fs::read_to_string(&config_path)
@@ -675,7 +678,7 @@ pub fn predict(model_dir: &Path, text: &str) -> Result<(usize, String, f32), Str
     }
 
     // Featurize and predict.
-    let feat = featurize(text, dim);
+    let feat = f394(text, dim);
     let mut logits = vec![0.0f32; nc];
     for c in 0..nc {
         let mut sum = bias[c];
@@ -715,20 +718,20 @@ mod tests {
 
     #[test]
     fn featurize_produces_fixed_dim() {
-        let f = featurize("hello world", 256);
+        let f = f394("hello world", 256);
         assert_eq!(f.len(), 256);
     }
 
     #[test]
     fn featurize_normalized() {
-        let f = featurize("some longer text for testing normalization", 256);
+        let f = f394("some longer text for testing normalization", 256);
         let norm: f32 = f.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 0.01, "norm should be ~1.0, got {}", norm);
     }
 
     #[test]
     fn featurize_short_text() {
-        let f = featurize("ab", 256);
+        let f = f394("ab", 256);
         assert_eq!(f.len(), 256);
         // Should have exactly one non-zero feature.
         assert_eq!(f.iter().filter(|&&x| x > 0.0).count(), 1);
@@ -755,7 +758,7 @@ mod tests {
     #[test]
     fn train_slop_detector() {
         let data = f390();
-        let config = SubatomicConfig {
+        let config = t217 {
             name: "test_slop".into(),
             num_classes: 2,
             class_names: vec!["clean".into(), "slop".into()],
@@ -777,7 +780,7 @@ mod tests {
     #[test]
     fn predict_after_train() {
         let data = f390();
-        let config = SubatomicConfig {
+        let config = t217 {
             name: "test_predict".into(),
             num_classes: 2,
             class_names: vec!["clean".into(), "slop".into()],
@@ -789,7 +792,7 @@ mod tests {
         let model_dir = f389(&config, &data, tmp.path()).unwrap();
 
         // Test that predict returns valid results (class name + confidence).
-        let (pred, class, conf) = predict(&model_dir, "We need to leverage the synergy.").unwrap();
+        let (pred, class, conf) = f396(&model_dir, "We need to leverage the synergy.").unwrap();
         assert!(pred < 2, "prediction should be 0 or 1");
         assert!(!class.is_empty());
         assert!(conf > 0.0 && conf <= 1.0);
@@ -801,7 +804,7 @@ mod tests {
     #[test]
     fn train_lang_detector() {
         let data = f392();
-        let config = SubatomicConfig {
+        let config = t217 {
             name: "test_lang".into(),
             num_classes: 5,
             class_names: vec!["rust".into(), "python".into(), "javascript".into(), "go".into(), "shell".into()],
@@ -815,7 +818,7 @@ mod tests {
 
         // Verify predict returns valid output.
         let model_dir = result.unwrap();
-        let (pred, class, conf) = predict(&model_dir, "fn main() { println!(\"hello\"); }").unwrap();
+        let (pred, class, conf) = f396(&model_dir, "fn main() { println!(\"hello\"); }").unwrap();
         assert!(pred < 5);
         assert!(!class.is_empty());
         assert!(conf > 0.0);

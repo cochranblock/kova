@@ -306,6 +306,12 @@ enum ExportCmd {
         #[arg(long)]
         output: Option<std::path::PathBuf>,
     },
+    /// Dump REPL prompt/response telemetry as JSONL for intent classifier retraining.
+    Tele {
+        /// Output path. Default: ~/.kova/training_data/tele.jsonl
+        #[arg(long)]
+        output: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(clap::Args)]
@@ -868,7 +874,7 @@ enum MicroCmd {
     /// Clear a stale tournament checkpoint (start fresh next run).
     TournamentClear,
     /// Run MoE tournament: Spark routes challenges, cascade on failure. Competes as "KovaMoE".
-    #[cfg(feature = "mobile-llm")]
+    #[cfg(feature = "inference")]
     TournamentMoe {
         /// Max cascade attempts per challenge.
         #[arg(long, default_value = "3")]
@@ -909,7 +915,7 @@ enum MicroCmd {
         dry_run: bool,
     },
     /// Train kova's own models from scratch. Pure Rust, candle. No pretrained weights.
-    #[cfg(feature = "mobile-llm")]
+    #[cfg(feature = "inference")]
     Forge {
         /// Model tier: spark (50K), flame (500K), blaze (2M), or "all".
         #[arg(default_value = "all")]
@@ -925,17 +931,17 @@ enum MicroCmd {
         batch_size: usize,
     },
     /// Generate synthetic classifier training data for all 8 categories.
-    #[cfg(feature = "mobile-llm")]
+    #[cfg(feature = "inference")]
     Synth,
     /// Synth + retrain Spark in one shot. The evolve loop.
-    #[cfg(feature = "mobile-llm")]
+    #[cfg(feature = "inference")]
     Evolve {
         /// Training epochs.
         #[arg(long, default_value = "200")]
         epochs: u32,
     },
     /// Quantize a trained model. Mixed-precision + QJL residual compression.
-    #[cfg(feature = "mobile-llm")]
+    #[cfg(feature = "inference")]
     Quantize {
         /// Model tier: spark, flame, blaze.
         #[arg(default_value = "spark")]
@@ -945,7 +951,7 @@ enum MicroCmd {
         outlier_frac: f32,
     },
     /// Full evolution: tournament → export → synth → retrain → MoE validation. One command.
-    #[cfg(feature = "mobile-llm")]
+    #[cfg(feature = "inference")]
     EvolveFull {
         /// Training epochs for Spark retrain.
         #[arg(long, default_value = "200")]
@@ -1722,7 +1728,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
+        #[cfg(feature = "inference")]
         MicroCmd::TournamentMoe { max_cascade, spark_dir, oracle } => {
             use kova::micro::{tournament, moe_tournament};
 
@@ -1844,7 +1850,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             };
             f262(fmt, iters, dry_run).map_err(anyhow::Error::msg)
         }
-        #[cfg(feature = "mobile-llm")]
+        #[cfg(feature = "inference")]
         MicroCmd::Forge { tier, epochs, lr, batch_size } => {
             use kova::micro::candle_train::{self, TrainConfig};
             use kova::micro::kova_model::Tier;
@@ -1883,7 +1889,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
+        #[cfg(feature = "inference")]
         MicroCmd::Synth => {
             use kova::micro::candle_train;
             let training_dir = candle_train::training_dir();
@@ -1893,7 +1899,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
                 .map_err(anyhow::Error::msg)?;
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
+        #[cfg(feature = "inference")]
         MicroCmd::Evolve { epochs } => {
             use kova::micro::candle_train::{self, TrainConfig};
             use kova::micro::kova_model::Tier;
@@ -1934,7 +1940,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             eprintln!("[evolve] Spark retrained: {}", path.display());
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
+        #[cfg(feature = "inference")]
         MicroCmd::Quantize { tier, outlier_frac } => {
             use kova::micro::quantize;
 
@@ -1998,7 +2004,7 @@ fn run_micro(args: MicroArgs) -> anyhow::Result<()> {
             eprintln!("[quantize] saved: {}", out_path.display());
             Ok(())
         }
-        #[cfg(feature = "mobile-llm")]
+        #[cfg(feature = "inference")]
         MicroCmd::EvolveFull { epochs, max_cascade } => {
             use kova::micro::candle_train::{self, TrainConfig};
             use kova::micro::kova_model::Tier;
@@ -2337,10 +2343,10 @@ echo "kova ssh entry installed"
 }
 
 fn run_train_router(args: TrainRouterArgs) -> anyhow::Result<()> {
-    use kova::swarm::train::Example;
+    use kova::swarm::train::t216;
     use kova::swarm::tool_router::{f424, tool_to_class, RouterTrainConfig};
 
-    let mut examples: Vec<Example> = if let Some(data) = args.data.clone() {
+    let mut examples: Vec<t216> = if let Some(data) = args.data.clone() {
         let (ex, skipped) = kova::swarm::tool_router::f426(&data)
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         println!(
@@ -2359,12 +2365,12 @@ fn run_train_router(args: TrainRouterArgs) -> anyhow::Result<()> {
         }
         let (raw, stats) = kova::training_mine::f413(&projects);
         println!("{}", kova::training_mine::f416(&stats));
-        let ex: Vec<Example> = raw
+        let ex: Vec<t216> = raw
             .into_iter()
             .filter_map(|t| {
                 let kova_name = t.tool_name_kova?;
                 let label = tool_to_class(&kova_name)?;
-                Some(Example {
+                Some(t216 {
                     text: t.prompt,
                     label,
                 })
@@ -2393,13 +2399,13 @@ fn run_train_router(args: TrainRouterArgs) -> anyhow::Result<()> {
     // (min-per-class). Both off by default — caller opts in.
     if args.max_per_class.is_some() || args.min_per_class > 0 {
         let total_classes = kova::swarm::tool_router::KOVA_ROUTER_TOOLS.len();
-        let mut by_class: Vec<Vec<Example>> = (0..total_classes).map(|_| Vec::new()).collect();
+        let mut by_class: Vec<Vec<t216>> = (0..total_classes).map(|_| Vec::new()).collect();
         for ex in examples {
             if ex.label < total_classes {
                 by_class[ex.label].push(ex);
             }
         }
-        let mut balanced: Vec<Example> = Vec::new();
+        let mut balanced: Vec<t216> = Vec::new();
         for (idx, mut bucket) in by_class.into_iter().enumerate() {
             let original = bucket.len();
             // Undersample: deterministic stride-based pick rather than RNG —
@@ -2409,10 +2415,10 @@ fn run_train_router(args: TrainRouterArgs) -> anyhow::Result<()> {
             {
                 let len = bucket.len();
                 let stride = len as f64 / cap as f64;
-                let kept: Vec<Example> = (0..cap)
+                let kept: Vec<t216> = (0..cap)
                     .map(|i| {
                         let pick = ((i as f64 * stride) as usize).min(len - 1);
-                        Example {
+                        t216 {
                             text: bucket[pick].text.clone(),
                             label: bucket[pick].label,
                         }
@@ -2423,11 +2429,11 @@ fn run_train_router(args: TrainRouterArgs) -> anyhow::Result<()> {
             // Oversample: cycle through bucket until we hit min_per_class.
             // Skip empty buckets — there's nothing to cycle from.
             if !bucket.is_empty() && bucket.len() < args.min_per_class {
-                let mut out: Vec<Example> = Vec::with_capacity(args.min_per_class);
+                let mut out: Vec<t216> = Vec::with_capacity(args.min_per_class);
                 let mut i = 0;
                 while out.len() < args.min_per_class {
                     let src = &bucket[i % bucket.len()];
-                    out.push(Example {
+                    out.push(t216 {
                         text: src.text.clone(),
                         label: src.label,
                     });
@@ -2471,6 +2477,10 @@ fn run_export(args: ExportArgs) -> anyhow::Result<()> {
             let fmt = kova::training_data::T117::f316(&format)
                 .ok_or_else(|| anyhow::anyhow!("unknown format: {} (expected jsonl, csv, or dpo)", format))?;
             kova::training_data::f181(fmt, output)?;
+            Ok(())
+        }
+        ExportCmd::Tele { output } => {
+            kova::training_data::f185(output)?;
             Ok(())
         }
     }

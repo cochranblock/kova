@@ -79,7 +79,8 @@ pub mod browser;
     feature = "perm_gate", feature = "harvest", feature = "ats_fixtures",
     feature = "cc_features", feature = "training_mine_tests",
     feature = "tool_call_parser", feature = "router_spec",
-    feature = "agent_loop_tests", feature = "router_training_tests"
+    feature = "agent_loop_tests", feature = "router_training_tests",
+    feature = "tele_tests"
 ))]
 pub mod exopack;
 
@@ -204,10 +205,7 @@ pub fn f315() -> anyhow::Result<()> {
     build_cmd
         .args(["build", "--release", "--features", "serve,inference"])
         .current_dir(project)
-        .env("CARGO_TARGET_DIR", &target_dir)
-        // Skip WASM thin-client build: not needed for smoke/logic tests and
-        // the wasm-bindgen CLI version must exactly match the Rust dep version.
-        .env("KOVA_SKIP_WASM", "1");
+        .env("CARGO_TARGET_DIR", &target_dir);
     if on_macos {
         build_cmd.args(["--target", "aarch64-apple-darwin"]);
         println!("kova test: cargo build --release --features serve,inference --target aarch64-apple-darwin...");
@@ -312,6 +310,16 @@ pub fn f315() -> anyhow::Result<()> {
     print!("{}", rt_report);
     if !rt_ok {
         anyhow::bail!("router_training_tests: one or more router scenarios failed");
+    }
+
+    #[cfg(feature = "tele_tests")]
+    {
+        println!("kova test: tele_tests (telemetry storage + export pipeline)...");
+        let (tt_ok, tt_report) = crate::exopack::tele_tests::f429();
+        print!("{}", tt_report);
+        if !tt_ok {
+            anyhow::bail!("tele_tests: one or more tele scenarios failed");
+        }
     }
 
     if std::env::var("KOVA_SKIP_BAKED_DEMO").is_ok() || std::env::var("KOVA_BAKED_DEMO").is_err() {

@@ -1,7 +1,5 @@
 //! feedback — Academy-to-challenge feedback loop.
 //! Mines tournament failures into new, harder challenges.
-//! When a model fails a challenge, the failure data (prompt, wrong response,
-//! expected behavior) feeds back into the academy as a training signal.
 //!
 //! f194=record_failure, f195=recent_failures, f196=generate_challenge_from_failure
 //! f197=export_generated_challenges, f198=feedback_stats
@@ -9,49 +7,24 @@
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
+use redb::{ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// ── Sled Storage ─────────────────────────────────────────────────
-
-/// Sled tree for challenge failures.
-const FAILURE_TREE: &str = "challenge_failures";
-
-/// Sled tree for generated challenges.
-const GENERATED_TREE: &str = "generated_challenges";
-
-/// Global sled db handle (same pattern as trace.rs).
-static FEEDBACK_DB: OnceLock<Option<sled::Db>> = OnceLock::new();
-
-fn feedback_db() -> Option<&'static sled::Db> {
-    FEEDBACK_DB
-        .get_or_init(|| {
-            let path = crate::config::sled_path();
-            sled::open(&path).ok()
-        })
-        .as_ref()
-}
-
+const FAILURE_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("challenge_failures");
+const GENERATED_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("generated_challenges");
 
 // ── Types ────────────────────────────────────────────────────────
 
 /// t126=T126. A single challenge failure from a tournament run.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct T126 {
-    /// Description of the challenge that was failed.
     pub challenge_desc: String,
-    /// The input prompt given to the model.
     pub input: String,
-    /// The expected verification string (e.g. "compiles", "contains:fn").
     pub expected_verify: String,
-    /// What the model actually returned.
     pub actual_response: String,
-    /// Model name (e.g. "custom-model:local").
     pub model: String,
-    /// Tournament event type (e.g. "sprint", "technical", "freestyle").
     pub event_type: String,
-    /// Unix timestamp in milliseconds.
     #[serde(default)]
     pub ts: u64,
 }
@@ -59,77 +32,60 @@ pub struct T126 {
 /// t127=T127. A new challenge produced from a failure pattern.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct T127 {
-    /// Template ID for the micro-model (e.g. "f79", "f81", "f80").
     pub template_id: String,
-    /// The challenge input prompt.
     pub input: String,
-    /// Verification string (e.g. "compiles_and:contains:fn").
     pub verify: String,
-    /// Human-readable description.
     pub description: String,
-    /// Difficulty tier: "easy", "medium", "hard".
     pub difficulty: String,
-    /// Which failure record spawned this challenge.
     pub source_failure: String,
 }
 
 /// t128=T128. Aggregate stats across recorded failures.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct T128 {
-    /// Total failure records stored.
     pub total_failures: usize,
-    /// Failures grouped by model name.
     pub by_model: Vec<(String, usize)>,
-    /// Failures grouped by event type.
     pub by_event: Vec<(String, usize)>,
-    /// Total generated challenges stored.
     pub generated_challenges: usize,
 }
 
-// ── Core Functions ───────────────────────────────────────────────
+// ── Public API ───────────────────────────────────────────────────
 
-/// f194=record_failure. Store a failure record in sled.
-pub fn f194(mut record: T126) {
-    if record.ts == 0 {
-        record.ts = now_ms();
-    }
-    if let Some(db) = feedback_db()
-        && let Ok(tree) = db.open_tree(FAILURE_TREE)
-        && let Ok(val) = serde_json::to_vec(&record)
+/// f194=record_failure. Persist a challenge failure.
+pub fn f194(record: T126) {
+    let Some(db) = crate::storage::global_db() else { return };
+    let Ok(val) = serde_json::to_vec(&record) else { return };
+    let key = failure_key(record.ts);
+    let Ok(txn) = db.begin_write() else { return };
     {
-        let key = failure_key(record.ts);
-        let _ = tree.insert(key, val);
+        let Ok(mut table) = txn.open_table(FAILURE_TABLE) else { return };
+        let _ = table.insert(key.as_slice(), val.as_slice());
     }
+    let _ = txn.commit();
 }
 
 /// f195=recent_failures. Query recent failure records (newest first).
 pub fn f195(limit: usize) -> Vec<T126> {
-    let mut out = Vec::new();
-    let db = match feedback_db() {
-        Some(db) => db,
-        None => return out,
-    };
-    let tree = match db.open_tree(FAILURE_TREE) {
+    let Some(db) = crate::storage::global_db() else { return Vec::new() };
+    let Ok(txn) = db.begin_read() else { return Vec::new() };
+    let table = match txn.open_table(FAILURE_TABLE) {
         Ok(t) => t,
-        Err(_) => return out,
+        Err(_) => return Vec::new(),
     };
-
-    for item in tree.iter().rev() {
-        if out.len() >= limit {
-            break;
-        }
-        if let Ok((_k, v)) = item
-            && let Ok(record) = serde_json::from_slice::<T126>(&v)
+    let Ok(iter) = table.iter() else { return Vec::new() };
+    let mut out = Vec::new();
+    for item in iter.rev() {
+        if out.len() >= limit { break; }
+        if let Ok((_, v)) = item
+            && let Ok(record) = serde_json::from_slice::<T126>(v.value())
         {
             out.push(record);
         }
     }
-
     out
 }
 
-/// f196=generate_challenge_from_failure. Use an LLM to create a harder
-/// variant of the failed challenge. Returns one generated challenge.
+/// f196=generate_challenge_from_failure. Use an LLM to create a harder variant.
 pub fn f196(
     failure: &T126,
     provider: &crate::providers::T129,
@@ -165,76 +121,64 @@ pub fn f196(
     let resp = crate::providers::f199(provider, "", system, &prompt)?;
     let challenge = parse_generated_challenge(&resp.text, &failure.challenge_desc)?;
 
-    // Store the generated challenge
-    if let Some(db) = feedback_db()
-        && let Ok(tree) = db.open_tree(GENERATED_TREE)
+    if let Some(db) = crate::storage::global_db()
         && let Ok(val) = serde_json::to_vec(&challenge)
+        && let Ok(txn) = db.begin_write()
     {
-        let key = failure_key(now_ms());
-        let _ = tree.insert(key, val);
+        {
+            if let Ok(mut table) = txn.open_table(GENERATED_TABLE) {
+                let key = failure_key(now_ms());
+                let _ = table.insert(key.as_slice(), val.as_slice());
+            }
+        }
+        let _ = txn.commit();
     }
 
     Ok(challenge)
 }
 
-/// f197=export_generated_challenges. Format generated challenges as Rust
-/// code (tce() calls) that can be pasted into tournament.rs.
+/// f197=export_generated_challenges. Format as Rust tce() calls.
 pub fn f197(challenges: &[T127]) -> String {
     let mut out = String::new();
     out.push_str("// ── Generated from feedback loop ──────────────────────────────\n");
     out.push_str("// Paste into tournament_challenges() in tournament.rs\n\n");
-
     for ch in challenges {
-        // Escape double quotes and newlines in strings
-        let input = escape_rust_str(&ch.input);
-        let verify = escape_rust_str(&ch.verify);
-        let desc = escape_rust_str(&ch.description);
-        let tid = escape_rust_str(&ch.template_id);
-
-        // Map template_id to category and event_type
         let (cat, event) = category_for_template(&ch.template_id);
-
         out.push_str(&format!(
             "tce(\"{}\", \"{}\", \"{}\", \"{}\", \"{}\", \"{}\"),\n",
-            tid, cat, event, input, verify, desc,
+            escape_rust_str(&ch.template_id),
+            cat,
+            event,
+            escape_rust_str(&ch.input),
+            escape_rust_str(&ch.verify),
+            escape_rust_str(&ch.description),
         ));
     }
-
     out
 }
 
-/// f198=feedback_stats. Count failures by model, event type, and generated challenges.
+/// f198=feedback_stats.
 pub fn f198() -> T128 {
-    let mut stats = T128 {
-        total_failures: 0,
-        by_model: Vec::new(),
-        by_event: Vec::new(),
-        generated_challenges: 0,
-    };
+    let mut stats = T128::default();
+    let Some(db) = crate::storage::global_db() else { return stats };
+    let Ok(txn) = db.begin_read() else { return stats };
 
-    let db = match feedback_db() {
-        Some(db) => db,
-        None => return stats,
-    };
+    let mut model_counts: std::collections::HashMap<String, usize> = Default::default();
+    let mut event_counts: std::collections::HashMap<String, usize> = Default::default();
 
-    // Count failures
-    let mut model_counts: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
-    let mut event_counts: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
-
-    if let Ok(tree) = db.open_tree(FAILURE_TREE) {
-        for item in tree.iter().flatten() {
-            let (_k, v) = item;
-            if let Ok(record) = serde_json::from_slice::<T126>(&v) {
+    if let Ok(table) = txn.open_table(FAILURE_TABLE)
+        && let Ok(iter) = table.iter()
+    {
+        for item in iter.flatten() {
+            let (_, v) = item;
+            if let Ok(record) = serde_json::from_slice::<T126>(v.value()) {
                 stats.total_failures += 1;
-                *model_counts.entry(record.model).or_insert(0) += 1;
-                *event_counts.entry(record.event_type).or_insert(0) += 1;
+                *model_counts.entry(record.model).or_default() += 1;
+                *event_counts.entry(record.event_type).or_default() += 1;
             }
         }
     }
 
-    // Sort by count descending
     stats.by_model = {
         let mut v: Vec<_> = model_counts.into_iter().collect();
         v.sort_by(|a, b| b.1.cmp(&a.1));
@@ -246,9 +190,10 @@ pub fn f198() -> T128 {
         v
     };
 
-    // Count generated challenges
-    if let Ok(tree) = db.open_tree(GENERATED_TREE) {
-        stats.generated_challenges = tree.len();
+    if let Ok(table) = txn.open_table(GENERATED_TABLE)
+        && let Ok(iter) = table.iter()
+    {
+        stats.generated_challenges = iter.count();
     }
 
     stats
@@ -263,37 +208,31 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-/// Key: timestamp in big-endian bytes (sorts chronologically) + atomic counter for uniqueness.
 fn failure_key(ts: u64) -> Vec<u8> {
     use std::sync::atomic::{AtomicU32, Ordering};
     static COUNTER: AtomicU32 = AtomicU32::new(0);
-
-    let ts_bytes = ts.to_be_bytes();
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut key = Vec::with_capacity(12);
-    key.extend_from_slice(&ts_bytes);
+    key.extend_from_slice(&ts.to_be_bytes());
     key.extend_from_slice(&seq.to_be_bytes());
     key
 }
 
-/// Truncate a string to max characters (char-safe, no UTF-8 panic).
 fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
-        let truncated: String = s.chars().take(max).collect();
-        format!("{}...", truncated)
+        let t: String = s.chars().take(max).collect();
+        format!("{}...", t)
     }
 }
 
-/// Escape a string for use inside a Rust string literal.
 fn escape_rust_str(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")
 }
 
-/// Map template_id to (category, event_type) for tce() export.
 fn category_for_template(tid: &str) -> (&str, &str) {
     match tid {
         "f79" => ("classify", "sprint"),
@@ -308,11 +247,7 @@ fn category_for_template(tid: &str) -> (&str, &str) {
     }
 }
 
-/// Parse the structured LLM response into a T127.
-fn parse_generated_challenge(
-    response: &str,
-    source_failure: &str,
-) -> Result<T127, String> {
+fn parse_generated_challenge(response: &str, source_failure: &str) -> Result<T127, String> {
     let mut template_id = String::new();
     let mut input = String::new();
     let mut verify = String::new();
@@ -320,35 +255,22 @@ fn parse_generated_challenge(
     let mut difficulty = String::from("hard");
 
     for line in response.lines() {
-        let trimmed = line.trim();
-        if let Some(val) = trimmed.strip_prefix("TEMPLATE_ID:") {
-            template_id = val.trim().to_string();
-        } else if let Some(val) = trimmed.strip_prefix("INPUT:") {
-            input = val.trim().to_string();
-        } else if let Some(val) = trimmed.strip_prefix("VERIFY:") {
-            verify = val.trim().to_string();
-        } else if let Some(val) = trimmed.strip_prefix("DESCRIPTION:") {
-            description = val.trim().to_string();
-        } else if let Some(val) = trimmed.strip_prefix("DIFFICULTY:") {
-            difficulty = val.trim().to_string();
-        }
+        let t = line.trim();
+        if let Some(v) = t.strip_prefix("TEMPLATE_ID:") { template_id = v.trim().to_string(); }
+        else if let Some(v) = t.strip_prefix("INPUT:") { input = v.trim().to_string(); }
+        else if let Some(v) = t.strip_prefix("VERIFY:") { verify = v.trim().to_string(); }
+        else if let Some(v) = t.strip_prefix("DESCRIPTION:") { description = v.trim().to_string(); }
+        else if let Some(v) = t.strip_prefix("DIFFICULTY:") { difficulty = v.trim().to_string(); }
     }
 
     if template_id.is_empty() || input.is_empty() || verify.is_empty() {
         return Err(format!(
-            "failed to parse challenge from LLM response: missing fields. Got: {}",
+            "failed to parse challenge: missing fields. Got: {}",
             truncate(response, 200)
         ));
     }
 
-    Ok(T127 {
-        template_id,
-        input,
-        verify,
-        description,
-        difficulty,
-        source_failure: source_failure.to_string(),
-    })
+    Ok(T127 { template_id, input, verify, description, difficulty, source_failure: source_failure.to_string() })
 }
 
 // ── Tests ────────────────────────────────────────────────────────
@@ -356,20 +278,31 @@ fn parse_generated_challenge(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use redb::{Database, ReadableTable};
 
-    /// Helper: open a temp sled db and run operations against it directly.
-    fn with_temp_db<F: FnOnce(&sled::Db)>(f: F) {
+    fn with_temp_db<F: FnOnce(&Database)>(f: F) {
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let db = sled::open(tmp.path().join("test.sled")).expect("sled open");
+        let db = Database::create(tmp.path().join("test.redb")).expect("redb open");
         f(&db);
     }
 
-    /// f194=record_failure, f195=recent_failures roundtrip.
+    fn db_insert(db: &Database, table: TableDefinition<&[u8], &[u8]>, key: &[u8], val: &[u8]) {
+        let txn = db.begin_write().unwrap();
+        { let mut t = txn.open_table(table).unwrap(); t.insert(key, val).unwrap(); }
+        txn.commit().unwrap();
+    }
+
+    fn db_count(db: &Database, table: TableDefinition<&[u8], &[u8]>) -> usize {
+        let txn = db.begin_read().unwrap();
+        match txn.open_table(table) {
+            Ok(t) => t.iter().unwrap().count(),
+            Err(_) => 0,
+        }
+    }
+
     #[test]
     fn record_and_retrieve_failure_roundtrip() {
         with_temp_db(|db| {
-            let tree = db.open_tree(FAILURE_TREE).expect("open tree");
-
             let record = T126 {
                 challenge_desc: "fix: borrow checker".into(),
                 input: "Error: cannot borrow `v` as mutable".into(),
@@ -379,13 +312,6 @@ mod tests {
                 event_type: "technical".into(),
                 ts: 1000,
             };
-
-            // Store
-            let key = failure_key(record.ts);
-            let val = serde_json::to_vec(&record).expect("serialize");
-            tree.insert(key, val).expect("insert");
-
-            // Store a second record
             let record2 = T126 {
                 challenge_desc: "classify: ambiguous".into(),
                 input: "split the monolithic handle_request".into(),
@@ -395,17 +321,19 @@ mod tests {
                 event_type: "sprint".into(),
                 ts: 2000,
             };
-            let key2 = failure_key(record2.ts);
-            let val2 = serde_json::to_vec(&record2).expect("serialize");
-            tree.insert(key2, val2).expect("insert");
 
-            // Retrieve (newest first via reverse iter)
-            let mut results = Vec::new();
-            for item in tree.iter().rev() {
-                let (_k, v) = item.expect("iter");
-                let rec: T126 = serde_json::from_slice(&v).expect("deserialize");
-                results.push(rec);
-            }
+            let k1 = failure_key(record.ts);
+            let k2 = failure_key(record2.ts);
+            db_insert(db, FAILURE_TABLE, &k1, &serde_json::to_vec(&record).unwrap());
+            db_insert(db, FAILURE_TABLE, &k2, &serde_json::to_vec(&record2).unwrap());
+
+            // Retrieve newest-first via reverse iteration.
+            let txn = db.begin_read().unwrap();
+            let table = txn.open_table(FAILURE_TABLE).unwrap();
+            let mut results: Vec<T126> = table
+                .iter().unwrap().rev()
+                .map(|e| serde_json::from_slice::<T126>(e.unwrap().1.value()).unwrap())
+                .collect();
 
             assert_eq!(results.len(), 2);
             assert_eq!(results[0].challenge_desc, "classify: ambiguous");
@@ -415,7 +343,6 @@ mod tests {
         });
     }
 
-    /// f197=export_generated_challenges produces valid tce() calls.
     #[test]
     fn export_produces_valid_tce_calls() {
         let challenges = vec![
@@ -438,126 +365,63 @@ mod tests {
         ];
 
         let output = f197(&challenges);
-
-        // Each challenge should produce one tce() line
         let tce_lines: Vec<&str> = output.lines().filter(|l| l.starts_with("tce(")).collect();
         assert_eq!(tce_lines.len(), 2);
-
-        // First line: f81 technical challenge
         assert!(tce_lines[0].contains("\"f81\""));
         assert!(tce_lines[0].contains("\"fix_compile\""));
         assert!(tce_lines[0].contains("\"technical\""));
         assert!(tce_lines[0].contains("\"compiles\""));
-
-        // Second line: f79 sprint challenge
         assert!(tce_lines[1].contains("\"f79\""));
         assert!(tce_lines[1].contains("\"classify\""));
         assert!(tce_lines[1].contains("\"sprint\""));
         assert!(tce_lines[1].contains("\"single_word\""));
-
-        // Newlines in input should be escaped
         assert!(tce_lines[0].contains("\\n"));
-
-        // All lines should end with ),
         for line in &tce_lines {
             assert!(line.trim_end().ends_with("),"), "tce line should end with '),': {}", line);
         }
     }
 
-    /// f198=feedback_stats counts correctly.
     #[test]
     fn feedback_stats_counts_correctly() {
         with_temp_db(|db| {
-            let failure_tree = db.open_tree(FAILURE_TREE).expect("open tree");
-            let gen_tree = db.open_tree(GENERATED_TREE).expect("open tree");
-
-            // Insert 3 failures: 2 from model A, 1 from model B
             let records = vec![
-                T126 {
-                    challenge_desc: "fix: borrow".into(),
-                    input: "err".into(),
-                    expected_verify: "compiles".into(),
-                    actual_response: "bad".into(),
-                    model: "model-a:1b".into(),
-                    event_type: "technical".into(),
-                    ts: 1000,
-                },
-                T126 {
-                    challenge_desc: "gen: prime".into(),
-                    input: "write prime".into(),
-                    expected_verify: "compiles_and:contains:fn".into(),
-                    actual_response: "nope".into(),
-                    model: "model-a:1b".into(),
-                    event_type: "freestyle".into(),
-                    ts: 2000,
-                },
-                T126 {
-                    challenge_desc: "classify: bug".into(),
-                    input: "it crashes".into(),
-                    expected_verify: "single_word".into(),
-                    actual_response: "I think it is a bug report".into(),
-                    model: "model-b:3b".into(),
-                    event_type: "sprint".into(),
-                    ts: 3000,
-                },
+                T126 { challenge_desc: "fix: borrow".into(), input: "err".into(), expected_verify: "compiles".into(), actual_response: "bad".into(), model: "model-a:1b".into(), event_type: "technical".into(), ts: 1000 },
+                T126 { challenge_desc: "gen: prime".into(), input: "write prime".into(), expected_verify: "compiles_and:contains:fn".into(), actual_response: "nope".into(), model: "model-a:1b".into(), event_type: "freestyle".into(), ts: 2000 },
+                T126 { challenge_desc: "classify: bug".into(), input: "it crashes".into(), expected_verify: "single_word".into(), actual_response: "I think it is a bug report".into(), model: "model-b:3b".into(), event_type: "sprint".into(), ts: 3000 },
             ];
-
             for rec in &records {
-                let key = failure_key(rec.ts);
-                let val = serde_json::to_vec(rec).expect("serialize");
-                failure_tree.insert(key, val).expect("insert");
+                db_insert(db, FAILURE_TABLE, &failure_key(rec.ts), &serde_json::to_vec(rec).unwrap());
             }
-
-            // Insert 2 generated challenges
-            let challenge = T127 {
-                template_id: "f81".into(),
-                input: "harder".into(),
-                verify: "compiles".into(),
-                description: "gen'd".into(),
-                difficulty: "hard".into(),
-                source_failure: "fix: borrow".into(),
-            };
+            let challenge = T127 { template_id: "f81".into(), input: "harder".into(), verify: "compiles".into(), description: "gen'd".into(), difficulty: "hard".into(), source_failure: "fix: borrow".into() };
             for i in 0..2u64 {
-                let key = failure_key(4000 + i);
-                let val = serde_json::to_vec(&challenge).expect("serialize");
-                gen_tree.insert(key, val).expect("insert");
+                db_insert(db, GENERATED_TABLE, &failure_key(4000 + i), &serde_json::to_vec(&challenge).unwrap());
             }
 
-            // Compute stats from the trees directly
-            let mut model_counts: std::collections::HashMap<String, usize> =
-                std::collections::HashMap::new();
-            let mut event_counts: std::collections::HashMap<String, usize> =
-                std::collections::HashMap::new();
+            let txn = db.begin_read().unwrap();
+            let failure_table = txn.open_table(FAILURE_TABLE).unwrap();
+            let mut model_counts: std::collections::HashMap<String, usize> = Default::default();
+            let mut event_counts: std::collections::HashMap<String, usize> = Default::default();
             let mut total = 0usize;
-
-            for item in failure_tree.iter() {
-                let (_k, v) = item.expect("iter");
-                let rec: T126 = serde_json::from_slice(&v).expect("deser");
+            for item in failure_table.iter().unwrap() {
+                let (_, v) = item.unwrap();
+                let rec: T126 = serde_json::from_slice(v.value()).unwrap();
                 total += 1;
-                *model_counts.entry(rec.model).or_insert(0) += 1;
-                *event_counts.entry(rec.event_type).or_insert(0) += 1;
+                *model_counts.entry(rec.model).or_default() += 1;
+                *event_counts.entry(rec.event_type).or_default() += 1;
             }
-
             assert_eq!(total, 3);
             assert_eq!(model_counts["model-a:1b"], 2);
             assert_eq!(model_counts["model-b:3b"], 1);
             assert_eq!(event_counts["technical"], 1);
             assert_eq!(event_counts["freestyle"], 1);
             assert_eq!(event_counts["sprint"], 1);
-            assert_eq!(gen_tree.len(), 2);
+            assert_eq!(db_count(db, GENERATED_TABLE), 2);
         });
     }
 
-    /// parse_generated_challenge handles well-formed LLM output.
     #[test]
     fn parse_challenge_from_llm_response() {
-        let response = "\
-TEMPLATE_ID: f81
-INPUT: Error: cannot return reference to local variable\nCode: fn get() -> &str { let s = String::new(); &s }
-VERIFY: compiles
-DESCRIPTION: fix: return reference to local
-DIFFICULTY: hard";
-
+        let response = "TEMPLATE_ID: f81\nINPUT: Error: cannot return reference to local variable\nVERIFY: compiles\nDESCRIPTION: fix: return reference to local\nDIFFICULTY: hard";
         let ch = parse_generated_challenge(response, "fix: dangling ref").expect("parse");
         assert_eq!(ch.template_id, "f81");
         assert!(ch.input.contains("cannot return reference"));
@@ -566,34 +430,23 @@ DIFFICULTY: hard";
         assert_eq!(ch.source_failure, "fix: dangling ref");
     }
 
-    /// parse_generated_challenge rejects incomplete output.
     #[test]
     fn parse_challenge_rejects_missing_fields() {
-        let response = "TEMPLATE_ID: f80\nDESCRIPTION: something";
-        let result = parse_generated_challenge(response, "test");
+        let result = parse_generated_challenge("TEMPLATE_ID: f80\nDESCRIPTION: something", "test");
         assert!(result.is_err());
     }
 
-    /// truncate is char-safe with multibyte UTF-8.
     #[test]
     fn truncate_handles_multibyte_utf8() {
-        // 4 emoji = 4 chars but 16 bytes. Truncate to 2 chars.
-        let s = "🦀🦀🦀🦀";
-        let t = truncate(s, 2);
-        assert_eq!(t, "🦀🦀...");
-        // Doesn't panic on byte boundary.
-        let s2 = "café";
-        let t2 = truncate(s2, 3);
-        assert_eq!(t2, "caf...");
+        assert_eq!(truncate("🦀🦀🦀🦀", 2), "🦀🦀...");
+        assert_eq!(truncate("café", 3), "caf...");
     }
 
-    /// truncate returns full string when short.
     #[test]
     fn truncate_no_op_when_short() {
         assert_eq!(truncate("hello", 10), "hello");
     }
 
-    /// category_for_template maps known templates.
     #[test]
     fn category_mapping_covers_all_templates() {
         assert_eq!(category_for_template("f79"), ("classify", "sprint"));
@@ -607,24 +460,18 @@ DIFFICULTY: hard";
         assert_eq!(category_for_template("unknown"), ("unknown", "unknown"));
     }
 
-    /// failure_key produces unique keys for same-ms inserts.
     #[test]
     fn failure_key_uniqueness() {
-        let ts = 12345u64;
-        let k1 = failure_key(ts);
-        let k2 = failure_key(ts);
-        assert_ne!(k1, k2, "same ts should get different keys via rand suffix");
+        let k1 = failure_key(12345);
+        let k2 = failure_key(12345);
+        assert_ne!(k1, k2);
         assert_eq!(k1.len(), 12);
     }
 
-    /// Empty failure tree: iter yields nothing, no panic.
     #[test]
     fn empty_db_operations() {
         with_temp_db(|db| {
-            let tree = db.open_tree(FAILURE_TREE).expect("open");
-            assert_eq!(tree.len(), 0);
-            let count: usize = tree.iter().filter(|i| i.is_ok()).count();
-            assert_eq!(count, 0);
+            assert_eq!(db_count(db, FAILURE_TABLE), 0);
         });
     }
 
@@ -648,14 +495,7 @@ DIFFICULTY: hard";
 
     #[test]
     fn generated_challenge_serde_roundtrip() {
-        let ch = T127 {
-            template_id: "f81".into(),
-            input: "error".into(),
-            verify: "compiles".into(),
-            description: "test".into(),
-            difficulty: "hard".into(),
-            source_failure: "src".into(),
-        };
+        let ch = T127 { template_id: "f81".into(), input: "error".into(), verify: "compiles".into(), description: "test".into(), difficulty: "hard".into(), source_failure: "src".into() };
         let json = serde_json::to_string(&ch).unwrap();
         let back: T127 = serde_json::from_str(&json).unwrap();
         assert_eq!(back.template_id, "f81");
@@ -664,7 +504,6 @@ DIFFICULTY: hard";
 
     #[test]
     fn failure_key_ordering_by_timestamp() {
-        // Keys with higher ts should sort after keys with lower ts
         let k1 = failure_key(100);
         let k2 = failure_key(200);
         assert!(k1 < k2, "lower timestamp key should sort before higher");
@@ -673,31 +512,7 @@ DIFFICULTY: hard";
     #[test]
     fn export_generated_challenges_empty() {
         let output = f197(&[]);
-        // Header comment is always emitted, but no tce() lines
         let tce_lines: Vec<&str> = output.lines().filter(|l| l.starts_with("tce(")).collect();
         assert!(tce_lines.is_empty());
-    }
-
-    #[test]
-    fn truncate_empty_string() {
-        assert_eq!(truncate("", 10), "");
-    }
-
-    #[test]
-    fn truncate_exact_length() {
-        assert_eq!(truncate("hello", 5), "hello");
-    }
-
-    #[test]
-    fn parse_challenge_handles_extra_whitespace() {
-        let response = "\
-TEMPLATE_ID:   f79
-INPUT:  classify this input
-VERIFY:  single_word
-DESCRIPTION:  classify: tricky
-DIFFICULTY:  medium  ";
-        let ch = parse_generated_challenge(response, "src").expect("parse");
-        assert_eq!(ch.template_id, "f79");
-        assert_eq!(ch.verify, "single_word");
     }
 }

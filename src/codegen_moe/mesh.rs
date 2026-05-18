@@ -140,7 +140,8 @@ impl SpongeMesh {
                 // Flywheel: if this was a retry, save the correction as a training pair
                 if retries > 0 {
                     if let (Some(bad), Some(err)) = (&prev_bad_code, &prev_error) {
-                        if let Ok(kind) = last_output.source_expert.parse::<String>() {
+                        let kind = last_output.source_expert.clone();
+                        {
                             super::compiler_teacher::save_pair(
                                 bad,
                                 err,

@@ -7,6 +7,7 @@ mod compilation;
 mod error_kind;
 mod fix_loop;
 
+use crate::trace::{Outcome, Stage};
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
@@ -114,8 +115,8 @@ async fn run_pipeline(
                 {
                     Ok(s) => s,
                     Err(e) => {
-                        trace.outcome = "failed".to_string();
-                        trace.stage = "inference".to_string();
+                        trace.outcome = Outcome::Failed;
+                        trace.stage = Stage::Inference;
                         write_last_trace(&last_trace, &trace).await;
                         return format!("Error: {}", e);
                     }
@@ -127,8 +128,8 @@ async fn run_pipeline(
         let s = match crate::inference::f80(coder_path, &code_gen_prompt, user_input) {
             Ok(s) => s,
             Err(e) => {
-                trace.outcome = "failed".to_string();
-                trace.stage = "inference".to_string();
+                trace.outcome = Outcome::Failed;
+                trace.stage = Stage::Inference;
                 write_last_trace(&last_trace, &trace).await;
                 return format!("Error: {}", e);
             }
@@ -144,7 +145,7 @@ async fn run_pipeline(
             .take()
             .or_else(|| extract_rust_block(&response));
         let Some(ref code) = code else {
-            trace.outcome = "success".to_string();
+            trace.outcome = Outcome::Success;
             write_last_trace(&last_trace, &trace).await;
             return response;
         };
@@ -152,7 +153,7 @@ async fn run_pipeline(
         let tmp = match tempfile::TempDir::new() {
             Ok(d) => d,
             Err(e) => {
-                trace.outcome = "failed".to_string();
+                trace.outcome = Outcome::Failed;
                 write_last_trace(&last_trace, &trace).await;
                 return format!("Error: temp dir: {}", e);
             }
@@ -175,12 +176,12 @@ edition = "2021"
         if !ok {
             attempt += 1;
             chain.push(format!("Attempt {}: compile failed", attempt));
-            trace.stage = "compile".to_string();
+            trace.stage = Stage::Compile;
             trace.stderr = stderr.clone();
             trace.retry_count = attempt;
             trace.chain = chain.clone();
             if attempt > max_retries {
-                trace.outcome = "failed".to_string();
+                trace.outcome = Outcome::Failed;
                 write_last_trace(&last_trace, &trace).await;
                 return format_with_chain(&response, &chain, "compile", &stderr);
             }
@@ -191,7 +192,7 @@ edition = "2021"
             response = match fix_and_retry(fix_path, project_dir, "compile", &stderr, code).await {
                 Ok(s) => s,
                 Err(e) => {
-                    trace.outcome = "failed".to_string();
+                    trace.outcome = Outcome::Failed;
                     write_last_trace(&last_trace, &trace).await;
                     return format!("Error on fix attempt {}: {}", attempt, e);
                 }
@@ -205,12 +206,12 @@ edition = "2021"
             if !ok {
                 attempt += 1;
                 chain.push(format!("Attempt {}: clippy failed", attempt));
-                trace.stage = "clippy".to_string();
+                trace.stage = Stage::Clippy;
                 trace.stderr = stderr.clone();
                 trace.retry_count = attempt;
                 trace.chain = chain.clone();
                 if attempt > max_retries {
-                    trace.outcome = "failed".to_string();
+                    trace.outcome = Outcome::Failed;
                     write_last_trace(&last_trace, &trace).await;
                     return format_with_chain(&response, &chain, "clippy", &stderr);
                 }
@@ -222,7 +223,7 @@ edition = "2021"
                 {
                     Ok(s) => s,
                     Err(e) => {
-                        trace.outcome = "failed".to_string();
+                        trace.outcome = Outcome::Failed;
                         write_last_trace(&last_trace, &trace).await;
                         return format!("Error on fix attempt {}: {}", attempt, e);
                     }
@@ -236,12 +237,12 @@ edition = "2021"
         if !ok {
             attempt += 1;
             chain.push(format!("Attempt {}: tests failed", attempt));
-            trace.stage = "tests".to_string();
+            trace.stage = Stage::Tests;
             trace.stderr = stderr.clone();
             trace.retry_count = attempt;
             trace.chain = chain.clone();
             if attempt > max_retries {
-                trace.outcome = "failed".to_string();
+                trace.outcome = Outcome::Failed;
                 write_last_trace(&last_trace, &trace).await;
                 return format_with_chain(&response, &chain, "tests", &stderr);
             }
@@ -252,7 +253,7 @@ edition = "2021"
             response = match fix_and_retry(fix_path, project_dir, "tests", &stderr, code).await {
                 Ok(s) => s,
                 Err(e) => {
-                    trace.outcome = "failed".to_string();
+                    trace.outcome = Outcome::Failed;
                     write_last_trace(&last_trace, &trace).await;
                     return format!("Error on fix attempt {}: {}", attempt, e);
                 }
@@ -260,7 +261,7 @@ edition = "2021"
             continue;
         }
 
-        trace.outcome = "success".to_string();
+        trace.outcome = Outcome::Success;
         if chain.is_empty() {
             write_last_trace(&last_trace, &trace).await;
             return response;

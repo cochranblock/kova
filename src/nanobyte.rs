@@ -179,7 +179,7 @@ impl Nanobyte {
         for i in 0..num_models {
             let start = manifest_offset as usize + i * MANIFEST_ENTRY_SIZE;
             let entry = &buf[start..start + MANIFEST_ENTRY_SIZE];
-            manifests.push(decode_manifest(entry));
+            manifests.push(decode_manifest(entry)?);
         }
 
         Ok(Self {
@@ -221,7 +221,7 @@ impl Nanobyte {
 
     /// Run a packed subatomic classifier over `text`. Returns `(class_idx, confidence)`.
     ///
-    /// Mirrors [`crate::swarm::train::predict`]: trigram-hash featurize → linear → softmax.
+    /// Mirrors [`crate::swarm::train::f396`]: trigram-hash featurize → linear → softmax.
     /// The packed weights blob is `[W (nc * fd) | b (nc)]`, row-major (`W[c * fd + d]`).
     pub fn infer(&self, model_name: &str, text: &str) -> Result<(usize, f32)> {
         let m = self.find(model_name)?;
@@ -233,7 +233,7 @@ impl Nanobyte {
         }
         let (w, b) = packed.split_at(nc * fd);
 
-        let feat = crate::swarm::train::featurize(text, fd);
+        let feat = crate::swarm::train::f394(text, fd);
         let mut logits = vec![0.0f32; nc];
         for c in 0..nc {
             let mut sum = b[c];
@@ -440,18 +440,18 @@ fn slice_f32(mmap: &[u8], offset: u64, size: u64) -> Result<&[f32]> {
     Ok(floats)
 }
 
-fn decode_manifest(b: &[u8]) -> Manifest {
+fn decode_manifest(b: &[u8]) -> Result<Manifest> {
     let name_bytes: &[u8] = &b[0..NAME_LEN];
     let name_end = name_bytes.iter().position(|&x| x == 0).unwrap_or(NAME_LEN);
     let name = String::from_utf8_lossy(&name_bytes[..name_end]).into_owned();
     let tier = b[32];
-    let num_classes = u32::from_le_bytes(b[36..40].try_into().unwrap());
-    let feature_dim = u32::from_le_bytes(b[40..44].try_into().unwrap());
-    let offset = u64::from_le_bytes(b[48..56].try_into().unwrap());
-    let size = u64::from_le_bytes(b[56..64].try_into().unwrap());
-    let routing_offset = u64::from_le_bytes(b[64..72].try_into().unwrap());
-    let routing_size = u64::from_le_bytes(b[72..80].try_into().unwrap());
-    Manifest {
+    let num_classes = u32::from_le_bytes(b[36..40].try_into().map_err(|_| Error::BadManifest)?);
+    let feature_dim = u32::from_le_bytes(b[40..44].try_into().map_err(|_| Error::BadManifest)?);
+    let offset = u64::from_le_bytes(b[48..56].try_into().map_err(|_| Error::BadManifest)?);
+    let size = u64::from_le_bytes(b[56..64].try_into().map_err(|_| Error::BadManifest)?);
+    let routing_offset = u64::from_le_bytes(b[64..72].try_into().map_err(|_| Error::BadManifest)?);
+    let routing_size = u64::from_le_bytes(b[72..80].try_into().map_err(|_| Error::BadManifest)?);
+    Ok(Manifest {
         name,
         tier,
         num_classes,
@@ -460,7 +460,7 @@ fn decode_manifest(b: &[u8]) -> Manifest {
         size,
         routing_offset,
         routing_size,
-    }
+    })
 }
 
 fn encode_manifest(m: &Manifest) -> [u8; MANIFEST_ENTRY_SIZE] {
@@ -728,7 +728,7 @@ mod tests {
     }
 
     /// Parity contract: nanobyte::infer must produce the same class index and
-    /// near-identical confidence as swarm/train::predict on the same model + text.
+    /// near-identical confidence as swarm/train::f396 on the same model + text.
     /// This is the real correctness test — the absolute classification depends on
     /// model accuracy and is brittle to test directly.
     #[test]
@@ -757,7 +757,7 @@ mod tests {
             for text in probes {
                 let (nb_idx, nb_conf) = nb.infer(model, text).unwrap();
                 let (sw_idx, _sw_name, sw_conf) =
-                    crate::swarm::train::predict(&on_disk, text).unwrap();
+                    crate::swarm::train::f396(&on_disk, text).unwrap();
                 assert_eq!(
                     nb_idx, sw_idx,
                     "{model}: nanobyte idx {nb_idx} != swarm idx {sw_idx} for {text:?}"

@@ -1,4 +1,4 @@
-//! HTTP API. kova serve. POST /api/intent, GET /ws/stream (WebSocket). Web GUI at /.
+//! HTTP API. kova serve. REST + WebSocket. OpenAPI spec at /openapi.json.
 //! f114=serve_run
 
 // Unlicense — cochranblock.org
@@ -11,19 +11,21 @@ use axum::{
         Query, State,
     },
     http::{header, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
+#[cfg(feature = "inference")]
 use std::sync::Arc;
+#[cfg(feature = "inference")]
 use tokio::sync::{broadcast, Mutex};
 use tower_http::cors::CorsLayer;
 
 /// t92=T92. Shared state: pipeline broadcast receiver for WebSocket clients.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct T92 {
     #[cfg(feature = "inference")]
     pipeline_rx: Arc<Mutex<Option<broadcast::Receiver<Arc<str>>>>>,
@@ -31,16 +33,6 @@ pub struct T92 {
     last_trace: Arc<Mutex<Option<crate::trace::T93>>>,
 }
 
-impl Default for T92 {
-    fn default() -> Self {
-        Self {
-            #[cfg(feature = "inference")]
-            pipeline_rx: Arc::new(Mutex::new(None)),
-            #[cfg(feature = "inference")]
-            last_trace: Arc::new(Mutex::new(None)),
-        }
-    }
-}
 
 #[derive(Serialize)]
 struct Status {
@@ -108,26 +100,209 @@ struct TestRunResponse {
     output: String,
 }
 
-async fn serve_index() -> impl IntoResponse {
-    let html = include_str!("../wasm/dist/index.html");
-    Html(html)
-}
-
-async fn serve_js() -> impl IntoResponse {
-    let js = include_str!("../wasm/dist/kova_web.js");
+async fn serve_openapi() -> impl IntoResponse {
     Response::builder()
-        .header(header::CONTENT_TYPE, "application/javascript")
-        .body(Body::from(js))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(OPENAPI_JSON))
         .unwrap()
 }
 
-async fn serve_wasm() -> impl IntoResponse {
-    let wasm = include_bytes!("../wasm/dist/kova_web_bg.wasm");
-    Response::builder()
-        .header(header::CONTENT_TYPE, "application/wasm")
-        .body(Body::from(wasm.as_slice()))
-        .unwrap()
-}
+pub static OPENAPI_JSON: &str = r#"{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Kova API",
+    "version": "0.7.0",
+    "description": "Augment engine REST API. Local-first agentic tool loop."
+  },
+  "paths": {
+    "/openapi.json": {
+      "get": {
+        "summary": "OpenAPI spec",
+        "responses": { "200": { "description": "This document" } }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Server is running",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" } } } } }
+          }
+        }
+      }
+    },
+    "/api/project": {
+      "get": {
+        "summary": "Current project path",
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "project": { "type": "string" } } } } }
+          }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "summary": "List detected project directories",
+        "responses": { "200": { "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } } } }
+      }
+    },
+    "/api/prompts": {
+      "get": {
+        "summary": "System and persona prompts",
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "system": { "type": "string" }, "persona": { "type": "string" } } } } }
+          }
+        }
+      }
+    },
+    "/api/intent": {
+      "post": {
+        "summary": "Classify input intent and run augment pipeline",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "input": { "type": "string" }, "project": { "type": "string" } }, "required": ["input"] } } }
+        },
+        "responses": { "200": { "description": "Intent classification and response" } }
+      }
+    },
+    "/api/route": {
+      "post": {
+        "summary": "Route a prompt through the augment pipeline (inference feature)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "prompt": { "type": "string" }, "project": { "type": "string" } }, "required": ["prompt"] } } }
+        },
+        "responses": { "200": { "description": "Routed response" } }
+      }
+    },
+    "/api/explain": {
+      "get": {
+        "summary": "Explain last agent trace (inference feature)",
+        "responses": { "200": { "description": "Trace explanation" } }
+      }
+    },
+    "/api/explain/run": {
+      "post": {
+        "summary": "Run explain on demand (inference feature)",
+        "responses": { "200": { "description": "Explanation output" } }
+      }
+    },
+    "/api/moe/run": {
+      "post": {
+        "summary": "Run Mixture-of-Experts code generation (inference feature)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "prompt": { "type": "string" }, "num_experts": { "type": "integer", "default": 3 }, "compile": { "type": "boolean", "default": true } }, "required": ["prompt"] } } }
+        },
+        "responses": { "200": { "description": "MoE result with variants and winner" } }
+      }
+    },
+    "/api/file": {
+      "get": {
+        "summary": "Read a source file",
+        "parameters": [{ "name": "hint", "in": "query", "schema": { "type": "string" }, "description": "Filename hint (e.g. lib.rs)" }],
+        "responses": { "200": { "content": { "application/json": { "schema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } } } } } }, "404": { "description": "File not found" } }
+      }
+    },
+    "/api/diff": {
+      "post": {
+        "summary": "Compute diff between two strings",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "original": { "type": "string" }, "modified": { "type": "string" } }, "required": ["original", "modified"] } } } },
+        "responses": { "200": { "description": "Unified diff output" } }
+      }
+    },
+    "/api/apply": {
+      "post": {
+        "summary": "Apply a patch to a file",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "path": { "type": "string" }, "patch": { "type": "string" } }, "required": ["path", "patch"] } } } },
+        "responses": { "200": { "description": "Apply result" } }
+      }
+    },
+    "/api/backlog": {
+      "get": {
+        "summary": "Get current backlog",
+        "responses": { "200": { "description": "Backlog items array" } }
+      },
+      "post": {
+        "summary": "Add a backlog item",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] } } } },
+        "responses": { "200": { "description": "Item added" } }
+      }
+    },
+    "/api/backlog/run": {
+      "post": {
+        "summary": "Run a backlog item through the agent",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "item": { "type": "string" } }, "required": ["item"] } } } },
+        "responses": { "200": { "description": "Run result" } }
+      }
+    },
+    "/api/test/run": {
+      "get": {
+        "summary": "Trigger a test run on a cluster node",
+        "parameters": [{ "name": "node", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Test output" } }
+      }
+    },
+    "/api/webhook/github": {
+      "post": {
+        "summary": "GitHub webhook receiver",
+        "responses": { "200": { "description": "Acknowledged" } }
+      }
+    },
+    "/api/demo/record": {
+      "post": {
+        "summary": "Record a demo event",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Recorded" } }
+      }
+    },
+    "/context/recent": {
+      "get": {
+        "summary": "Recent git/file changes as context string",
+        "parameters": [{ "name": "minutes", "in": "query", "schema": { "type": "integer", "default": 30 } }],
+        "responses": { "200": { "content": { "text/plain": { "schema": { "type": "string" } } } } }
+      }
+    },
+    "/build/presets": {
+      "get": {
+        "summary": "Available build presets",
+        "responses": { "200": { "description": "Map of preset name to config" } }
+      }
+    },
+    "/build/command": {
+      "get": {
+        "summary": "Resolve build command for a project",
+        "parameters": [{ "name": "project", "in": "query", "schema": { "type": "string" } }, { "name": "release", "in": "query", "schema": { "type": "boolean" } }],
+        "responses": { "200": { "description": "Build command string" } }
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "OpenAI-compatible chat completions (kova as inference server)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "model": { "type": "string" }, "messages": { "type": "array", "items": { "type": "object", "properties": { "role": { "type": "string" }, "content": { "type": "string" } } } }, "temperature": { "type": "number" } }, "required": ["messages"] } } }
+        },
+        "responses": { "200": { "description": "Chat completion response" } }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "summary": "List available models (OpenAI-compat)",
+        "responses": { "200": { "description": "Model list" } }
+      }
+    },
+    "/ws/stream": {
+      "get": {
+        "summary": "WebSocket — stream agent pipeline output tokens",
+        "description": "Upgrade to WebSocket. Server pushes token strings as text frames. Client sends prompt as first text frame."
+      }
+    }
+  }
+}"#;
 
 async fn api_webhook_github() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({"received": true}))).into_response()
@@ -161,6 +336,7 @@ struct OaiMessage {
     content: String,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct OaiChatResponse {
     id: String,
@@ -171,6 +347,7 @@ struct OaiChatResponse {
     usage: OaiUsageOut,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct OaiChatChoice {
     index: u32,
@@ -178,6 +355,7 @@ struct OaiChatChoice {
     finish_reason: &'static str,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct OaiUsageOut {
     prompt_tokens: u64,
@@ -533,6 +711,7 @@ struct IntentResponse {
     summary: Option<Vec<String>>,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Deserialize)]
 struct RouteRequest {
     message: String,
@@ -542,6 +721,7 @@ struct RouteRequest {
     project: Option<String>,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct RouteResponse {
     classification: String,
@@ -567,7 +747,7 @@ struct IntentRequest {
 }
 
 async fn api_intent(
-    State(state): State<T92>,
+    State(_state): State<T92>,
     Json(req): Json<IntentRequest>,
 ) -> Json<IntentResponse> {
     let intent = req.intent;
@@ -605,9 +785,9 @@ async fn api_intent(
                     &project,
                     crate::orchestration_max_fix_retries(),
                     crate::orchestration_run_clippy(),
-                    Some(state.last_trace.clone()),
+                    Some(_state.last_trace.clone()),
                 );
-                let mut guard = state.pipeline_rx.lock().await;
+                let mut guard = _state.pipeline_rx.lock().await;
                 *guard = Some(rx);
                 return Json(IntentResponse {
                     accepted: true,
@@ -650,10 +830,10 @@ async fn ws_stream(
     ws.on_upgrade(move |socket| ws_handler(state, socket))
 }
 
-async fn ws_handler(state: T92, mut socket: WebSocket) {
+async fn ws_handler(_state: T92, mut socket: WebSocket) {
     #[cfg(feature = "inference")]
     {
-        let mut rx_opt = state.pipeline_rx.lock().await;
+        let mut rx_opt = _state.pipeline_rx.lock().await;
         if let Some(mut rx) = rx_opt.take() {
             drop(rx_opt);
             loop {
@@ -758,7 +938,7 @@ async fn api_backlog_get() -> impl IntoResponse {
 }
 
 async fn api_backlog_run(
-    State(state): State<T92>,
+    State(_state): State<T92>,
     Json(body): Json<BacklogRunBody>,
 ) -> impl IntoResponse {
     let path = crate::backlog_path();
@@ -834,10 +1014,10 @@ async fn api_backlog_run(
                     &project,
                     crate::orchestration_max_fix_retries(),
                     crate::orchestration_run_clippy(),
-                    Some(state.last_trace.clone()),
+                    Some(_state.last_trace.clone()),
                 );
                 {
-                    let mut guard = state.pipeline_rx.lock().await;
+                    let mut guard = _state.pipeline_rx.lock().await;
                     *guard = Some(rx);
                 }
                 return (
@@ -970,6 +1150,7 @@ struct MoeRunRequest {
 
 #[cfg(feature = "inference")]
 fn default_num_experts() -> usize { 3 }
+#[cfg(feature = "inference")]
 fn default_true() -> bool { true }
 
 #[cfg(feature = "inference")]
@@ -1107,9 +1288,8 @@ async fn api_demo_record(Json(payload): Json<serde_json::Value>) -> impl IntoRes
 
 fn app_router() -> Router<T92> {
     let r = Router::new()
-        .route("/", get(serve_index))
-        .route("/kova_web.js", get(serve_js))
-        .route("/kova_web_bg.wasm", get(serve_wasm))
+        .route("/openapi.json", get(serve_openapi))
+        .route("/", get(serve_openapi))
         .route(
             "/api/status",
             get(|| async { Json(Status { status: "ok" }) }),
@@ -1285,18 +1465,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn root_returns_html() {
+    async fn openapi_json_is_valid() {
+        let app = test_app();
+        let req = Request::builder().uri("/openapi.json").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("openapi.json must be valid JSON");
+        assert_eq!(json["openapi"], "3.0.3");
+        assert!(json["paths"].is_object());
+    }
+
+    #[tokio::test]
+    async fn root_returns_openapi_json() {
         let app = test_app();
         let req = Request::builder().uri("/").body(Body::empty()).unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
-        let html = String::from_utf8_lossy(&body);
-        assert!(
-            html.contains("<html") || html.contains("<!DOCTYPE"),
-            "got: {}...",
-            &html[..100.min(html.len())]
-        );
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("root must return JSON");
+        assert_eq!(json["openapi"], "3.0.3");
+        assert_eq!(json["info"]["title"], "Kova API");
     }
 
     #[test]

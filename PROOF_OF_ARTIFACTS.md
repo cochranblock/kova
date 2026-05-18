@@ -48,8 +48,8 @@ Augment engine. Local-first agentic tool loop with dual-mode inference (local GG
 | Android APK | 17 MB (signed release) | [Release v0.7.0](https://github.com/cochranblock/kova/releases/tag/v0.7.0) |
 | Android AAB | 6.6 MB (signed, for Play Store) | [Release v0.7.0](https://github.com/cochranblock/kova/releases/tag/v0.7.0) |
 | Lines of Rust | 41,629 across 103 files | `find src -name '*.rs' \| wc -l` |
-| Tokenized functions | f0–f384 | [`docs/compression_map.md`](docs/compression_map.md) |
-| Tokenized types | t0–T215 | [`docs/compression_map.md`](docs/compression_map.md) |
+| Tokenized functions | f0–f402 | [`docs/compression_map.md`](docs/compression_map.md) |
+| Tokenized types | t0–t217 | [`docs/compression_map.md`](docs/compression_map.md) |
 | Tokenization coverage | 100% | [`src/tokenization.rs`](src/tokenization.rs) |
 | macOS x86_64 (Intel) | 13 MB (no RAG) | [Release v0.7.0](https://github.com/cochranblock/kova/releases/tag/v0.7.0) |
 | User surfaces | 7 (REPL, TUI, GUI, HTTP+WASM, Android, iOS scaffold, PWA) | [`src/main.rs`](src/main.rs) |
@@ -58,13 +58,13 @@ Augment engine. Local-first agentic tool loop with dual-mode inference (local GG
 | Unit/integration tests | 314 passing | `cargo test --release -p kova` |
 | LLMs evaluated | 42 (Micro Olympics) | [`docs/TOURNAMENT_RESULTS.md`](docs/TOURNAMENT_RESULTS.md) |
 
-## QA Results (2026-04-02)
+## QA Results (2026-05-17)
 
 | Gate | Result | How to Verify |
 |------|--------|--------------|
-| cargo build --release | PASS | `cargo build --release -p kova --bin kova` |
-| cargo clippy | PASS (zero warnings) | `cargo clippy --release -p kova --bin kova` |
-| cargo test | PASS (314 tests) | `cargo test --release -p kova` |
+| cargo check --features serve | PASS | `KOVA_SKIP_WASM=1 cargo check --features serve` |
+| cargo test --lib | PASS (254 tests) | `KOVA_SKIP_WASM=1 cargo test --lib` |
+| cargo test --release | PASS (314 tests) | `cargo test --release -p kova` |
 | TRIPLE SIMS ([`exopack`](exopack/)) | 101 pass | `cargo run --features tests --bin kova-test` |
 
 ## Quick Start
@@ -106,6 +106,19 @@ kova tokens                          # validate tokenization coverage
 
 ## What Works Today
 
+### Storage ([`src/storage.rs`](src/storage.rs))
+
+redb 2 — replaces sled 0.34 (unmaintained). `OnceLock<Option<Arc<Database>>>` global singleton satisfies redb's exclusive-file-access requirement. All primary-path modules (`trace.rs`, `feedback.rs`, `tools.rs`) call `storage::global_db()`. Isolated-path modules (`rag.rs`, `compiler_teacher.rs`) open their own Database at distinct file paths. Test isolation via `t12::temporary()` — a `TempDir`-owned Database that drops at test end with no pollution to production state.
+
+### Subatomic Pyramid T1 ([`src/nanobyte.rs`](src/nanobyte.rs))
+
+Four classifiers baked into `.rodata` via `include_bytes!` — zero file I/O at startup. Wired actively into REPL:
+- `code_vs_english` → prints `[input: code, 0.94]` in dim gray before inference (routing hint)
+- `slop_detector` → prints `[slop: 0.81 — review output]` in yellow after inference when conf > 0.65
+- Full classification bank stored to redb as telemetry on every exchange for downstream training
+
+BLAKE3-signed `.nanobyte` format: 64B header + 80B/entry manifest + f32 weights + 36B NSIG trailer. Verified before parsing. `repr(align(8))` wrapper ensures 4-byte aligned f32 slice reinterpretation without UB on any target.
+
 ### Agent Loop ([`src/agent_loop.rs`](src/agent_loop.rs))
 
 Streaming agentic tool loop. LLM calls tools, gets results, repeats until done. Dual-mode inference via `KOVA_INFERENCE` env — local Kalosm GGUF or Anthropic API with SSE streaming ([`f382`](src/inference/mod.rs)). Context auto-compacts at 80% of budget via LLM-powered summarization ([`f380`](src/context_mgr.rs)). File checkpoints taken before every write/edit for undo support ([`f383`/`f384`](src/tools.rs)).
@@ -129,7 +142,7 @@ Streaming agentic tool loop. LLM calls tools, gets results, repeats until done. 
 | `code_review` | [`f207`](src/tools.rs) | LLM-powered code review with severity scoring |
 | `code_outline` | [`f208`](src/tools.rs) | Extract functions, structs, enums from Rust source |
 | `record_failure` | [`f209`](src/tools.rs) | Record challenge failure for training feedback loop |
-| `undo_edit` | [`f384`](src/tools.rs) | Restore file from last checkpoint (sled-backed) |
+| `undo_edit` | [`f384`](src/tools.rs) | Restore file from last checkpoint (redb-backed) |
 | `rag_search` | [`f166`](src/rag.rs) | Semantic search over indexed codebase (requires `rag` feature) |
 | `pixel_forge` | [`f220`](src/tools.rs) | Generate pixel art sprites via Pixel Forge plugin |
 
@@ -172,7 +185,7 @@ Three backends, one dispatcher:
 - **Token estimation** ([`f170`](src/context_mgr.rs)): chars/4 rough count
 - **Context compaction** ([`f380`](src/context_mgr.rs)): When conversation hits 80% of budget, older turns are sent to inference for LLM-powered summarization. Recent 4 turns kept intact. Falls back to static trim ([`f171`](src/context_mgr.rs)) if needed.
 - **Tool output trimming** ([`f172`](src/context_mgr.rs)): Head/tail with `[truncated]` marker
-- **File checkpointing** ([`f383`](src/tools.rs)/[`f384`](src/tools.rs)): Snapshots file contents to sled before write/edit. `undo_edit` tool restores from last checkpoint.
+- **File checkpointing** ([`f383`](src/tools.rs)/[`f384`](src/tools.rs)): Snapshots file contents to redb before write/edit. `undo_edit` tool restores from last checkpoint.
 
 ### Micro Olympics ([`src/micro/`](src/micro/))
 
@@ -219,7 +232,7 @@ Local LLM tournament system. Models compete across weight classes and event type
 | [`trace.rs`](src/trace.rs) | — | LLM call logging ([`T109`](src/trace.rs), [`f161`](src/trace.rs)) |
 | [`tokenization.rs`](src/tokenization.rs) | 308 | Compression protocol validator |
 | [`cargo_cmd.rs`](src/cargo_cmd.rs) | 887 | Tokenized cargo wrapper x0-x9 ([`f133`-`f136`](src/cargo_cmd.rs)) |
-| [`storage.rs`](src/storage.rs) | 123 | Sled-backed key-value storage ([`t12`](src/storage.rs)) |
+| [`storage.rs`](src/storage.rs) | 123 | redb-backed key-value storage ([`t12`](src/storage.rs)) |
 
 ## Key Artifacts
 
@@ -228,7 +241,7 @@ Local LLM tournament system. Models compete across weight classes and event type
 | Agent Loop | LLM calls 13 tools until task complete. Streams tokens. | [`f147`/`f148` in `src/agent_loop.rs`](src/agent_loop.rs) |
 | Dual-Mode Inference | Local Kalosm GGUF or Anthropic SSE, auto-fallback | [`f382` in `src/inference/mod.rs`](src/inference/mod.rs) |
 | Context Compaction | LLM-powered summarization at 80% context budget | [`f380` in `src/context_mgr.rs`](src/context_mgr.rs) |
-| Checkpoint/Undo | Sled snapshots before every file write/edit | [`f383`/`f384` in `src/tools.rs`](src/tools.rs) |
+| Checkpoint/Undo | redb-backed snapshots before every file write/edit | [`f383`/`f384` in `src/tools.rs`](src/tools.rs) |
 | Permission Gates | Shell exec + git mutation gates in guarded mode | [`is_guarded`/`perm_gate` in `src/tools.rs`](src/tools.rs) |
 | Code Gen Pipeline | Classify, generate, compile, review, fix loop, output | [`T181` in `src/factory.rs`](src/factory.rs) |
 | MoE | Fan-out to N experts, compile all, score, pick winner | [`f341` in `src/moe.rs`](src/moe.rs) |
@@ -237,7 +250,8 @@ Local LLM tournament system. Models compete across weight classes and event type
 | WASM Client | Pure Rust egui compiled to WASM, embedded at build | [`src/web_client/`](src/web_client/) |
 | RAG | fastembed vectors + sled index for codebase retrieval | [`src/rag.rs`](src/rag.rs) |
 | Tokenization | 100% coverage — every public symbol compressed | [`src/tokenization.rs`](src/tokenization.rs) |
-| Swarm Training | Trigram hash → linear classifier, GPU-accelerated | [`f389`-`f392` in `src/swarm/train.rs`](src/swarm/train.rs) |
+| Swarm Training | Trigram hash → linear classifier, GPU-accelerated | [`f389`-`f396` in `src/swarm/train.rs`](src/swarm/train.rs) |
+| Static Corpus Carver | syn-parse 240K crates → 15 labeled JSONL models (async, arg_count, return_type, field_count, derives…) | [`src/bin/carve_static.rs`](src/bin/carve_static.rs) |
 | C2 Fleet | Status, peek, unblock daemon, QA sweep | [`f385`-`f388` in `src/c2.rs`](src/c2.rs) |
 | NanoSign | Universal AI model signing (36 bytes, BLAKE3) | [`docs/NANOSIGN.md`](docs/NANOSIGN.md) |
 | Nanobyte Format | Packed model file: 64B header + manifest + f32 weights + NSIG trailer; mmap-loadable | [`src/nanobyte.rs`](src/nanobyte.rs) |
@@ -245,7 +259,7 @@ Local LLM tournament system. Models compete across weight classes and event type
 | bench-classify | Held-out test harness: accuracy, macro-F1, lowest-F1 classes, top confusions | [`src/bin/bench-classify.rs`](src/bin/bench-classify.rs) |
 | Nanobyte Inference | `nb.infer(model, text) → (idx, conf)` mirrors swarm predict path; parity-tested vs on-disk swarm | [`Nanobyte::infer` in `src/nanobyte.rs`](src/nanobyte.rs) |
 | Embedded Starter | 9,592-byte `STARTER_NANOBYTE` baked via `include_bytes!`; zero file I/O at startup | [`STARTER_NANOBYTE` in `src/nanobyte.rs`](src/nanobyte.rs) |
-| REPL Subatomic Telemetry | T1 classifiers run on every input + response; persisted to sled `tele/{ts}/{i\|o}` | [`src/repl.rs`](src/repl.rs) |
+| REPL Subatomic Telemetry | T1 classifiers run on every input + response; persisted to redb `tele/{ts}/{i\|o}` | [`src/repl.rs`](src/repl.rs) |
 
 ## Proven: Subatomic Models on AMD GPU
 
@@ -288,7 +302,7 @@ All tiers share a single mmap'd weight blob called a **nanobyte**. Each model is
 
 ### Key Concepts
 
-- **Sled priority queue** — one sled DB, priority scores per model, OS page cache handles memory hierarchy. No manual zones. ([blueprint](docs/KOVA_BLUEPRINT.md#3-memory-architecture-one-sled-one-priority-queue))
+- **redb priority queue** — one redb DB, priority scores per model, OS page cache handles memory hierarchy. No manual zones. ([blueprint](docs/KOVA_BLUEPRINT.md#3-memory-architecture-one-sled-one-priority-queue))
 - **Intent-driven priority** — human input drives which models are hot. The human is the cache controller. ([blueprint](docs/KOVA_BLUEPRINT.md#4-intent-driven-priority-engine))
 - **Shared models** — 6 universal models (visibility, doc-needed, lifetime-needed, naming, complexity, deprecated) work across all Rust constructs. ([catalog](docs/SUBATOMIC_CATALOG.md#shared-models-across-constructs))
 - **NanoSign** — universal AI model signing. 36 bytes (NSIG + BLAKE3 hash) appended to any model file. Self-verifying. Format-agnostic. ([spec](docs/NANOSIGN.md))
@@ -298,7 +312,7 @@ All tiers share a single mmap'd weight blob called a **nanobyte**. Each model is
 
 Claude trains its own replacement at every level via PTY bridge logging. Phase 1: subatomics online. Phase 2: molecular replaces Claude T2. Phase 3: cellular replaces T3. **Phase 4: pyramid seals shut, API key deleted, zero dependency.** ([blueprint](docs/KOVA_BLUEPRINT.md#8-claude-migration-path))
 
-**What exists:** swarm training infra ([`src/swarm/`](src/swarm/)), 3 proven models ([`assets/models/`](assets/models/)), 240K crate corpus, candle training ([`src/micro/candle_train.rs`](src/micro/candle_train.rs)), tournament scoring, quantization, routing, validation. **What's not built yet:** nanobyte format, pyramid orchestrator, PTY bridge, discovery module.
+**What exists:** swarm training infra ([`src/swarm/`](src/swarm/)), 4 starter models ([`assets/models/`](assets/models/)), 240K crate corpus, nanobyte format ([`src/nanobyte.rs`](src/nanobyte.rs)), static corpus carver ([`src/bin/carve_static.rs`](src/bin/carve_static.rs) — 15 models, 240K crates), candle training, tournament scoring, quantization, routing, validation. **What's not built yet:** pyramid orchestrator, redb priority queue (`src/swarm/priority.rs`), PTY bridge, discovery module.
 
 ## Crate Structure
 
@@ -350,6 +364,7 @@ Canonical map: [`docs/compression_map.md`](docs/compression_map.md)
 |--------|----------|---------|
 | `kova` | serve, inference, rag, tui | All-inclusive: TUI, GUI, HTTP, LLM, swarm, tools |
 | `kova-test` | tests ([`exopack`](exopack/)) | Quality gate: clippy, TRIPLE SIMS 3x, release build ([`f315`](src/lib.rs)) |
+| `carve-static` | carve (syn + tar) | Static corpus carver: walk 240K .crate files → 15 labeled JSONL models |
 
 ## Features ([`Cargo.toml`](Cargo.toml))
 

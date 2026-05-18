@@ -1,4 +1,4 @@
-//! HTTP API. kova serve. POST /api/intent, GET /ws/stream (WebSocket). Web GUI at /.
+//! HTTP API. kova serve. REST + WebSocket. OpenAPI spec at /openapi.json.
 //! f114=serve_run
 
 // Unlicense — cochranblock.org
@@ -11,19 +11,21 @@ use axum::{
         Query, State,
     },
     http::{header, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
+#[cfg(feature = "inference")]
 use std::sync::Arc;
+#[cfg(feature = "inference")]
 use tokio::sync::{broadcast, Mutex};
 use tower_http::cors::CorsLayer;
 
 /// t92=T92. Shared state: pipeline broadcast receiver for WebSocket clients.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct T92 {
     #[cfg(feature = "inference")]
     pipeline_rx: Arc<Mutex<Option<broadcast::Receiver<Arc<str>>>>>,
@@ -31,16 +33,6 @@ pub struct T92 {
     last_trace: Arc<Mutex<Option<crate::trace::T93>>>,
 }
 
-impl Default for T92 {
-    fn default() -> Self {
-        Self {
-            #[cfg(feature = "inference")]
-            pipeline_rx: Arc::new(Mutex::new(None)),
-            #[cfg(feature = "inference")]
-            last_trace: Arc::new(Mutex::new(None)),
-        }
-    }
-}
 
 #[derive(Serialize)]
 struct Status {
@@ -108,24 +100,10 @@ struct TestRunResponse {
     output: String,
 }
 
-async fn serve_index() -> impl IntoResponse {
-    let html = include_str!("../../../wasm/dist/index.html");
-    Html(html)
-}
-
-async fn serve_js() -> impl IntoResponse {
-    let js = include_str!("../../../wasm/dist/kova_web.js");
+async fn serve_openapi() -> impl IntoResponse {
     Response::builder()
-        .header(header::CONTENT_TYPE, "application/javascript")
-        .body(Body::from(js))
-        .unwrap()
-}
-
-async fn serve_wasm() -> impl IntoResponse {
-    let wasm = include_bytes!("../../../wasm/dist/kova_web_bg.wasm");
-    Response::builder()
-        .header(header::CONTENT_TYPE, "application/wasm")
-        .body(Body::from(wasm.as_slice()))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(crate::serve::OPENAPI_JSON))
         .unwrap()
 }
 
@@ -161,6 +139,7 @@ struct OaiMessage {
     content: String,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct OaiChatResponse {
     id: String,
@@ -171,6 +150,7 @@ struct OaiChatResponse {
     usage: OaiUsageOut,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct OaiChatChoice {
     index: u32,
@@ -178,6 +158,7 @@ struct OaiChatChoice {
     finish_reason: &'static str,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct OaiUsageOut {
     prompt_tokens: u64,
@@ -531,6 +512,7 @@ struct IntentResponse {
     summary: Option<Vec<String>>,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Deserialize)]
 struct RouteRequest {
     message: String,
@@ -540,6 +522,7 @@ struct RouteRequest {
     project: Option<String>,
 }
 
+#[cfg(feature = "inference")]
 #[derive(Serialize)]
 struct RouteResponse {
     classification: String,
@@ -565,7 +548,7 @@ struct IntentRequest {
 }
 
 async fn api_intent(
-    State(state): State<T92>,
+    State(_state): State<T92>,
     Json(req): Json<IntentRequest>,
 ) -> Json<IntentResponse> {
     let intent = req.intent;
@@ -603,9 +586,9 @@ async fn api_intent(
                     &project,
                     crate::orchestration_max_fix_retries(),
                     crate::orchestration_run_clippy(),
-                    Some(state.last_trace.clone()),
+                    Some(_state.last_trace.clone()),
                 );
-                let mut guard = state.pipeline_rx.lock().await;
+                let mut guard = _state.pipeline_rx.lock().await;
                 *guard = Some(rx);
                 return Json(IntentResponse {
                     accepted: true,
@@ -648,10 +631,10 @@ async fn ws_stream(
     ws.on_upgrade(move |socket| ws_handler(state, socket))
 }
 
-async fn ws_handler(state: T92, mut socket: WebSocket) {
+async fn ws_handler(_state: T92, mut socket: WebSocket) {
     #[cfg(feature = "inference")]
     {
-        let mut rx_opt = state.pipeline_rx.lock().await;
+        let mut rx_opt = _state.pipeline_rx.lock().await;
         if let Some(mut rx) = rx_opt.take() {
             drop(rx_opt);
             loop {
@@ -756,7 +739,7 @@ async fn api_backlog_get() -> impl IntoResponse {
 }
 
 async fn api_backlog_run(
-    State(state): State<T92>,
+    State(_state): State<T92>,
     Json(body): Json<BacklogRunBody>,
 ) -> impl IntoResponse {
     let path = crate::backlog_path();
@@ -832,10 +815,10 @@ async fn api_backlog_run(
                     &project,
                     crate::orchestration_max_fix_retries(),
                     crate::orchestration_run_clippy(),
-                    Some(state.last_trace.clone()),
+                    Some(_state.last_trace.clone()),
                 );
                 {
-                    let mut guard = state.pipeline_rx.lock().await;
+                    let mut guard = _state.pipeline_rx.lock().await;
                     *guard = Some(rx);
                 }
                 return (
@@ -997,9 +980,8 @@ async fn api_demo_record(Json(payload): Json<serde_json::Value>) -> impl IntoRes
 
 fn app_router() -> Router<T92> {
     let r = Router::new()
-        .route("/", get(serve_index))
-        .route("/kova_web.js", get(serve_js))
-        .route("/kova_web_bg.wasm", get(serve_wasm))
+        .route("/openapi.json", get(serve_openapi))
+        .route("/", get(serve_openapi))
         .route(
             "/api/status",
             get(|| async { Json(Status { status: "ok" }) }),
@@ -1174,18 +1156,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn root_returns_html() {
+    async fn root_returns_openapi_json() {
         let app = test_app();
         let req = Request::builder().uri("/").body(Body::empty()).unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
-        let html = String::from_utf8_lossy(&body);
-        assert!(
-            html.contains("<html") || html.contains("<!DOCTYPE"),
-            "got: {}...",
-            &html[..100.min(html.len())]
-        );
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("root must return JSON");
+        assert_eq!(json["openapi"], "3.0.3");
     }
 
     #[test]

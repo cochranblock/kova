@@ -1,13 +1,17 @@
-//! RAG — Retrieval-Augmented Generation. Sled-backed vector store + fastembed.
-//! Embeds code chunks locally, stores in sled, retrieves via cosine similarity.
-//! Research: vectorize-io (chunking strategy, RAG pipeline design), fastembed-rs, SahomeDB (sled vector patterns).
+//! RAG — Retrieval-Augmented Generation. redb-backed vector store + fastembed.
+//! Embeds code chunks locally, stores in redb, retrieves via cosine similarity.
+//! Research: vectorize-io (chunking strategy, RAG pipeline design), fastembed-rs.
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
+use redb::{Database, ReadableTable, TableDefinition};
 use std::path::{Path, PathBuf};
 
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
+
+const RAG_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("rag_chunks");
+const INDEXED_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("last_indexed");
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -73,19 +77,20 @@ pub fn f343(query: &str) -> anyhow::Result<Vec<f32>> {
 
 // ── Vector Store (sled-backed) ───────────────────────────────────
 
-/// Sled-backed vector store. Each chunk is serialized with its embedding.
+/// redb-backed vector store. Each chunk is serialized with its embedding.
 /// Retrieval is brute-force cosine similarity (fast enough for <100K chunks).
 pub struct T200 {
-    db: sled::Db,
-    tree: sled::Tree,
+    db: Database,
 }
 
 impl T200 {
     /// Open or create a vector store at the given path.
     pub fn open(path: &Path) -> anyhow::Result<Self> {
-        let db = sled::open(path)?;
-        let tree = db.open_tree("rag_chunks")?;
-        Ok(Self { db, tree })
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let db = Database::create(path.with_extension("redb"))?;
+        Ok(Self { db })
     }
 
     /// Default store path: ~/.kova/rag/vectors
@@ -94,89 +99,117 @@ impl T200 {
         PathBuf::from(home).join(".kova").join("rag").join("vectors")
     }
 
-    /// Insert a chunk. Key = file\0start_line (null byte separator avoids collision with : in paths).
+    /// Insert a chunk. Key = file\0start_line.
     pub fn insert(&self, chunk: &T197) -> anyhow::Result<()> {
         let key = format!("{}\0{}", chunk.file, chunk.lines.0);
         let value = serde_json::to_vec(chunk)?;
-        self.tree.insert(key.as_bytes(), value)?;
+        let txn = self.db.begin_write()?;
+        { let mut table = txn.open_table(RAG_TABLE)?; table.insert(key.as_bytes(), value.as_slice())?; }
+        txn.commit()?;
         Ok(())
     }
 
     /// Insert many chunks (batch).
     pub fn insert_many(&self, chunks: &[T197]) -> anyhow::Result<usize> {
-        let mut count = 0;
-        for chunk in chunks {
-            self.insert(chunk)?;
-            count += 1;
+        let txn = self.db.begin_write()?;
+        let count;
+        {
+            let mut table = txn.open_table(RAG_TABLE)?;
+            count = chunks.len();
+            for chunk in chunks {
+                let key = format!("{}\0{}", chunk.file, chunk.lines.0);
+                let value = serde_json::to_vec(chunk)?;
+                table.insert(key.as_bytes(), value.as_slice())?;
+            }
         }
-        self.tree.flush()?;
+        txn.commit()?;
         Ok(count)
     }
 
     /// Search for the top-k most similar chunks to the query embedding.
     pub fn search(&self, query_embedding: &[f32], k: usize) -> anyhow::Result<Vec<T198>> {
+        let txn = self.db.begin_read()?;
+        let table = match txn.open_table(RAG_TABLE) {
+            Ok(t) => t,
+            Err(_) => return Ok(Vec::new()),
+        };
         let mut results: Vec<(OrderedFloat<f32>, T197)> = Vec::new();
-
-        for entry in self.tree.iter() {
+        for entry in table.iter()? {
             let (_, value) = entry?;
-            let chunk: T197 = serde_json::from_slice(&value)?;
+            let chunk: T197 = serde_json::from_slice(value.value())?;
             let score = cosine_similarity(query_embedding, &chunk.embedding);
             results.push((OrderedFloat(score), chunk));
         }
-
-        // Sort descending by similarity
         results.sort_by(|a, b| b.0.cmp(&a.0));
         results.truncate(k);
-
-        Ok(results
-            .into_iter()
-            .map(|(score, chunk)| T198 {
-                chunk,
-                score: score.into_inner(),
-            })
-            .collect())
+        Ok(results.into_iter().map(|(score, chunk)| T198 { chunk, score: score.into_inner() }).collect())
     }
 
-    /// Remove all chunks for a given file (re-index).
+    /// Remove all chunks for a given file. Collects matching keys then deletes them.
     pub fn remove_file(&self, file: &str) -> anyhow::Result<usize> {
         let prefix = format!("{}\0", file);
-        let mut removed = 0;
-        for entry in self.tree.scan_prefix(prefix.as_bytes()) {
-            let (key, _) = entry?;
-            self.tree.remove(key)?;
-            removed += 1;
+        let txn = self.db.begin_write()?;
+        let count;
+        {
+            let mut table = txn.open_table(RAG_TABLE)?;
+            let keys: Vec<Vec<u8>> = table.iter()?
+                .filter_map(|e| e.ok())
+                .filter(|(k, _)| k.value().starts_with(prefix.as_bytes()))
+                .map(|(k, _)| k.value().to_vec())
+                .collect();
+            count = keys.len();
+            for key in &keys {
+                table.remove(key.as_slice())?;
+            }
         }
-        Ok(removed)
+        txn.commit()?;
+        Ok(count)
     }
 
     /// Clear the entire store.
     pub fn clear(&self) -> anyhow::Result<()> {
-        self.tree.clear()?;
-        self.tree.flush()?;
+        let txn = self.db.begin_write()?;
+        { txn.open_table(RAG_TABLE)?.retain(|_, _| false)?; }
+        txn.commit()?;
         Ok(())
     }
 
     /// Get stats.
     pub fn stats(&self) -> anyhow::Result<T199> {
+        let txn = self.db.begin_read()?;
+        let table = match txn.open_table(RAG_TABLE) {
+            Ok(t) => t,
+            Err(_) => return Ok(T199 { total_chunks: 0, total_files: 0, embedding_dim: 0 }),
+        };
         let mut total_chunks = 0;
         let mut files = std::collections::HashSet::new();
         let mut dim = 0;
-
-        for entry in self.tree.iter() {
+        for entry in table.iter()? {
             let (_, value) = entry?;
-            let chunk: T197 = serde_json::from_slice(&value)?;
+            let chunk: T197 = serde_json::from_slice(value.value())?;
             total_chunks += 1;
             files.insert(chunk.file.clone());
-            if dim == 0 {
-                dim = chunk.embedding.len();
-            }
+            if dim == 0 { dim = chunk.embedding.len(); }
         }
+        Ok(T199 { total_chunks, total_files: files.len(), embedding_dim: dim })
+    }
 
-        Ok(T199 {
-            total_chunks,
-            total_files: files.len(),
-            embedding_dim: dim,
-        })
+    /// Write a key/value into the indexed-timestamps table. Used by f168.
+    fn set_indexed(&self, key: &[u8], val: &[u8]) -> anyhow::Result<()> {
+        let txn = self.db.begin_write()?;
+        { let mut table = txn.open_table(INDEXED_TABLE)?; table.insert(key, val)?; }
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Read a value from the indexed-timestamps table. Used by f167.
+    fn get_indexed(&self, key: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
+        let txn = self.db.begin_read()?;
+        let table = match txn.open_table(INDEXED_TABLE) {
+            Ok(t) => t,
+            Err(_) => return Ok(None),
+        };
+        Ok(table.get(key)?.map(|g| g.value().to_vec()))
     }
 }
 
@@ -373,13 +406,8 @@ pub fn search(store: &T200, query: &str, k: usize) -> anyhow::Result<Vec<T198>> 
 /// f167=needs_reindex. Check if any .rs files in `dir` have been modified since
 /// the last index time recorded in the store. Returns true if re-indexing is needed.
 pub fn f167(store: &T200, dir: &Path) -> bool {
-    let indexed_tree = match store.db.open_tree("last_indexed") {
-        Ok(t) => t,
-        Err(_) => return true,
-    };
-
     let key = dir.to_string_lossy();
-    let ts_bytes = match indexed_tree.get(key.as_bytes()) {
+    let ts_bytes = match store.get_indexed(key.as_bytes()) {
         Ok(Some(v)) => v,
         _ => return true,
     };
@@ -423,14 +451,12 @@ pub fn f167(store: &T200, dir: &Path) -> bool {
 
 /// f168=mark_indexed. Record that `dir` was indexed at the current timestamp.
 pub fn f168(store: &T200, dir: &Path) -> anyhow::Result<()> {
-    let indexed_tree = store.db.open_tree("last_indexed")?;
     let key = dir.to_string_lossy();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    indexed_tree.insert(key.as_bytes(), now.to_string().as_bytes())?;
-    indexed_tree.flush()?;
+    store.set_indexed(key.as_bytes(), now.to_string().as_bytes())?;
     Ok(())
 }
 
@@ -540,16 +566,13 @@ pub struct Foo {
         std::fs::create_dir_all(&src_dir).unwrap();
 
         // Write a timestamp in the past (60 seconds ago) so any new file is "newer"
-        let indexed_tree = store.db.open_tree("last_indexed").unwrap();
         let key = src_dir.to_string_lossy();
         let past_ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs()
             - 60;
-        indexed_tree
-            .insert(key.as_bytes(), past_ts.to_string().as_bytes())
-            .unwrap();
+        store.set_indexed(key.as_bytes(), past_ts.to_string().as_bytes()).unwrap();
 
         // Create a .rs file (mtime = now, which is after past_ts)
         std::fs::write(src_dir.join("new.rs"), "fn main() {}").unwrap();
@@ -577,7 +600,7 @@ pub struct Foo {
     }
 
     #[test]
-    fn sled_store_roundtrip() {
+    fn store_roundtrip() {
         let tmp = tempfile::TempDir::new().unwrap();
         let store = T200::open(tmp.path()).unwrap();
 

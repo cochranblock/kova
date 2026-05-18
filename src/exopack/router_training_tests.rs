@@ -16,7 +16,7 @@ use tempfile::TempDir;
 use crate::swarm::tool_router::{
     class_to_tool, f424, f425, tool_to_class, RouterTrainConfig, KOVA_ROUTER_TOOLS,
 };
-use crate::swarm::train::Example;
+use crate::swarm::train::t216;
 
 type Scenario = fn() -> Result<(), String>;
 
@@ -77,7 +77,7 @@ pub fn f428() -> (bool, String) {
 
 /// Reuse the canonical synthetic pairs from swarm::tool_router so test fixture
 /// and CLI (`kova train-router --mix-synthetic`) share one source of truth.
-fn synth_examples() -> Vec<Example> {
+fn synth_examples() -> Vec<t216> {
     crate::swarm::tool_router::synth_examples()
 }
 

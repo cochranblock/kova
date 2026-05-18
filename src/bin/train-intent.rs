@@ -22,7 +22,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use kova::swarm::train::{Example, SubatomicConfig, f389};
+use kova::swarm::train::{t216, t217, f389};
 
 const FEATURE_DIM: usize = 4096;
 const EPOCHS: usize = 30;
@@ -65,7 +65,7 @@ fn run() -> Result<(), String> {
         .from_path(&train_csv)
         .map_err(|e| format!("open {}: {e}", train_csv.display()))?;
 
-    let mut examples: Vec<Example> = Vec::new();
+    let mut examples: Vec<t216> = Vec::new();
     let mut skipped = 0usize;
     for (i, rec) in rdr.records().enumerate() {
         let rec = rec.map_err(|e| format!("csv row {i}: {e}"))?;
@@ -78,7 +78,7 @@ fn run() -> Result<(), String> {
         let Some(&label) = label_idx.get(cat) else {
             return Err(format!("row {i}: unknown category {cat:?}"));
         };
-        examples.push(Example { text, label });
+        examples.push(t216 { text, label });
     }
     if examples.is_empty() {
         return Err("no training examples".into());
@@ -91,7 +91,7 @@ fn run() -> Result<(), String> {
     );
 
     // 3. Train.
-    let config = SubatomicConfig {
+    let config = t217 {
         name: "intent_classifier".into(),
         num_classes: class_names.len(),
         class_names: class_names.clone(),
