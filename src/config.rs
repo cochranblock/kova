@@ -381,9 +381,9 @@ pub fn f99() -> PathBuf {
     f98().join("prompts")
 }
 
-/// f100=sled_path. ~/.kova/sled.db.
+/// f100=db_path. ~/.kova/kova.redb.
 pub fn f100() -> PathBuf {
-    f98().join("sled.db")
+    f98().join("kova.redb")
 }
 
 /// f101=models_dir. ~/.kova/models.
@@ -572,6 +572,8 @@ pub use f95 as discover_projects;
 pub use f97 as home;
 pub use f98 as kova_dir;
 pub use f99 as prompts_dir;
+pub use f100 as db_path;
+#[deprecated(note = "renamed to db_path; storage is now redb")]
 pub use f100 as sled_path;
 pub use f101 as models_dir;
 pub use f102 as inference_model_path;

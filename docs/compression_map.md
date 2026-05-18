@@ -51,7 +51,7 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f97 | home | config | — |
 | f98 | kova_dir | config | — |
 | f99 | prompts_dir | config | — |
-| f100 | sled_path | config | — |
+| f100 | db_path | config | — |
 | f101 | models_dir | config | — |
 | f102 | inference_model_path | config | — |
 | f103 | backlog_path | config | — |
@@ -265,6 +265,7 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f400 | tmux_init | c2 | Swarm bootloader: scan .kova markers, create tmux session, launch agent |
 | f401 | tmux_layout | c2 | Export fleet layout as markdown table |
 | f402 | auto_deploy | c2 | Drop .kova markers into all git repos in scan dirs |
+| f403 | bridge_run | bridge | Spawn `claude` in a PTY, proxy I/O, log session to tele/ |
 
 ## Types (TN)
 

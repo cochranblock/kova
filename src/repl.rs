@@ -164,12 +164,25 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
             continue;
         }
 
-        // Subatomic T1: classify input type for routing hint.
+        // Subatomic T1: classify input + update priority queue.
         if let Some(nb) = starter_nb.as_ref() {
             if let Ok((class_idx, conf)) = nb.infer("code_vs_english", input) {
                 let label = if class_idx == 1 { "code" } else { "english" };
                 eprintln!("\x1b[90m[input: {label}, {conf:.2}]\x1b[0m");
+                // Bump models relevant to this input type.
+                let relevant: &[&str] = if class_idx == 1 {
+                    // code input — bump code-focused classifiers
+                    &["code_vs_english", "slop_detector", "lang_detector"]
+                } else {
+                    // natural language — bump intent + slop
+                    &["intent_classifier", "slop_detector"]
+                };
+                for model in relevant {
+                    crate::swarm::priority::bump_with_conf(model, conf);
+                }
             }
+            // Decay all scores each turn so cold models sink over time.
+            crate::swarm::priority::f431();
         }
 
         // Run agent loop.

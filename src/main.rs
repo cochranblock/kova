@@ -134,6 +134,9 @@ enum Cmd {
     /// Demo: zero-input automation. Spawns kova serve, exercises every CLI subcommand + HTTP endpoint. Requires --features baked_demo.
     #[command(name = "demo")]
     Demo(DemoArgs),
+    /// PTY bridge: spawn `claude` (or any cmd) in a PTY, log session to tele/ for retraining.
+    #[command(name = "bridge")]
+    Bridge(BridgeArgs),
 }
 
 #[derive(clap::Args)]
@@ -150,6 +153,16 @@ struct DemoArgs {
 }
 
 mod hive;
+
+#[derive(clap::Args)]
+struct BridgeArgs {
+    /// Command to run in the PTY (default: claude).
+    #[arg(default_value = "claude")]
+    cmd: String,
+    /// Extra arguments forwarded to the command.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    args: Vec<String>,
+}
 
 #[derive(clap::Args)]
 struct SshArgs {
@@ -2597,7 +2610,8 @@ fn main() -> anyhow::Result<()> {
         | Some(Cmd::Deploy { .. })
         | Some(Cmd::Govdocs { .. })
         | Some(Cmd::Hive(_))
-        | Some(Cmd::Tokens) => {
+        | Some(Cmd::Tokens)
+        | Some(Cmd::Bridge(_)) => {
             return match args.cmd.unwrap() {
                 Cmd::Extract(a) => {
                     #[cfg(feature = "inference")]
@@ -2677,6 +2691,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 Cmd::Hive(a) => hive::dispatch(a).map_err(|e| anyhow::anyhow!("{}", e)),
+                Cmd::Bridge(a) => kova::bridge::f403_run(&a.cmd, &a.args),
                 _ => unreachable!(),
             };
         }
@@ -2863,7 +2878,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Ssh(_))
         | Some(Cmd::Deploy { .. })
         | Some(Cmd::Govdocs { .. })
-        | Some(Cmd::Hive(_)) => unreachable!("handled before tokio"),
+        | Some(Cmd::Hive(_))
+        | Some(Cmd::Bridge(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: TUI (like Claude Code). Fallback: REPL, then GUI.
             #[cfg(feature = "tui")]

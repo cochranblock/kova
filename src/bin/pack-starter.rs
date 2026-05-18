@@ -23,6 +23,9 @@ struct ModelConfig {
     num_classes: u32,
     #[serde(default)]
     total_params: Option<u64>,
+    /// Optional class name list embedded in config; overrides categories.json.
+    #[serde(default)]
+    class_names: Vec<String>,
 }
 
 const MODELS: &[&str] = &[
@@ -66,6 +69,7 @@ fn run() -> Result<(), String> {
             feature_dim: cfg.feature_dim,
             weights: packed,
             routing: None,
+            class_names: cfg.class_names.clone(),
         })
         .collect();
 
@@ -97,8 +101,9 @@ fn run() -> Result<(), String> {
             ));
         }
         println!(
-            "  {:24} tier={} classes={} feat={} params={}",
-            m.name, m.tier, m.num_classes, m.feature_dim, expected_len
+            "  {:24} tier={} classes={} feat={} params={} names={}",
+            m.name, m.tier, m.num_classes, m.feature_dim, expected_len,
+            if m.class_names.is_empty() { "(none)".to_string() } else { m.class_names.join(",") }
         );
     }
 
@@ -109,8 +114,20 @@ fn load_model(dir: &Path) -> Result<(ModelConfig, Vec<f32>), String> {
     let cfg_path = dir.join("config.json");
     let cfg_bytes = std::fs::read(&cfg_path)
         .map_err(|e| format!("read {}: {e}", cfg_path.display()))?;
-    let cfg: ModelConfig = serde_json::from_slice(&cfg_bytes)
+    let mut cfg: ModelConfig = serde_json::from_slice(&cfg_bytes)
         .map_err(|e| format!("parse {}: {e}", cfg_path.display()))?;
+
+    // Load class names from categories.json if config doesn't already have them.
+    if cfg.class_names.is_empty() {
+        let cat_path = dir.join("categories.json");
+        if cat_path.exists() {
+            let cat_bytes = std::fs::read(&cat_path)
+                .map_err(|e| format!("read {}: {e}", cat_path.display()))?;
+            let names: Vec<String> = serde_json::from_slice(&cat_bytes)
+                .map_err(|e| format!("parse {}: {e}", cat_path.display()))?;
+            cfg.class_names = names;
+        }
+    }
 
     let weights = read_f32_le(&dir.join("weights.bin"))?;
     let bias = read_f32_le(&dir.join("bias.bin"))?;

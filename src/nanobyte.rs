@@ -1,12 +1,13 @@
 //! nanobyte — packed model file format. mmap-loadable, BLAKE3-signed.
 //!
-//! Layout:
-//!   `[HEADER 64B] [MANIFEST] [WEIGHTS] [NSIG 36B]`
+//! Layout: `[HEADER 64B] [MANIFEST] [CLASS_NAMES] [WEIGHTS] [NSIG 36B]`
 //!
-//! - HEADER: magic "NANO", version, num_models, manifest offset/size, total weight bytes.
-//! - MANIFEST: `num_models` entries of [`MANIFEST_ENTRY_SIZE`] bytes each.
+//! - HEADER: magic "NANO", version, num_models, manifest offset/size, class_names_size, total weights.
+//! - MANIFEST: `num_models` × [`MANIFEST_ENTRY_SIZE`] (96B). Each entry stores per-model weight
+//!   offsets and a (offset, size) pointer into the CLASS_NAMES region.
+//! - CLASS_NAMES: flat null-delimited UTF-8 strings; 4-byte padded.
 //! - WEIGHTS: contiguous f32 blob, indexed via per-model offsets.
-//! - NSIG trailer: b"NSIG" + 32-byte BLAKE3 of every byte before. See `docs/NANOSIGN.md`.
+//! - NSIG trailer: b"NSIG" + 32-byte BLAKE3 of every byte before.
 //!
 //! Spec: `docs/KOVA_BLUEPRINT.md` §2.
 // Unlicense — cochranblock.org
@@ -22,14 +23,15 @@ use serde::{Deserialize, Serialize};
 /// File magic: ASCII `NANO`.
 pub const MAGIC: [u8; 4] = *b"NANO";
 
-/// Format version.
+/// Format version stored in every file header.
 pub const VERSION: u32 = 1;
 
 /// Header size in bytes.
 pub const HEADER_SIZE: usize = 64;
 
-/// Manifest entry size in bytes. 8-byte aligned.
-pub const MANIFEST_ENTRY_SIZE: usize = 80;
+/// Manifest entry size in bytes: 96B (name[32], tier, pad[3], nc[4], fd[4], pad[4],
+/// offset[8], size[8], routing_offset[8], routing_size[8], cn_offset[8], cn_size[8]).
+pub const MANIFEST_ENTRY_SIZE: usize = 96;
 
 /// NanoSign trailer: 4-byte `NSIG` magic + 32-byte BLAKE3.
 pub const NSIG_SIZE: usize = 36;
@@ -82,6 +84,8 @@ pub struct Manifest {
     /// Routing weights offset (T2/T3 only). 0 if absent.
     pub routing_offset: u64,
     pub routing_size: u64,
+    /// Class names from the file's string table. Empty if the model was packed without them.
+    pub class_names: Vec<String>,
 }
 
 /// One model to pack into a nanobyte file.
@@ -92,6 +96,8 @@ pub struct PackInput<'a> {
     pub feature_dim: u32,
     pub weights: &'a [f32],
     pub routing: Option<&'a [f32]>,
+    /// Class names to embed in the string table. Empty = omit from manifest.
+    pub class_names: Vec<String>,
 }
 
 /// Backing storage for a loaded nanobyte. Either a memory-mapped file or a
@@ -164,6 +170,7 @@ impl Nanobyte {
         let num_models = u32::from_le_bytes(h[8..12].try_into().unwrap()) as usize;
         let manifest_offset = u64::from_le_bytes(h[12..20].try_into().unwrap());
         let manifest_size = u64::from_le_bytes(h[20..28].try_into().unwrap());
+        let class_names_size = u64::from_le_bytes(h[36..44].try_into().unwrap());
 
         let manifest_end = manifest_offset
             .checked_add(manifest_size)
@@ -175,17 +182,24 @@ impl Nanobyte {
             return Err(Error::BadManifest);
         }
 
+        let class_names_start = manifest_end as usize;
+        let weights_start_usize = class_names_start + class_names_size as usize;
+        if weights_start_usize > payload_end {
+            return Err(Error::BadManifest);
+        }
+        let class_names_region = &buf[class_names_start..weights_start_usize];
+
         let mut manifests = Vec::with_capacity(num_models);
         for i in 0..num_models {
             let start = manifest_offset as usize + i * MANIFEST_ENTRY_SIZE;
             let entry = &buf[start..start + MANIFEST_ENTRY_SIZE];
-            manifests.push(decode_manifest(entry)?);
+            manifests.push(decode_manifest(entry, class_names_region)?);
         }
 
         Ok(Self {
             storage,
             manifests,
-            weights_start: manifest_end,
+            weights_start: weights_start_usize as u64,
         })
     }
 
@@ -263,111 +277,17 @@ impl Nanobyte {
         Ok((idx, conf))
     }
 
-    /// Run [`infer`](Self::infer) and resolve the class index to a name via [`STARTER_CLASS_NAMES`].
-    /// Errors with [`Error::NotFound`] if the model isn't in the class-name table.
-    pub fn infer_named(&self, model_name: &str, text: &str) -> Result<(&'static str, f32)> {
-        let names = STARTER_CLASS_NAMES
-            .iter()
-            .find(|(n, _)| *n == model_name)
-            .map(|(_, names)| *names)
-            .ok_or_else(|| Error::NotFound(model_name.to_string()))?;
+    /// Run [`infer`](Self::infer) and resolve the class index to a name via the manifest's
+    /// embedded class names. Returns `idx.to_string()` if the model has no class names.
+    pub fn infer_named(&self, model_name: &str, text: &str) -> Result<(String, f32)> {
+        let m = self.find(model_name)?;
         let (idx, conf) = self.infer(model_name, text)?;
-        let name = names.get(idx).copied().unwrap_or("?");
-        Ok((name, conf))
+        let class_name = m.class_names.get(idx).cloned().unwrap_or_else(|| idx.to_string());
+        Ok((class_name, conf))
     }
 }
 
-/// Class-name lookup for models packed in `assets/starter.nanobyte`.
-///
-/// Kept as a static map rather than embedded in the manifest so the on-disk
-/// format stays version-stable. When the format gains a string-table region
-/// (V2), this becomes derivable and can be removed.
-pub const STARTER_CLASS_NAMES: &[(&str, &[&str])] = &[
-    ("slop_detector", &["clean", "slop"]),
-    ("code_vs_english", &["english", "code"]),
-    ("lang_detector", &["rust", "python", "javascript", "go", "shell"]),
-    // banking77 intents (PolyAI/banking77, CC-BY-4.0). Order matches
-    // assets/datasets/banking77/categories.json — the training label index.
-    ("intent_classifier", &[
-        "card_arrival",
-        "card_linking",
-        "exchange_rate",
-        "card_payment_wrong_exchange_rate",
-        "extra_charge_on_statement",
-        "pending_cash_withdrawal",
-        "fiat_currency_support",
-        "card_delivery_estimate",
-        "automatic_top_up",
-        "card_not_working",
-        "exchange_via_app",
-        "lost_or_stolen_card",
-        "age_limit",
-        "pin_blocked",
-        "contactless_not_working",
-        "top_up_by_bank_transfer_charge",
-        "pending_top_up",
-        "cancel_transfer",
-        "top_up_limits",
-        "wrong_amount_of_cash_received",
-        "card_payment_fee_charged",
-        "transfer_not_received_by_recipient",
-        "supported_cards_and_currencies",
-        "getting_virtual_card",
-        "card_acceptance",
-        "top_up_reverted",
-        "balance_not_updated_after_cheque_or_cash_deposit",
-        "card_payment_not_recognised",
-        "edit_personal_details",
-        "why_verify_identity",
-        "unable_to_verify_identity",
-        "get_physical_card",
-        "visa_or_mastercard",
-        "topping_up_by_card",
-        "disposable_card_limits",
-        "compromised_card",
-        "atm_support",
-        "direct_debit_payment_not_recognised",
-        "passcode_forgotten",
-        "declined_cash_withdrawal",
-        "pending_card_payment",
-        "lost_or_stolen_phone",
-        "request_refund",
-        "declined_transfer",
-        "Refund_not_showing_up",
-        "declined_card_payment",
-        "pending_transfer",
-        "terminate_account",
-        "card_swallowed",
-        "transaction_charged_twice",
-        "verify_source_of_funds",
-        "transfer_timing",
-        "reverted_card_payment?",
-        "change_pin",
-        "beneficiary_not_allowed",
-        "transfer_fee_charged",
-        "receiving_money",
-        "failed_transfer",
-        "transfer_into_account",
-        "verify_top_up",
-        "getting_spare_card",
-        "top_up_by_cash_or_cheque",
-        "order_physical_card",
-        "virtual_card_not_working",
-        "wrong_exchange_rate_for_cash_withdrawal",
-        "get_disposable_virtual_card",
-        "top_up_failed",
-        "balance_not_updated_after_bank_transfer",
-        "cash_withdrawal_not_recognised",
-        "exchange_charge",
-        "top_up_by_card_charge",
-        "activate_my_card",
-        "cash_withdrawal_charge",
-        "card_about_to_expire",
-        "apple_pay_or_google_pay",
-        "verify_my_identity",
-        "country_support",
-    ]),
-];
+
 
 /// Wrapper that forces 8-byte alignment for embedded bytes. `include_bytes!`
 /// returns a `&'static [u8; N]` placed in `.rodata` with only 1-byte alignment;
@@ -398,17 +318,15 @@ pub struct Classification {
     pub confidence: f32,
 }
 
-/// Run every model in [`STARTER_CLASS_NAMES`] against `text` and collect results.
-/// Models missing from the nanobyte are skipped silently; this is for telemetry,
-/// not control flow.
+/// Run every model in the nanobyte against `text` and collect results.
 pub fn classify_with_starters(nb: &Nanobyte, text: &str) -> Vec<Classification> {
-    STARTER_CLASS_NAMES
+    nb.manifests()
         .iter()
-        .filter_map(|(model, names)| {
-            let (idx, conf) = nb.infer(model, text).ok()?;
-            let class_name = names.get(idx).copied().unwrap_or("?").to_string();
+        .filter_map(|m| {
+            let (idx, conf) = nb.infer(&m.name, text).ok()?;
+            let class_name = m.class_names.get(idx).cloned().unwrap_or_else(|| idx.to_string());
             Some(Classification {
-                model: (*model).to_string(),
+                model: m.name.clone(),
                 class_idx: idx,
                 class_name,
                 confidence: conf,
@@ -440,7 +358,7 @@ fn slice_f32(mmap: &[u8], offset: u64, size: u64) -> Result<&[f32]> {
     Ok(floats)
 }
 
-fn decode_manifest(b: &[u8]) -> Result<Manifest> {
+fn decode_manifest(b: &[u8], class_names_region: &[u8]) -> Result<Manifest> {
     let name_bytes: &[u8] = &b[0..NAME_LEN];
     let name_end = name_bytes.iter().position(|&x| x == 0).unwrap_or(NAME_LEN);
     let name = String::from_utf8_lossy(&name_bytes[..name_end]).into_owned();
@@ -451,19 +369,29 @@ fn decode_manifest(b: &[u8]) -> Result<Manifest> {
     let size = u64::from_le_bytes(b[56..64].try_into().map_err(|_| Error::BadManifest)?);
     let routing_offset = u64::from_le_bytes(b[64..72].try_into().map_err(|_| Error::BadManifest)?);
     let routing_size = u64::from_le_bytes(b[72..80].try_into().map_err(|_| Error::BadManifest)?);
+    let cn_offset = u64::from_le_bytes(b[80..88].try_into().map_err(|_| Error::BadManifest)?);
+    let cn_size = u64::from_le_bytes(b[88..96].try_into().map_err(|_| Error::BadManifest)?);
+    let class_names = if cn_size == 0 {
+        vec![]
+    } else {
+        let start = cn_offset as usize;
+        let end = start.checked_add(cn_size as usize).ok_or(Error::BadManifest)?;
+        if end > class_names_region.len() {
+            return Err(Error::BadManifest);
+        }
+        class_names_region[start..end]
+            .split(|&b| b == 0)
+            .filter(|s| !s.is_empty())
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect()
+    };
     Ok(Manifest {
-        name,
-        tier,
-        num_classes,
-        feature_dim,
-        offset,
-        size,
-        routing_offset,
-        routing_size,
+        name, tier, num_classes, feature_dim, offset, size, routing_offset, routing_size,
+        class_names,
     })
 }
 
-fn encode_manifest(m: &Manifest) -> [u8; MANIFEST_ENTRY_SIZE] {
+fn encode_manifest(m: &Manifest, cn_offset: u64, cn_size: u64) -> [u8; MANIFEST_ENTRY_SIZE] {
     let mut buf = [0u8; MANIFEST_ENTRY_SIZE];
     let name_bytes = m.name.as_bytes();
     let n = name_bytes.len().min(NAME_LEN);
@@ -475,6 +403,8 @@ fn encode_manifest(m: &Manifest) -> [u8; MANIFEST_ENTRY_SIZE] {
     buf[56..64].copy_from_slice(&m.size.to_le_bytes());
     buf[64..72].copy_from_slice(&m.routing_offset.to_le_bytes());
     buf[72..80].copy_from_slice(&m.routing_size.to_le_bytes());
+    buf[80..88].copy_from_slice(&cn_offset.to_le_bytes());
+    buf[88..96].copy_from_slice(&cn_size.to_le_bytes());
     buf
 }
 
@@ -490,10 +420,32 @@ pub fn consolidate(models: &[PackInput<'_>], output: &Path) -> Result<()> {
     let manifest_offset = HEADER_SIZE as u64;
     let manifest_size = (models.len() * MANIFEST_ENTRY_SIZE) as u64;
 
-    let mut manifests = Vec::with_capacity(models.len());
+    // Build class names region: null-delimited strings per model.
+    let mut class_names_region: Vec<u8> = Vec::new();
+    let mut cn_offsets: Vec<(u64, u64)> = Vec::with_capacity(models.len());
+    for m in models {
+        if m.class_names.is_empty() {
+            cn_offsets.push((0, 0));
+        } else {
+            let start = class_names_region.len() as u64;
+            for name in &m.class_names {
+                class_names_region.extend_from_slice(name.as_bytes());
+                class_names_region.push(0);
+            }
+            let size = class_names_region.len() as u64 - start;
+            cn_offsets.push((start, size));
+        }
+    }
+    // Pad to 4-byte alignment so the weights region stays f32-aligned.
+    while !class_names_region.len().is_multiple_of(4) {
+        class_names_region.push(0);
+    }
+    let class_names_size = class_names_region.len() as u64;
+
+    let mut manifests: Vec<(Manifest, u64, u64)> = Vec::with_capacity(models.len());
     let mut cursor: u64 = 0;
     let mut total_weights: u64 = 0;
-    for m in models {
+    for (i, m) in models.iter().enumerate() {
         let weight_bytes = std::mem::size_of_val(m.weights) as u64;
         let routing_bytes = m
             .routing
@@ -512,8 +464,10 @@ pub fn consolidate(models: &[PackInput<'_>], output: &Path) -> Result<()> {
                 0
             },
             routing_size: routing_bytes,
+            class_names: m.class_names.clone(),
         };
-        manifests.push(entry);
+        let (cn_off, cn_sz) = cn_offsets[i];
+        manifests.push((entry, cn_off, cn_sz));
         cursor += weight_bytes + routing_bytes;
         total_weights += weight_bytes + routing_bytes;
     }
@@ -525,13 +479,16 @@ pub fn consolidate(models: &[PackInput<'_>], output: &Path) -> Result<()> {
     header[12..20].copy_from_slice(&manifest_offset.to_le_bytes());
     header[20..28].copy_from_slice(&manifest_size.to_le_bytes());
     header[28..36].copy_from_slice(&total_weights.to_le_bytes());
+    header[36..44].copy_from_slice(&class_names_size.to_le_bytes());
 
-    let total_payload = HEADER_SIZE + manifest_size as usize + total_weights as usize;
+    let total_payload =
+        HEADER_SIZE + manifest_size as usize + class_names_region.len() + total_weights as usize;
     let mut buf: Vec<u8> = Vec::with_capacity(total_payload + NSIG_SIZE);
     buf.extend_from_slice(&header);
-    for entry in &manifests {
-        buf.extend_from_slice(&encode_manifest(entry));
+    for (entry, cn_off, cn_sz) in &manifests {
+        buf.extend_from_slice(&encode_manifest(entry, *cn_off, *cn_sz));
     }
+    buf.extend_from_slice(&class_names_region);
     for m in models {
         buf.extend_from_slice(weights_as_bytes(m.weights));
         if let Some(r) = m.routing {
@@ -580,6 +537,7 @@ mod tests {
                 feature_dim: 8,
                 weights: &w1,
                 routing: None,
+                class_names: vec!["a".to_string(), "b".to_string()],
             },
             PackInput {
                 name: "second",
@@ -588,6 +546,7 @@ mod tests {
                 feature_dim: 8,
                 weights: &w2,
                 routing: Some(&r2),
+                class_names: vec![],
             },
         ];
         consolidate(&inputs, &out).unwrap();
@@ -596,8 +555,10 @@ mod tests {
         assert_eq!(nb.manifests().len(), 2);
         assert_eq!(nb.manifests()[0].name, "first");
         assert_eq!(nb.manifests()[0].tier, 1);
+        assert_eq!(nb.manifests()[0].class_names, vec!["a", "b"]);
         assert_eq!(nb.manifests()[1].name, "second");
         assert_eq!(nb.manifests()[1].tier, 2);
+        assert!(nb.manifests()[1].class_names.is_empty());
         assert_eq!(nb.weights("first").unwrap(), &w1[..]);
         assert_eq!(nb.weights("second").unwrap(), &w2[..]);
         assert_eq!(nb.routing("first").unwrap(), None);
@@ -617,6 +578,7 @@ mod tests {
                 feature_dim: 4,
                 weights: &w,
                 routing: None,
+                class_names: vec![],
             }],
             &out,
         )
@@ -647,6 +609,7 @@ mod tests {
                 feature_dim: 2,
                 weights: &w,
                 routing: None,
+                class_names: vec![],
             }],
             &out,
         )
@@ -676,6 +639,7 @@ mod tests {
                 feature_dim: 2,
                 weights: &w,
                 routing: None,
+                class_names: vec![],
             }],
             &out,
         )
@@ -708,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn starter_loads_three_models() {
+    fn starter_loads_four_models() {
         let path = starter_path();
         if !path.exists() {
             eprintln!("skipping: {} missing — run `cargo run --bin pack-starter`", path.display());
@@ -779,8 +743,8 @@ mod tests {
         let nb = Nanobyte::load(&path).unwrap();
         let (name, conf) = nb
             .infer_named("slop_detector", "let x = 1;")
-            .expect("slop_detector must be in STARTER_CLASS_NAMES");
-        assert!(["clean", "slop"].contains(&name), "got {name:?}");
+            .expect("slop_detector must be in starter.nanobyte");
+        assert!(["clean", "slop"].contains(&name.as_str()), "got {name:?}");
         assert!((0.0..=1.0).contains(&conf));
     }
 
@@ -816,7 +780,7 @@ mod tests {
     fn classify_with_starters_returns_one_per_model() {
         let nb = starter().unwrap();
         let out = classify_with_starters(&nb, "fn main() { println!(\"hi\"); }");
-        assert_eq!(out.len(), STARTER_CLASS_NAMES.len());
+        assert_eq!(out.len(), nb.manifests().len());
         let models: Vec<&str> = out.iter().map(|c| c.model.as_str()).collect();
         assert_eq!(
             models,
@@ -831,6 +795,113 @@ mod tests {
             assert!((0.0..=1.0).contains(&c.confidence), "{c:?}");
             assert!(!c.class_name.is_empty());
         }
+    }
+
+    /// Pack a model with named classes, verify infer_named returns the manifest
+    /// name (not a numeric fallback). Uses tiny synthetic weights — no model files needed.
+    #[test]
+    fn infer_named_uses_manifest_class_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("named.nanobyte");
+        // Two classes, feature_dim=4: weights bias-only (W=0, b=[10.0, -10.0]) so class 0 always wins.
+        let w: Vec<f32> = vec![
+            0.0, 0.0, 0.0, 0.0, // W row 0
+            0.0, 0.0, 0.0, 0.0, // W row 1
+            10.0, -10.0,         // bias
+        ];
+        consolidate(
+            &[PackInput {
+                name: "mymodel",
+                tier: 1,
+                num_classes: 2,
+                feature_dim: 4,
+                weights: &w,
+                routing: None,
+                class_names: vec!["alpha".to_string(), "beta".to_string()],
+            }],
+            &out,
+        )
+        .unwrap();
+
+        let nb = Nanobyte::load(&out).unwrap();
+        let (name, _conf) = nb.infer_named("mymodel", "anything").unwrap();
+        assert_eq!(name, "alpha", "bias forces class 0; manifest must label it 'alpha'");
+    }
+
+    /// Pack with no class names — infer_named must return the numeric index as a string.
+    #[test]
+    fn infer_named_no_class_names_falls_back_to_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("nonames.nanobyte");
+        let w: Vec<f32> = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, -10.0];
+        consolidate(
+            &[PackInput {
+                name: "anon",
+                tier: 1,
+                num_classes: 2,
+                feature_dim: 4,
+                weights: &w,
+                routing: None,
+                class_names: vec![],
+            }],
+            &out,
+        )
+        .unwrap();
+        let nb = Nanobyte::load(&out).unwrap();
+        let (name, _) = nb.infer_named("anon", "anything").unwrap();
+        // No class names in manifest — must return numeric string, not panic/error.
+        assert!(name.parse::<usize>().is_ok(), "expected numeric fallback, got {name:?}");
+    }
+
+    /// Class name region must be padded to 4-byte boundary so weights stay f32-aligned.
+    /// Fails at load time if padding is broken (slice_f32 rejects misaligned start).
+    #[test]
+    fn cn_region_odd_length_weights_still_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("oddnames.nanobyte");
+        let w: Vec<f32> = (0..6).map(|i| i as f32).collect();
+        // "a" + null = 1 byte, not 4-aligned: exercises the padding path.
+        consolidate(
+            &[PackInput {
+                name: "m",
+                tier: 1,
+                num_classes: 2,
+                feature_dim: 3,
+                weights: &w,
+                routing: None,
+                class_names: vec!["a".to_string(), "bb".to_string()],
+            }],
+            &out,
+        )
+        .unwrap();
+        let nb = Nanobyte::load(&out).unwrap();
+        assert_eq!(nb.weights("m").unwrap(), &w[..]);
+        assert_eq!(nb.manifests()[0].class_names, vec!["a", "bb"]);
+    }
+
+    /// classify_with_starters output class_name must come from manifest, not numeric.
+    #[test]
+    fn classify_with_starters_uses_manifest_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("named2.nanobyte");
+        let w: Vec<f32> = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, -10.0];
+        consolidate(
+            &[PackInput {
+                name: "probe",
+                tier: 1,
+                num_classes: 2,
+                feature_dim: 4,
+                weights: &w,
+                routing: None,
+                class_names: vec!["yes".to_string(), "no".to_string()],
+            }],
+            &out,
+        )
+        .unwrap();
+        let nb = Nanobyte::load(&out).unwrap();
+        let results = classify_with_starters(&nb, "test");
+        assert_eq!(results.len(), 1);
+        assert!(["yes", "no"].contains(&results[0].class_name.as_str()));
     }
 
     #[test]

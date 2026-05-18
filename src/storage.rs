@@ -31,13 +31,13 @@ pub enum E0 {
 
 static GLOBAL_DB: OnceLock<Option<Arc<Database>>> = OnceLock::new();
 
-/// Lazily open the global redb Database at `sled_path()`. All modules that
+/// Lazily open the global redb Database at `db_path()`. All modules that
 /// need the primary KV store should call this rather than opening their own
 /// Database — redb requires exclusive file access.
 pub fn global_db() -> Option<Arc<Database>> {
     GLOBAL_DB
         .get_or_init(|| {
-            let path = crate::config::sled_path();
+            let path = crate::config::db_path();
             if let Some(parent) = path.parent()
                 && let Err(e) = std::fs::create_dir_all(parent)
             {

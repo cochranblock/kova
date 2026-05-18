@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use kova::nanobyte::{self, Nanobyte, STARTER_CLASS_NAMES};
+use kova::nanobyte::{self, Nanobyte};
 
 /// (model_name_in_nanobyte, dataset_name, csv_path_relative_to_assets, text_col, label_col).
 struct Bench {
@@ -49,15 +49,17 @@ fn run() -> Result<(), String> {
 }
 
 fn run_bench(nb: &Nanobyte, b: &Bench, assets: &Path) -> Result<(), String> {
-    let class_names: &[&str] = STARTER_CLASS_NAMES
+    let class_names: &[String] = nb
+        .manifests()
         .iter()
-        .find(|(n, _)| *n == b.model)
-        .map(|(_, names)| *names)
-        .ok_or_else(|| format!("model {:?} not in STARTER_CLASS_NAMES", b.model))?;
+        .find(|m| m.name == b.model)
+        .map(|m| m.class_names.as_slice())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("model {:?} not found or has no class names", b.model))?;
     let label_idx: HashMap<&str, usize> = class_names
         .iter()
         .enumerate()
-        .map(|(i, n)| (*n, i))
+        .map(|(i, n)| (n.as_str(), i))
         .collect();
 
     let csv_path: PathBuf = assets.join(b.csv_path);

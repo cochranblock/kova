@@ -4,6 +4,7 @@
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6, SuperNinja, Composer 1.5, Google Gemini Pro 3
 
 pub mod backlog;
+pub mod bridge;
 pub mod cargo;
 pub mod codegen;
 pub mod compute;
@@ -29,7 +30,7 @@ pub use config::{
     discover_projects, home, infer_preset_name, inference_model_path, kova_dir,
     load_build_preset, load_prompt, models_dir, orchestration_max_fix_retries,
     orchestration_router_resident, orchestration_run_clippy,
-    orchestration_specialist_idle_unload_secs, prompts_dir, sled_path, workspace_root,
+    db_path, orchestration_specialist_idle_unload_secs, prompts_dir, workspace_root,
     BuildPreset, ModelRole,
     code_gen_structured, default_model, fast_localhost, hive_local_base, hive_shared_base,
     model_cache_size, model_idle_unload_secs, ollama_url, router_structured,

@@ -4,5 +4,6 @@
 // Unlicense — cochranblock.org
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6
 
+pub mod priority;
 pub mod train;
 pub mod tool_router;
