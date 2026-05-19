@@ -361,3 +361,58 @@ pub fn synth_examples() -> Vec<crate::swarm::train::t216> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_to_class_known_tools() {
+        // Every entry in KOVA_ROUTER_TOOLS must map to its own index.
+        for (expected_idx, &tool) in KOVA_ROUTER_TOOLS.iter().enumerate() {
+            let got = tool_to_class(tool);
+            assert_eq!(got, Some(expected_idx), "tool {tool:?} wrong index");
+        }
+    }
+
+    #[test]
+    fn tool_to_class_unknown_returns_none() {
+        assert!(tool_to_class("totally_fake_tool_xyz").is_none());
+        assert!(tool_to_class("").is_none());
+    }
+
+    #[test]
+    fn class_to_tool_roundtrip() {
+        for (i, &tool) in KOVA_ROUTER_TOOLS.iter().enumerate() {
+            assert_eq!(class_to_tool(i), Some(tool));
+        }
+    }
+
+    #[test]
+    fn class_to_tool_out_of_bounds_returns_none() {
+        assert!(class_to_tool(KOVA_ROUTER_TOOLS.len()).is_none());
+        assert!(class_to_tool(usize::MAX).is_none());
+    }
+
+    #[test]
+    fn synth_examples_non_empty_and_valid_labels() {
+        let examples = synth_examples();
+        assert!(!examples.is_empty(), "synth_examples must not be empty");
+        for ex in &examples {
+            assert!(ex.label < KOVA_ROUTER_TOOLS.len(), "label {} out of range", ex.label);
+            assert!(!ex.text.is_empty(), "example text must not be empty");
+        }
+    }
+
+    #[test]
+    fn synth_examples_cover_all_classes() {
+        let examples = synth_examples();
+        let mut seen = vec![false; KOVA_ROUTER_TOOLS.len()];
+        for ex in &examples {
+            seen[ex.label] = true;
+        }
+        for (i, (&tool, &covered)) in KOVA_ROUTER_TOOLS.iter().zip(seen.iter()).enumerate() {
+            assert!(covered, "class {i} ({tool}) has no synth examples");
+        }
+    }
+}

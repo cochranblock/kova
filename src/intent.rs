@@ -144,3 +144,90 @@ pub fn f325(i: &t1) -> &'static str {
         t1::Custom { .. } => "custom",
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_intent_empty_returns_none() {
+        assert!(f62("").is_none());
+        assert!(f62("   ").is_none());
+    }
+
+    #[test]
+    fn parse_intent_unrecognised_returns_none() {
+        assert!(f62("hello world").is_none());
+        assert!(f62("do something").is_none());
+    }
+
+    #[test]
+    fn parse_intent_full_pipeline() {
+        let i = f62("run full pipeline").unwrap();
+        assert!(matches!(i.s0, t1::FullPipeline));
+        let i = f62("run pipeline now").unwrap();
+        assert!(matches!(i.s0, t1::FullPipeline));
+        let i = f62("full build").unwrap();
+        assert!(matches!(i.s0, t1::FullPipeline));
+    }
+
+    #[test]
+    fn parse_intent_test() {
+        let i = f62("run tests").unwrap();
+        assert!(matches!(i.s0, t1::Test));
+        let i = f62("cargo test").unwrap();
+        assert!(matches!(i.s0, t1::Test));
+    }
+
+    #[test]
+    fn parse_intent_compile_debug() {
+        let i = f62("compile").unwrap();
+        assert!(matches!(i.s0, t1::Compile { release: false, .. }));
+        let i = f62("build").unwrap();
+        assert!(matches!(i.s0, t1::Compile { release: false, .. }));
+    }
+
+    #[test]
+    fn parse_intent_compile_release() {
+        let i = f62("build release").unwrap();
+        assert!(matches!(i.s0, t1::Compile { release: true, .. }));
+        let i = f62("compile release").unwrap();
+        assert!(matches!(i.s0, t1::Compile { release: true, .. }));
+    }
+
+    #[test]
+    fn parse_intent_fix_warnings() {
+        let i = f62("fix warnings").unwrap();
+        assert!(matches!(i.s0, t1::FixWarnings));
+        let i = f62("fix warning").unwrap();
+        assert!(matches!(i.s0, t1::FixWarnings));
+    }
+
+    #[test]
+    fn parse_intent_tunnel() {
+        let i = f62("update tunnel").unwrap();
+        assert!(matches!(i.s0, t1::TunnelUpdate));
+        let i = f62("tunnel").unwrap();
+        assert!(matches!(i.s0, t1::TunnelUpdate));
+    }
+
+    #[test]
+    fn parse_intent_case_insensitive() {
+        let i = f62("COMPILE").unwrap();
+        assert!(matches!(i.s0, t1::Compile { .. }));
+        assert!(f62("BUILD RELEASE").map(|i| matches!(i.s0, t1::Compile { release: true, .. })).unwrap_or(false));
+        let i = f62("RUN TESTS").unwrap();
+        assert!(matches!(i.s0, t1::Test));
+    }
+
+    #[test]
+    fn intent_name_all_variants() {
+        assert_eq!(f325(&t1::Compile { release: true, check_only: false }), "compile");
+        assert_eq!(f325(&t1::Test),                 "test");
+        assert_eq!(f325(&t1::FixWarnings),           "fix-warnings");
+        assert_eq!(f325(&t1::FullPipeline),          "full-pipeline");
+        assert_eq!(f325(&t1::TunnelUpdate),          "tunnel-update");
+        assert_eq!(f325(&t1::SetupRoguerepo),        "setup-roguerepo");
+        assert_eq!(f325(&t1::CloudflarePurge),       "cloudflare-purge");
+        assert_eq!(f325(&t1::Custom { cmd: "x".into(), args: vec![] }), "custom");
+    }
+}

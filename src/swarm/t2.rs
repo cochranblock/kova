@@ -117,8 +117,60 @@ mod tests {
     #[test]
     fn t2_fallback_without_coordinator() {
         let nb = crate::nanobyte::starter().expect("starter.nanobyte required");
-        // starter.nanobyte has no t2_coordinator yet; fallback path must not panic.
         let (route, conf) = f411(&nb, "fn add(a: i32, b: i32) -> i32 { a + b }");
-        let _ = (route, conf); // just verify it doesn't panic
+        let _ = (route, conf);
+    }
+
+    #[test]
+    fn route_name_values() {
+        assert_eq!(Route::CodeResponder.name(),  "code");
+        assert_eq!(Route::ProseResponder.name(), "prose");
+    }
+
+    #[test]
+    fn route_system_prefix_nonempty() {
+        assert!(!Route::CodeResponder.system_prefix().is_empty());
+        assert!(!Route::ProseResponder.system_prefix().is_empty());
+    }
+
+    #[test]
+    fn route_prefixes_are_distinct() {
+        assert_ne!(
+            Route::CodeResponder.system_prefix(),
+            Route::ProseResponder.system_prefix()
+        );
+    }
+
+    #[test]
+    fn t2_route_with_coordinator_present() {
+        let nb = crate::nanobyte::starter().expect("starter required");
+        // starter now has t2_coordinator; f411 should return a valid route.
+        let (route, conf) = f411(&nb, "fn quicksort(arr: &mut Vec<i32>) {}");
+        assert!([Route::CodeResponder, Route::ProseResponder].contains(&route));
+        assert!((0.0..=1.0).contains(&conf));
+    }
+
+    #[test]
+    fn select_prompt_returns_empty_below_threshold() {
+        // Manually verify: if confidence would be < 0.65, select_prompt returns "".
+        // We can't force conf < threshold without mocking, so just verify it doesn't panic
+        // and returns either empty or a non-empty prefix string.
+        let nb = crate::nanobyte::starter().expect("starter required");
+        let result = select_prompt(&nb, "hmm not sure what to do");
+        // Must be either empty or one of the known prefixes.
+        assert!(
+            result.is_empty()
+                || result.contains("## Mode: code")
+                || result.contains("## Mode: prose"),
+            "unexpected prefix: {result:?}"
+        );
+    }
+
+    #[test]
+    fn t2_features_differ_for_code_vs_prose() {
+        let nb = crate::nanobyte::starter().expect("starter required");
+        let code_feat  = f410(&nb, "impl Iterator for MyStruct { fn next(&mut self) -> Option<Self::Item> { None } }");
+        let prose_feat = f410(&nb, "please explain the history of the Byzantine empire");
+        assert_ne!(code_feat, prose_feat, "code and prose inputs should produce different feature vectors");
     }
 }

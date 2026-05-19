@@ -558,3 +558,54 @@ pub fn reset_circuit(node: &str) -> Result<()> {
     println!("{node}: circuit reset to closed");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fmt_duration_seconds_only() {
+        assert_eq!(fmt_duration(0),  "0s");
+        assert_eq!(fmt_duration(42), "42s");
+        assert_eq!(fmt_duration(59), "59s");
+    }
+
+    #[test]
+    fn fmt_duration_minutes() {
+        assert_eq!(fmt_duration(60),   "1m0s");
+        assert_eq!(fmt_duration(65),   "1m5s");
+        assert_eq!(fmt_duration(125),  "2m5s");
+        assert_eq!(fmt_duration(3599), "59m59s");
+    }
+
+    #[test]
+    fn fmt_duration_hours() {
+        assert_eq!(fmt_duration(3600),  "1h0m");
+        assert_eq!(fmt_duration(3661),  "1h1m");
+        assert_eq!(fmt_duration(7200),  "2h0m");
+    }
+
+    #[test]
+    fn short_id_format() {
+        let id = short_id();
+        assert!(id.starts_with('j'), "short_id must start with 'j'");
+        assert!(id.len() >= 2, "short_id too short");
+        assert!(id[1..].chars().all(|c| c.is_ascii_hexdigit()), "short_id must be hex after 'j'");
+    }
+
+    #[test]
+    fn circuit_state_display() {
+        assert_eq!(CircuitState::Closed.to_string(),   "ok");
+        assert_eq!(CircuitState::Open.to_string(),     "OPEN");
+        assert_eq!(CircuitState::HalfOpen.to_string(), "probe");
+    }
+
+    #[test]
+    fn job_status_display() {
+        assert_eq!(JobStatus::Queued.to_string(),  "queued");
+        assert_eq!(JobStatus::Running.to_string(), "running");
+        assert_eq!(JobStatus::Done.to_string(),    "done");
+        assert_eq!(JobStatus::Failed.to_string(),  "failed");
+        assert_eq!(JobStatus::Dead.to_string(),    "dead");
+    }
+}

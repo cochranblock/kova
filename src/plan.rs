@@ -94,3 +94,77 @@ impl t3 {
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::intent::{f62, t0, t1, t2 as Constraint};
+
+    fn project() -> std::path::PathBuf { std::path::PathBuf::from("/tmp/test") }
+
+    #[test]
+    fn full_pipeline_produces_check_and_test() {
+        let intent = t0 { s0: t1::FullPipeline, s1: None, s2: vec![] };
+        let plan = t3::f14(&intent, project(), None);
+        let actions: Vec<_> = plan.s3.iter().map(|s| &s.s6).collect();
+        assert_eq!(actions.len(), 2);
+        assert!(matches!(actions[0], t5::CargoCheck));
+        assert!(matches!(actions[1], t5::CargoTest));
+    }
+
+    #[test]
+    fn test_intent_produces_cargo_test() {
+        let intent = t0 { s0: t1::Test, s1: None, s2: vec![] };
+        let plan = t3::f14(&intent, project(), None);
+        assert_eq!(plan.s3.len(), 1);
+        assert!(matches!(plan.s3[0].s6, t5::CargoTest));
+    }
+
+    #[test]
+    fn compile_debug_produces_cargo_build() {
+        let intent = t0 { s0: t1::Compile { release: false, check_only: false }, s1: None, s2: vec![] };
+        let plan = t3::f14(&intent, project(), None);
+        assert_eq!(plan.s3.len(), 1);
+        assert!(matches!(plan.s3[0].s6, t5::CargoBuild { release: false }));
+    }
+
+    #[test]
+    fn compile_release_produces_cargo_build_release() {
+        let intent = t0 { s0: t1::Compile { release: true, check_only: false }, s1: None, s2: vec![] };
+        let plan = t3::f14(&intent, project(), None);
+        assert!(matches!(plan.s3[0].s6, t5::CargoBuild { release: true }));
+    }
+
+    #[test]
+    fn compile_check_only_produces_cargo_check() {
+        let intent = t0 { s0: t1::Compile { release: false, check_only: true }, s1: None, s2: vec![] };
+        let plan = t3::f14(&intent, project(), None);
+        assert_eq!(plan.s3.len(), 1);
+        assert!(matches!(plan.s3[0].s6, t5::CargoCheck));
+    }
+
+    #[test]
+    fn project_hint_preserved() {
+        let intent = t0 { s0: t1::Test, s1: Some("my_crate".into()), s2: vec![] };
+        let plan = t3::f14(&intent, project(), None);
+        assert_eq!(plan.s7.as_deref(), Some("my_crate"));
+    }
+
+    #[test]
+    fn fix_warnings_produces_no_steps() {
+        let intent = t0 { s0: t1::FixWarnings, s1: None, s2: vec![] };
+        let plan = t3::f14(&intent, project(), None);
+        assert!(plan.s3.is_empty());
+    }
+
+    #[test]
+    fn custom_intent_passthrough() {
+        let intent = t0 {
+            s0: t1::Custom { cmd: "echo".into(), args: vec!["hi".into()] },
+            s1: None,
+            s2: vec![],
+        };
+        let plan = t3::f14(&intent, project(), None);
+        assert_eq!(plan.s3.len(), 1);
+        assert!(matches!(&plan.s3[0].s6, t5::Custom { cmd, .. } if cmd == "echo"));
+    }
+}

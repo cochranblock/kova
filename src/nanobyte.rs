@@ -939,6 +939,54 @@ mod tests {
     }
 
     #[test]
+    fn infer_raw_returns_valid_class_and_confidence() {
+        let nb = starter().expect("starter required");
+        // t2_coordinator has feature_dim=8; zero vector is a valid input.
+        let zeros = [0.0f32; 8];
+        let (idx, conf) = nb.infer_raw("t2_coordinator", &zeros).unwrap();
+        assert!(idx < 2, "idx {idx} out of range for 2-class model");
+        assert!((0.0..=1.0).contains(&conf), "confidence {conf} not in [0,1]");
+    }
+
+    #[test]
+    fn infer_raw_confidence_sums_to_one() {
+        // Build a tiny 2-class model in memory to test the softmax normalization.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("raw_test.nanobyte");
+        // W = [[1,0,0,0], [0,0,0,1]], b = [0,0] → feature [1,0,0,0] → class 0
+        let weights: Vec<f32> = vec![1.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0, 1.0];
+        let bias: Vec<f32>    = vec![0.0, 0.0];
+        let mut packed = weights.clone();
+        packed.extend_from_slice(&bias);
+        consolidate(
+            &[PackInput {
+                name: "raw_probe",
+                tier: 2,
+                num_classes: 2,
+                feature_dim: 4,
+                weights: &packed,
+                routing: None,
+                class_names: vec!["a".into(), "b".into()],
+            }],
+            &out,
+        )
+        .unwrap();
+        let nb = Nanobyte::load(&out).unwrap();
+        let feat = [1.0f32, 0.0, 0.0, 0.0];
+        let (idx, conf) = nb.infer_raw("raw_probe", &feat).unwrap();
+        assert_eq!(idx, 0, "class 0 should win");
+        assert!(conf > 0.5, "winner confidence {conf} should exceed 0.5");
+    }
+
+    #[test]
+    fn infer_raw_rejects_wrong_feature_dim() {
+        let nb = starter().expect("starter required");
+        // t2_coordinator expects 8 features; pass 4.
+        let short = [0.0f32; 4];
+        assert!(nb.infer_raw("t2_coordinator", &short).is_err());
+    }
+
+    #[test]
     fn embedded_infer_matches_mmap_infer() {
         let path = starter_path();
         if !path.exists() {

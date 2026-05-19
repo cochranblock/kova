@@ -231,3 +231,32 @@ fn save_queue(node: &str, queue: &[QueueEntry]) -> Result<()> {
     fs::write(&path, serde_json::to_string_pretty(queue)?)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::fmt_duration;
+
+    #[test]
+    fn fmt_duration_seconds_only() {
+        assert_eq!(fmt_duration(0),  "0s");
+        assert_eq!(fmt_duration(1),  "1s");
+        assert_eq!(fmt_duration(42), "42s");
+        assert_eq!(fmt_duration(59), "59s");
+    }
+
+    #[test]
+    fn fmt_duration_minutes() {
+        assert_eq!(fmt_duration(60),  "1m0s");
+        assert_eq!(fmt_duration(65),  "1m5s");
+        assert_eq!(fmt_duration(125), "2m5s");
+        assert_eq!(fmt_duration(3599), "59m59s");
+    }
+
+    #[test]
+    fn fmt_duration_hours() {
+        assert_eq!(fmt_duration(3600),  "1h0m");
+        assert_eq!(fmt_duration(3661),  "1h1m");
+        assert_eq!(fmt_duration(7200),  "2h0m");
+        assert_eq!(fmt_duration(90061), "25h1m");
+    }
+}
