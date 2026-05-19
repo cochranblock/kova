@@ -165,31 +165,42 @@ pub fn f137(project: Option<PathBuf>) -> anyhow::Result<()> {
         }
 
         // Subatomic T1: classify input + update priority queue.
-        if let Some(nb) = starter_nb.as_ref() {
+        // T2 molecular coordinator: select code vs prose responder mode.
+        let turn_system_prompt;
+        let effective_system_prompt = if let Some(nb) = starter_nb.as_ref() {
             if let Ok((class_idx, conf)) = nb.infer("code_vs_english", input) {
                 let label = if class_idx == 1 { "code" } else { "english" };
                 eprintln!("\x1b[90m[input: {label}, {conf:.2}]\x1b[0m");
-                // Bump models relevant to this input type.
                 let relevant: &[&str] = if class_idx == 1 {
-                    // code input — bump code-focused classifiers
                     &["code_vs_english", "slop_detector", "lang_detector"]
                 } else {
-                    // natural language — bump intent + slop
                     &["intent_classifier", "slop_detector"]
                 };
                 for model in relevant {
                     crate::swarm::priority::bump_with_conf(model, conf);
                 }
             }
-            // Decay all scores each turn so cold models sink over time.
             crate::swarm::priority::f431();
-        }
+
+            // T2: route to code or prose responder.
+            let prefix = crate::swarm::t2::select_prompt(nb, input);
+            if prefix.is_empty() {
+                &system_prompt
+            } else {
+                let (route, conf) = crate::swarm::t2::f411(nb, input);
+                eprintln!("\x1b[90m[t2: {}, {:.2}]\x1b[0m", route.name(), conf);
+                turn_system_prompt = format!("{prefix}\n\n{system_prompt}");
+                &turn_system_prompt
+            }
+        } else {
+            &system_prompt
+        };
 
         // Run agent loop.
         eprintln!();
         let response = crate::agent_loop::f148(
             &model_path,
-            &system_prompt,
+            effective_system_prompt,
             input,
             &project_dir,
             max_iterations,

@@ -1,0 +1,7 @@
+{
+  "feature_dim": 8,
+  "name": "t2_coordinator",
+  "num_classes": 2,
+  "tier": 2,
+  "total_params": 18
+}

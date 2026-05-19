@@ -235,6 +235,36 @@ impl Nanobyte {
 
     /// Run a packed subatomic classifier over `text`. Returns `(class_idx, confidence)`.
     ///
+    /// Like [`infer`](Self::infer) but accepts a pre-computed feature vector instead of text.
+    /// Used by the T2 molecular coordinator, whose inputs are T1 output signals, not raw text.
+    pub fn infer_raw(&self, model_name: &str, features: &[f32]) -> Result<(usize, f32)> {
+        let m = self.find(model_name)?;
+        let nc = m.num_classes as usize;
+        let fd = m.feature_dim as usize;
+        let packed = self.weights(model_name)?;
+        if packed.len() != nc * fd + nc || features.len() != fd {
+            return Err(Error::BadManifest);
+        }
+        let (w, b) = packed.split_at(nc * fd);
+        let mut logits = vec![0.0f32; nc];
+        for c in 0..nc {
+            let mut sum = b[c];
+            let row = &w[c * fd..(c + 1) * fd];
+            for d in 0..fd {
+                sum += row[d] * features[d];
+            }
+            logits[c] = sum;
+        }
+        let max_logit = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let mut sum_exp = 0.0f32;
+        for v in logits.iter_mut() { *v = (*v - max_logit).exp(); sum_exp += *v; }
+        for v in logits.iter_mut() { *v /= sum_exp; }
+        Ok(logits.iter().enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, p)| (i, *p))
+            .unwrap_or((0, 0.0)))
+    }
+
     /// Mirrors [`crate::swarm::train::f396`]: trigram-hash featurize → linear → softmax.
     /// The packed weights blob is `[W (nc * fd) | b (nc)]`, row-major (`W[c * fd + d]`).
     pub fn infer(&self, model_name: &str, text: &str) -> Result<(usize, f32)> {
@@ -680,6 +710,7 @@ mod tests {
         }
         let nb = Nanobyte::load(&path).expect("starter.nanobyte must verify");
         let names: Vec<&str> = nb.manifests().iter().map(|m| m.name.as_str()).collect();
+        // T1 subatomic models + T2 coordinator
         assert_eq!(
             names,
             [
@@ -687,6 +718,7 @@ mod tests {
                 "code_vs_english",
                 "lang_detector",
                 "intent_classifier",
+                "t2_coordinator",
             ]
         );
     }
@@ -759,6 +791,7 @@ mod tests {
                 "code_vs_english",
                 "lang_detector",
                 "intent_classifier",
+                "t2_coordinator",
             ]
         );
     }
@@ -789,6 +822,7 @@ mod tests {
                 "code_vs_english",
                 "lang_detector",
                 "intent_classifier",
+                "t2_coordinator",
             ]
         );
         for c in &out {

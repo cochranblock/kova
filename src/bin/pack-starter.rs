@@ -19,6 +19,8 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 struct ModelConfig {
     name: String,
+    #[serde(default = "default_tier")]
+    tier: u8,
     feature_dim: u32,
     num_classes: u32,
     #[serde(default)]
@@ -28,11 +30,14 @@ struct ModelConfig {
     class_names: Vec<String>,
 }
 
+fn default_tier() -> u8 { 1 }
+
 const MODELS: &[&str] = &[
     "slop_detector",
     "code_vs_english",
     "lang_detector",
     "intent_classifier",
+    "t2_coordinator",
 ];
 
 fn main() {
@@ -64,7 +69,7 @@ fn run() -> Result<(), String> {
         .iter()
         .map(|(cfg, packed)| PackInput {
             name: &cfg.name,
-            tier: 1,
+            tier: cfg.tier,
             num_classes: cfg.num_classes,
             feature_dim: cfg.feature_dim,
             weights: packed,

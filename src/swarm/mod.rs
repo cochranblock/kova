@@ -5,5 +5,6 @@
 // Contributors: Mattbusel (XFactor), GotEmCoach, KOVA, Claude Opus 4.6
 
 pub mod priority;
+pub mod t2;
 pub mod train;
 pub mod tool_router;

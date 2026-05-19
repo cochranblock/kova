@@ -7,7 +7,7 @@
 #![allow(non_camel_case_types)]
 
 use clap::ValueEnum;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
