@@ -7,7 +7,7 @@
 #![allow(non_camel_case_types)]
 
 use clap::ValueEnum;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -1669,6 +1669,124 @@ fn list_windows(session: &str) -> Vec<String> {
         .map(|(idx, _)| idx)
         .collect()
 }
+
+// ── f393 ─────────────────────────────────────────────────────────────────────
+
+const LENS_OPTIMIST: &str = "\
+You are the optimist lens. Your job is to identify what is promising, well-designed, \
+and working correctly. Highlight strengths, good decisions, and reasons this approach \
+could succeed. Be specific and grounded — not cheerleading.";
+
+const LENS_PESSIMIST: &str = "\
+You are the pessimist lens. Your job is to identify risks, gaps, and failure modes. \
+What could go wrong, what is fragile, what is missing or under-specified? \
+Be specific and technical — not catastrophizing.";
+
+const LENS_PARANOIA: &str = "\
+You are the paranoia lens. Your job is to find hidden assumptions, subtle invariant \
+violations, and things that could go quietly wrong in ways that are hard to detect. \
+Think about race conditions, edge cases, adversarial inputs, and mismatched mental models.";
+
+const LENS_SYNTHESIS: &str = "\
+You are a senior technical analyst. You have received three analytical perspectives \
+(optimist, pessimist, paranoia) on the same topic. Synthesize them into a concise, \
+actionable report. Use the sections: \
+## Key Findings, ## Risks, ## Blind Spots, ## Recommendation. \
+Be direct and specific.";
+
+const TRIPLE_LENS_MODEL: &str = "claude-sonnet-4-6";
+
+/// Single blocking call to the Anthropic Messages API. Returns the response text.
+fn anthropic_call(system: &str, user: &str) -> Result<String, String> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
+    let model = std::env::var("KOVA_MODEL").unwrap_or_else(|_| TRIPLE_LENS_MODEL.into());
+
+    let body = serde_json::json!({
+        "model": model,
+        "max_tokens": 4096,
+        "system": system,
+        "messages": [{"role": "user", "content": user}]
+    });
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("http client: {e}"))?;
+
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2024-10-22")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| format!("anthropic request: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("anthropic http {}: {}", resp.status(), resp.text().unwrap_or_default()));
+    }
+
+    let json: serde_json::Value = resp.json().map_err(|e| format!("json parse: {e}"))?;
+    let text = json["content"]
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|b| b["text"].as_str())
+        .unwrap_or("")
+        .to_string();
+    Ok(text)
+}
+
+/// f393=triple_lens_research. Run optimist / pessimist / paranoia lenses in parallel,
+/// then synthesize. Prints synthesis to stdout; returns the synthesis text.
+pub fn f393(topic: &str) -> anyhow::Result<String> {
+    let lenses: [(&str, &str); 3] = [
+        ("optimist", LENS_OPTIMIST),
+        ("pessimist", LENS_PESSIMIST),
+        ("paranoia", LENS_PARANOIA),
+    ];
+
+    // 3 threads run lens calls concurrently; synthesis runs after all complete.
+    let handles: Vec<_> = lenses
+        .iter()
+        .map(|(name, sys)| {
+            let topic = topic.to_string();
+            let sys = sys.to_string();
+            let name = *name;
+            std::thread::spawn(move || {
+                eprintln!("\x1b[90m[triple-lens] {name} …\x1b[0m");
+                let result = anthropic_call(&sys, &topic);
+                match &result {
+                    Ok(out) => eprintln!("\x1b[90m[triple-lens] {name} done ({} chars)\x1b[0m", out.len()),
+                    Err(e) => eprintln!("\x1b[31m[triple-lens] {name} error: {e}\x1b[0m"),
+                }
+                (name, result)
+            })
+        })
+        .collect();
+
+    let mut lens_outputs: Vec<(&str, String)> = Vec::new();
+    for h in handles {
+        let (name, result) = h
+            .join()
+            .map_err(|_| anyhow::anyhow!("lens thread panicked"))?;
+        lens_outputs.push((name, result.unwrap_or_default()));
+    }
+
+    let get = |n: &str| lens_outputs.iter().find(|(k, _)| *k == n).map(|(_, v)| v.as_str()).unwrap_or("");
+    let synthesis_prompt = format!(
+        "Topic: {topic}\n\n## Optimist Lens\n{}\n\n## Pessimist Lens\n{}\n\n## Paranoia Lens\n{}\n\nSynthesize the above into a structured report.",
+        get("optimist"), get("pessimist"), get("paranoia")
+    );
+
+    eprintln!("\x1b[90m[triple-lens] synthesizing…\x1b[0m");
+    let synthesis = anthropic_call(LENS_SYNTHESIS, &synthesis_prompt)
+        .map_err(|e| anyhow::anyhow!("synthesis failed: {e}"))?;
+
+    println!("{synthesis}");
+    Ok(synthesis)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

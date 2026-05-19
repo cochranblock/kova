@@ -593,6 +593,14 @@ enum C2Cmd {
         #[arg(short, long, default_value = "3")]
         interval: u64,
     },
+    /// Triple-lens research: runs optimist / pessimist / paranoia analysis in
+    /// parallel, then synthesizes into a structured report.
+    #[command(name = "research")]
+    Research {
+        /// Topic or question to analyse. Passed as a single string; quote if needed.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        topic: Vec<String>,
+    },
     /// QA sweep: broadcast build + clippy + status to all panes.
     #[command(name = "qa")]
     TmuxQa {
@@ -1498,6 +1506,13 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             SshCaCmd::Sign { node } => kova::ssh_ca::f299(&node),
             SshCaCmd::Setup => kova::ssh_ca::f300(),
         },
+        C2Cmd::Research { topic } => {
+            let topic_str = topic.join(" ");
+            if topic_str.is_empty() {
+                anyhow::bail!("usage: kova c2 research <topic>");
+            }
+            kova::c2::f393(&topic_str).map(|_| ())
+        }
         C2Cmd::Ncmd {
             cmd,
             nodes,

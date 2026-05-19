@@ -258,7 +258,7 @@ Tokenization for traceability. Source: workspace tokenization rules.
 | f390 | generate_slop_data | swarm/train | P12 banned words vs clean sentences |
 | f391 | generate_code_vs_english_data | swarm/train | Scrape .rs/.md from repo for code vs english |
 | f392 | generate_lang_data | swarm/train | Rust/Python/JS/Go/Shell training examples |
-| f393 | triple_lens_research | c2 | P23: dispatch optimist/pessimist/paranoia/synthesis to fleet |
+| f393 | triple_lens_research | c2 | `kova c2 research <topic>` — 3 parallel Anthropic calls (optimist/pessimist/paranoia) + synthesis |
 | f394 | featurize | swarm/train | Convert text to fixed-size trigram-hash feature vector |
 | f395 | train_starter | swarm/train | Train all 3 starter subatomic models, save to output_dir |
 | f396 | predict | swarm/train | Load trained model, run inference on a single input |
