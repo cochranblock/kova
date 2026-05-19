@@ -9,6 +9,7 @@ description = "Kova — augment engine. On-device AI inference, agentic tool loo
 license = "Unlicense"
 repository = "https://github.com/cochranblock/kova"
 homepage = "https://cochranblock.org"
+documentation = "https://cochranblock.github.io/kova/"
 keywords = ["ai", "agent", "inference", "edge-computing", "augmentation"]
 categories = ["command-line-utilities", "development-tools"]
 

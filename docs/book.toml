@@ -1,0 +1,20 @@
+[book]
+title = "kova"
+description = "On-device AI augmentation engine. Local inference, agentic tool loop, distributed C2 mesh."
+authors = ["Michael Cochran"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/cochranblock/kova"
+edit-url-template = "https://github.com/cochranblock/kova/edit/main/docs/src/{path}"
+site-url = "/kova/"
+additional-css = ["theme/custom.css"]
+additional-js = ["theme/force-theme.js"]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+no-section-label = true
+
+[output.html.fold]
+enable = true
+level = 1
