@@ -13,7 +13,7 @@ pub(crate) fn baked_prompts() -> String {
     let tokenization = include_str!("../assets/prompts/tokenization.mdc");
     let hosting = include_str!("../assets/prompts/hosting-schematic.mdc");
     let header_writer = include_str!("../assets/prompts/header-writer.mdc");
-    let compression = include_str!("../docs/compression_map.md");
+    let compression = include_str!("../docs/src/compression_map.md");
     format!(
         "\n\n--- blocking (baked) ---\n{}\n\n--- augment-not-intent (baked) ---\n{}\n\n--- tokenization (baked) ---\n{}\n\n--- hosting-schematic (baked) ---\n{}\n\n--- header-writer (baked) ---\n{}\n\n--- compression_map (baked) ---\n{}",
         blocking, augment, tokenization, hosting, header_writer, compression
