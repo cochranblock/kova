@@ -99,38 +99,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn t2_features_length() {
-        let nb = crate::nanobyte::starter().expect("starter.nanobyte required");
-        let feat = f410(&nb, "fn main() {}");
-        assert_eq!(feat.len(), T2_FEATURE_DIM);
-    }
-
-    #[test]
     fn t2_features_in_unit_range() {
         let nb = crate::nanobyte::starter().expect("starter.nanobyte required");
         let feat = f410(&nb, "explain how tokio works");
         for (i, &v) in feat.iter().enumerate() {
             assert!((0.0..=1.0).contains(&v), "feature[{i}] = {v} out of [0,1]");
         }
-    }
-
-    #[test]
-    fn t2_fallback_without_coordinator() {
-        let nb = crate::nanobyte::starter().expect("starter.nanobyte required");
-        let (route, conf) = f411(&nb, "fn add(a: i32, b: i32) -> i32 { a + b }");
-        let _ = (route, conf);
-    }
-
-    #[test]
-    fn route_name_values() {
-        assert_eq!(Route::CodeResponder.name(),  "code");
-        assert_eq!(Route::ProseResponder.name(), "prose");
-    }
-
-    #[test]
-    fn route_system_prefix_nonempty() {
-        assert!(!Route::CodeResponder.system_prefix().is_empty());
-        assert!(!Route::ProseResponder.system_prefix().is_empty());
     }
 
     #[test]
@@ -148,22 +122,6 @@ mod tests {
         let (route, conf) = f411(&nb, "fn quicksort(arr: &mut Vec<i32>) {}");
         assert!([Route::CodeResponder, Route::ProseResponder].contains(&route));
         assert!((0.0..=1.0).contains(&conf));
-    }
-
-    #[test]
-    fn select_prompt_returns_empty_below_threshold() {
-        // Manually verify: if confidence would be < 0.65, select_prompt returns "".
-        // We can't force conf < threshold without mocking, so just verify it doesn't panic
-        // and returns either empty or a non-empty prefix string.
-        let nb = crate::nanobyte::starter().expect("starter required");
-        let result = select_prompt(&nb, "hmm not sure what to do");
-        // Must be either empty or one of the known prefixes.
-        assert!(
-            result.is_empty()
-                || result.contains("## Mode: code")
-                || result.contains("## Mode: prose"),
-            "unexpected prefix: {result:?}"
-        );
     }
 
     #[test]

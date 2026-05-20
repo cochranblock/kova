@@ -461,11 +461,16 @@ pub fn status() -> Result<()> {
     let done = jobs.iter().filter(|j| j.status == JobStatus::Done).count();
     let failed = jobs.iter().filter(|j| matches!(j.status, JobStatus::Failed | JobStatus::Dead)).count();
 
-    println!("jobs: {} queued, {} running, {} done, {} failed", queued, running, done, failed);
+    let failed_color = if failed > 0 { "\x1b[31m" } else { "\x1b[90m" };
+    let running_color = if running > 0 { "\x1b[33m" } else { "\x1b[90m" };
+    println!(
+        "jobs: \x1b[90m{} queued\x1b[0m  {}{} running\x1b[0m  \x1b[90m{} done\x1b[0m  {}{} failed\x1b[0m",
+        queued, running_color, running, done, failed_color, failed
+    );
     println!();
 
     for j in &jobs {
-        if matches!(j.status, JobStatus::Done) { continue; } // skip completed
+        if matches!(j.status, JobStatus::Done) { continue; }
 
         let node = j.assigned_node.as_deref().unwrap_or("-");
         let age = fmt_duration(now_epoch().saturating_sub(j.submitted));
@@ -473,13 +478,16 @@ pub fn status() -> Result<()> {
 
         match j.status {
             JobStatus::Running => {
-                println!("  {} {} on {} [{}] ({}) — {}", j.id, j.status, node, j.tag, run_time, j.command);
+                println!("  \x1b[33m⬡\x1b[0m \x1b[1m{}\x1b[0m \x1b[33mrunning\x1b[0m on \x1b[1m{}\x1b[0m [{}] ({})  \x1b[90m{}\x1b[0m",
+                    j.id, node, j.tag, run_time, j.command);
             }
             JobStatus::Queued => {
-                println!("  {} {} p{} [{}] (waiting {}) — {}", j.id, j.status, j.priority, j.tag, age, j.command);
+                println!("  \x1b[90m◇\x1b[0m {} \x1b[90mqueued\x1b[0m p{} [{}] (waiting {})  \x1b[90m{}\x1b[0m",
+                    j.id, j.priority, j.tag, age, j.command);
             }
             _ => {
-                println!("  {} {} [{}] attempt {}/{} — {}", j.id, j.status, j.tag, j.attempts, j.max_retries, j.command);
+                println!("  \x1b[31m✗\x1b[0m \x1b[31m{}\x1b[0m \x1b[31m{}\x1b[0m [{}] attempt {}/{}  \x1b[90m{}\x1b[0m",
+                    j.id, j.status, j.tag, j.attempts, j.max_retries, j.command);
             }
         }
     }
@@ -488,7 +496,10 @@ pub fn status() -> Result<()> {
     println!();
     for &node in &crate::c2::f350() {
         let h = load_health(node);
-        println!("  {}: circuit={} jobs={} failures={}", node, h.circuit, h.total_jobs, h.total_failures);
+        let circuit_color = if h.circuit.to_string() == "open" { "\x1b[31m" } else { "\x1b[32m" };
+        let fail_color = if h.total_failures > 0 { "\x1b[31m" } else { "\x1b[90m" };
+        println!("  \x1b[1m{}\x1b[0m  circuit={}{}\x1b[0m  \x1b[90mjobs={}\x1b[0m  {}failures={}\x1b[0m",
+            node, circuit_color, h.circuit, h.total_jobs, fail_color, h.total_failures);
     }
 
     Ok(())

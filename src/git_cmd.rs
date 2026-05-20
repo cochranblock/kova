@@ -63,8 +63,9 @@ pub struct t108 {
 }
 
 fn print_result(r: &t108) {
-    let status = if r.ok { "ok" } else { "err" };
-    eprintln!("{}\t{}", r.cmd, status);
+    if !r.ok {
+        eprintln!("\x1b[31m{}\terr\x1b[0m", r.cmd);
+    }
     if !r.out.is_empty() {
         eprintln!("{}", r.out);
     }

@@ -6,7 +6,13 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "kova", version)]
+#[command(name = "kova", version, term_width = 0, after_help = "\
+\x1b[1m\x1b[36mAUGMENTATION\x1b[0m  chat  tokens  squeeze  traces  recent  tui  rag
+\x1b[1m\x1b[33mBUILD & CI\x1b[0m    git   x       ci       test    serve   s
+\x1b[1m\x1b[32mFLEET\x1b[0m         c2    hive    deploy   ssh     node
+\x1b[1m\x1b[35mINTELLIGENCE\x1b[0m  micro extract export   train-router  mcp
+\x1b[1m\x1b[34mCOMPLIANCE\x1b[0m    govdocs
+\x1b[1m\x1b[90mSYSTEM\x1b[0m        bootstrap  bridge  autopilot  demo  prompts")]
 struct Args {
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -14,101 +20,49 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Terminal UI. Chat + Visual QC. Like Claude Code but local.
-    Tui(TuiArgs),
-    /// Run HTTP API server. Web client at /.
-    Serve(ServeArgs),
-    /// Worker daemon for swarm. Phase 1: schema stub.
-    Node,
-    /// Tokenized orchestration. f18–f23 local or broadcast.
-    C2(C2Args),
-    /// Create ~/.kova, prompts, config. Run on first use.
-    Bootstrap,
-    /// Print loaded Cursor prompts (baked + external). For testing and debugging.
-    Prompts,
-    /// Recent changes (f86). Tokenized for LLM context. Stay on task.
-    Recent(RecentArgs),
-    /// Autopilot: type prompt into Cursor composer. No API costs. Requires Cursor focused.
-    Autopilot(AutopilotArgs),
-    /// Browser automation: drive Gemini/etc via WebDriver. Bulk sprite generation.
-    Prompt(PromptArgs),
-    /// Deploy quality gate: clippy, TRIPLE SIMS, release build, smoke, baked demo. Requires --features tests.
-    Test,
-    /// Tokenized cargo commands. §13 compressed output. x0=build x1=check x2=test x3=clippy x4=run x5=build-rel x6=clean x7=doc x8=fmt-chk x9=bench.
-    X(XArgs),
-    /// Interactive REPL. Agentic tool loop with local LLM. Like Claude Code but local.
+    // ── AUGMENTATION ──────────────────────────────────────────────────────────
+    /// Agentic REPL with tool loop. Local LLM. Like Claude Code.
     Chat(ChatArgs),
-    /// Tokenized git commands. §13 compressed output. g0=status g1=diff g2=log g3=push g4=pull g5=commit g6=branch g7=stash g8=add g9=staged.
-    #[command(name = "git")]
-    Git(GitArgs),
-    /// Short serve alias. `kova s` = `kova serve --open`. `kova s -d` = demo mode.
-    S(SShortArgs),
-    /// IRONHIVE cluster inference. Distributed AI across worker nodes.
-    #[cfg(feature = "inference")]
-    #[command(name = "cluster")]
-    T193(ClusterArgs),
-    /// Rust Binary T181. Full pipeline: classify → generate → compile → review → fix.
-    #[cfg(feature = "inference")]
-    #[command(name = "factory")]
-    T181(FactoryArgs),
-    /// Mixture of Experts. Fan-out to N nodes, compile all, score, pick winner.
-    #[cfg(feature = "inference")]
-    #[command(name = "moe")]
-    Moe(MoeArgs),
-    /// Codegen-MoE: hierarchical MoE for code generation, with Sponge Mesh correction. Task → Router → Assemblers → Experts.
-    #[cfg(feature = "inference")]
-    #[command(name = "codegen-moe")]
-    CodegenMoe(CodegenMoeArgs),
-    /// Extract training data from repos for expert fine-tuning.
-    #[command(name = "extract")]
-    Extract(ExtractArgs),
-    /// Academy. MoE-powered autonomous dev agent. Plan → generate → wire → test → fix → commit.
-    #[cfg(feature = "inference")]
-    #[command(name = "academy")]
-    Academy(AcademyArgs),
-    /// Gauntlet. Hell Week stress test for the AI pipeline. 5 phases, no mercy.
-    #[cfg(feature = "inference")]
-    #[command(name = "gauntlet")]
-    Gauntlet(GauntletArgs),
-    /// Micro-model registry. List, run, and validate tiny purpose-built AI units.
-    #[cfg(feature = "inference")]
-    #[command(name = "micro")]
-    Micro(MicroArgs),
-    /// RAG: index code, search semantically, retrieve context for LLM.
-    #[command(name = "rag")]
-    Rag(RagArgs),
-    /// LLM call traces. Observability for every inference call.
-    #[command(name = "traces")]
-    Traces(TracesArgs),
-    /// MCP server (Model Context Protocol). Stdio transport for AI tool interop.
-    #[command(name = "mcp")]
-    Mcp(McpArgs),
-    /// Train the tier-1 tool_router classifier (sub-100K params). Use --data
-    /// with a mined JSONL or --mine-projects to mine ~/.claude/projects first.
-    /// Saves to <output>/tool_router/ (default ~/.kova/models/).
-    #[command(name = "train-router")]
-    TrainRouter(TrainRouterArgs),
-    /// CI mode. Headless quality gate: run check/clippy/test, watch for changes.
-    #[command(name = "ci")]
-    Ci(CiArgs),
-    /// Export training data from LLM traces. DPO/SFT fine-tuning.
-    #[command(name = "export")]
-    Export(ExportArgs),
-    /// Code review. Review staged changes or branch diff via LLM.
-    #[cfg(feature = "inference")]
-    #[command(name = "review")]
-    Review(ReviewArgs),
-    /// Feedback loop. View/export tournament failure data and generated challenges.
-    #[cfg(feature = "inference")]
-    #[command(name = "feedback")]
-    Feedback(FeedbackArgs),
-    /// Tokenization validator. Check compression protocol coverage.
+    /// Tokenization coverage validator. Check compression protocol gaps.
     #[command(name = "tokens")]
     Tokens,
-    /// Squeeze: mine history + AI rules for unaliased command patterns. f393.
+    /// Mine shell history + AI rules for unaliased command patterns.
     #[command(name = "squeeze")]
     Squeeze(SqueezeArgs),
-    /// Deploy: sync + build --release on all worker nodes. Shortcut for c2 build --broadcast --release.
+    /// LLM call observability. Every inference call traced.
+    #[command(name = "traces")]
+    Traces(TracesArgs),
+    /// What changed. Tokenized diff for LLM context.
+    Recent(RecentArgs),
+    /// Terminal UI. Chat + visual QC panel.
+    Tui(TuiArgs),
+    /// Semantic code search. Index + retrieve context for LLM.
+    #[command(name = "rag")]
+    Rag(RagArgs),
+
+    // ── BUILD & CI ─────────────────────────────────────────────────────────────
+    /// Tokenized git. g0=status g1=diff g2=log g3=push g4=pull g5=commit g6=branch g7=stash g8=add g9=staged.
+    #[command(name = "git")]
+    Git(GitArgs),
+    /// Tokenized cargo. x0=build x1=check x2=test x3=clippy x4=run x5=build-rel x6=clean x7=doc x8=fmt-chk x9=bench.
+    X(XArgs),
+    /// Headless quality gate. Run check/clippy/test, watch for changes.
+    #[command(name = "ci")]
+    Ci(CiArgs),
+    /// Deploy quality gate: clippy + TRIPLE SIMS + release build + smoke.
+    Test,
+    /// HTTP API server. REST + OpenAPI. Web client at /.
+    Serve(ServeArgs),
+    /// Alias: `kova s` = `kova serve --open`. `kova s -d` = demo mode.
+    S(SShortArgs),
+
+    // ── FLEET ──────────────────────────────────────────────────────────────────
+    /// IRONHIVE fleet orchestration. Build, sync, broadcast, inspect, queue.
+    C2(C2Args),
+    /// File sync over SSH. Watch workspace, rsync deltas.
+    #[command(name = "hive")]
+    Hive(hive::HiveArgs),
+    /// Sync + build --release on all nodes. One-command fleet deploy.
     #[command(name = "deploy")]
     Deploy {
         /// Project to build (default: kova).
@@ -118,25 +72,88 @@ enum Cmd {
         #[arg(long)]
         nodes: Option<String>,
     },
-    /// SSH into a node and land in kova REPL. `kova ssh n1` or `kova ssh bt`.
+    /// SSH into a node and land in the kova REPL.
     #[command(name = "ssh")]
     Ssh(SshArgs),
-    /// Federal compliance docs. Baked into the binary — no external files needed.
+    /// Worker daemon for fleet node registration.
+    Node,
+
+    // ── INTELLIGENCE ───────────────────────────────────────────────────────────
+    /// Tiny purpose-built AI models. List, run, validate.
+    #[cfg(feature = "inference")]
+    #[command(name = "micro")]
+    Micro(MicroArgs),
+    /// Mine repos for expert fine-tuning training data.
+    #[command(name = "extract")]
+    Extract(ExtractArgs),
+    /// Export DPO/SFT fine-tuning data from LLM traces.
+    #[command(name = "export")]
+    Export(ExportArgs),
+    /// Train tier-1 tool_router classifier (sub-100K params).
+    #[command(name = "train-router")]
+    TrainRouter(TrainRouterArgs),
+    /// MCP server (Model Context Protocol). Stdio AI tool interop.
+    #[command(name = "mcp")]
+    Mcp(McpArgs),
+
+    // ── ML PIPELINE (--features inference) ────────────────────────────────────
+    /// Full pipeline: classify → generate → compile → review → fix.
+    #[cfg(feature = "inference")]
+    #[command(name = "factory")]
+    T181(FactoryArgs),
+    /// Mixture of Experts. Fan-out, compile all, score, pick winner.
+    #[cfg(feature = "inference")]
+    #[command(name = "moe")]
+    Moe(MoeArgs),
+    /// Hierarchical MoE for code generation with Sponge Mesh correction.
+    #[cfg(feature = "inference")]
+    #[command(name = "codegen-moe")]
+    CodegenMoe(CodegenMoeArgs),
+    /// Autonomous dev agent: plan → generate → wire → test → fix → commit.
+    #[cfg(feature = "inference")]
+    #[command(name = "academy")]
+    Academy(AcademyArgs),
+    /// Hell Week stress test for the AI pipeline. 5 phases, no mercy.
+    #[cfg(feature = "inference")]
+    #[command(name = "gauntlet")]
+    Gauntlet(GauntletArgs),
+    /// Distributed inference across worker nodes.
+    #[cfg(feature = "inference")]
+    #[command(name = "cluster")]
+    T193(ClusterArgs),
+    /// Review staged changes or branch diff via LLM.
+    #[cfg(feature = "inference")]
+    #[command(name = "review")]
+    Review(ReviewArgs),
+    /// Tournament failure data and generated challenge export.
+    #[cfg(feature = "inference")]
+    #[command(name = "feedback")]
+    Feedback(FeedbackArgs),
+
+    // ── COMPLIANCE ─────────────────────────────────────────────────────────────
+    /// Federal compliance docs baked into the binary. SBOM, CMMC, FedRAMP, ITAR…
     #[command(name = "govdocs")]
     Govdocs {
-        /// Document to show: sbom, security, ssdf, supply-chain, accessibility, privacy, fips, fedramp, cmmc, itar, use-cases. Or 'list' for all.
+        /// Document: sbom security ssdf supply-chain accessibility privacy fips fedramp cmmc itar use-cases. Or 'list'.
         #[arg(default_value = "list")]
         doc: String,
     },
-    /// Hive — file sync over SSH (absorbed from standalone ironhive). Watch workspace, rsync deltas.
-    #[command(name = "hive")]
-    Hive(hive::HiveArgs),
-    /// Demo: zero-input automation. Spawns kova serve, exercises every CLI subcommand + HTTP endpoint. Requires --features baked_demo.
-    #[command(name = "demo")]
-    Demo(DemoArgs),
-    /// PTY bridge: spawn `claude` (or any cmd) in a PTY, log session to tele/ for retraining.
+
+    // ── SYSTEM ─────────────────────────────────────────────────────────────────
+    /// First-run setup. Create ~/.kova, prompts, config.
+    Bootstrap,
+    /// PTY logger: spawn claude (or any cmd) and record for retraining.
     #[command(name = "bridge")]
     Bridge(BridgeArgs),
+    /// Type a prompt into Cursor Composer. No API cost. Requires Cursor focused.
+    Autopilot(AutopilotArgs),
+    /// Browser automation via WebDriver. Drive Gemini/etc, bulk generation.
+    Prompt(PromptArgs),
+    /// Zero-input demo: exercises every CLI subcommand + HTTP endpoint.
+    #[command(name = "demo")]
+    Demo(DemoArgs),
+    /// Debug: print all loaded Cursor prompts (baked + external).
+    Prompts,
 }
 
 #[derive(clap::Args)]
@@ -1377,7 +1394,7 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
         C2Cmd::Status => {
             // Parallel SSH to all nodes: hostname, uptime, load, memory
             let node_ids: Vec<String> = kova::c2::f350().into_iter().map(String::from).collect();
-            let cmd = "hostname && uptime | awk '{print $NF}' && free -m 2>/dev/null | awk '/Mem:/{printf \"%dM/%dM\", $3, $2}' || vm_stat 2>/dev/null | head -1";
+            let cmd = "hostname; uptime | awk '{print $NF}'; free -m 2>/dev/null | awk '/Mem:/{found=1; printf \"%dM/%dM\"} END{exit !found}' || sysctl -n hw.memsize 2>/dev/null | awk '{printf \"%.0fG\", $1/1073741824}'";
             let handles: Vec<_> = node_ids.into_iter().map(|node| {
                 let host = kova::node_cmd::resolve_node(&node).to_string();
                 let cmd_s = cmd.to_string();
@@ -1390,10 +1407,14 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
             }).collect();
             for h in handles {
                 if let Ok((id, Ok(output))) = h.join() {
-                    let dot = if output.status.success() { "\u{25CF}" } else { "\u{25CB}" };
+                    let (dot, id_color) = if output.status.success() {
+                        ("\x1b[32m●\x1b[0m", "\x1b[1m")
+                    } else {
+                        ("\x1b[31m●\x1b[0m", "\x1b[90m")
+                    };
                     let text = String::from_utf8_lossy(&output.stdout);
-                    let one_line: String = text.lines().collect::<Vec<_>>().join(" ");
-                    println!("{} {} {}", dot, id, one_line);
+                    let one_line: String = text.lines().collect::<Vec<_>>().join("  ");
+                    println!("{} {}{}\x1b[0m  \x1b[90m{}\x1b[0m", dot, id_color, id, one_line);
                 }
             }
             Ok(())
@@ -1433,18 +1454,17 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
         }
         C2Cmd::Fleet => {
             let projects = kova::discover_projects();
-            println!("{:<20} {:<10} {:<12} last commit", "project", "status", "binary");
-            println!("{}", "-".repeat(60));
+            println!("\x1b[1m{:<20} {:<10} {:<12} last commit\x1b[0m", "project", "status", "binary");
+            println!("\x1b[90m{}\x1b[0m", "─".repeat(72));
             for p in &projects {
                 let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("?");
                 let bin_path = p.join("target/release").join(name);
-                let size = if bin_path.exists() {
+                let (size, status_str, status_color) = if bin_path.exists() {
                     let bytes = std::fs::metadata(&bin_path).map(|m| m.len()).unwrap_or(0);
-                    format!("{:.1}M", bytes as f64 / 1_048_576.0)
+                    (format!("{:.1}M", bytes as f64 / 1_048_576.0), "built", "\x1b[32m")
                 } else {
-                    "-".into()
+                    ("-".into(), "clean", "\x1b[90m")
                 };
-                let status = if p.join("target/release").exists() { "built" } else { "clean" };
                 let commit = std::process::Command::new("git")
                     .args(["log", "-1", "--oneline"])
                     .current_dir(p)
@@ -1452,7 +1472,16 @@ async fn run_c2(args: C2Args) -> anyhow::Result<()> {
                     .ok()
                     .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                     .unwrap_or_else(|| "-".into());
-                println!("{:<20} {:<10} {:<12} {}", name, status, size, commit);
+                let (hash, msg) = commit.split_once(' ').unwrap_or(("", &commit));
+                let msg_display: String = if msg.chars().count() > 58 {
+                    msg.chars().take(55).collect::<String>() + "…"
+                } else {
+                    msg.to_string()
+                };
+                println!(
+                    "{:<20} {}{:<10}\x1b[0m {:<12} \x1b[90m{}\x1b[0m {}",
+                    name, status_color, status_str, size, hash, msg_display
+                );
             }
             Ok(())
         }
@@ -2514,6 +2543,37 @@ fn run_export(args: ExportArgs) -> anyhow::Result<()> {
     }
 }
 
+fn render_md_inline(line: &str) -> String {
+    let mut out = String::with_capacity(line.len() + 32);
+    let mut chars = line.chars().peekable();
+    let mut in_bold = false;
+    let mut in_code = false;
+    while let Some(c) = chars.next() {
+        if c == '`' {
+            if in_code {
+                out.push_str("\x1b[0m");
+                in_code = false;
+            } else {
+                out.push_str("\x1b[33m");
+                in_code = true;
+            }
+        } else if c == '*' && chars.peek() == Some(&'*') {
+            chars.next();
+            if in_bold {
+                out.push_str("\x1b[0m");
+                in_bold = false;
+            } else {
+                out.push_str("\x1b[1m");
+                in_bold = true;
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    if in_bold || in_code { out.push_str("\x1b[0m"); }
+    out
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -2677,7 +2737,40 @@ fn main() -> anyhow::Result<()> {
                         }
                         println!("\nUsage: kova govdocs <name>");
                     } else if let Some((_, content)) = docs.iter().find(|(n, _)| *n == doc) {
-                        print!("{}", content);
+                        let mut in_fence = false;
+                        for line in content.lines() {
+                            let trimmed = line.trim();
+                            if trimmed.starts_with("```") {
+                                in_fence = !in_fence;
+                                println!("\x1b[90m{}\x1b[0m", line);
+                            } else if in_fence {
+                                println!("\x1b[33m{}\x1b[0m", line);
+                            } else if let Some(rest) = line.strip_prefix("### ") {
+                                println!("\x1b[1m\x1b[33m{}\x1b[0m", rest);
+                            } else if let Some(rest) = line.strip_prefix("## ") {
+                                println!("\n\x1b[1m\x1b[36m{}\x1b[0m", rest);
+                            } else if let Some(rest) = line.strip_prefix("# ") {
+                                println!("\x1b[1m\x1b[97m{}\x1b[0m", rest);
+                            } else if trimmed.starts_with('|') {
+                                // Table row — skip separator lines, render data rows
+                                let is_sep = trimmed.chars().all(|c| matches!(c, '|' | '-' | ':' | ' '));
+                                if !is_sep {
+                                    let cols: Vec<&str> = trimmed
+                                        .trim_matches('|')
+                                        .split('|')
+                                        .map(str::trim)
+                                        .collect();
+                                    let row: Vec<String> = cols.iter().enumerate().map(|(i, c)| {
+                                        let color = if i == 0 { "\x1b[97m" } else { "\x1b[90m" };
+                                        format!("{}{}\x1b[0m", color, c)
+                                    }).collect();
+                                    println!("  {}", row.join("  \x1b[90m│\x1b[0m  "));
+                                }
+                            } else {
+                                let rendered = render_md_inline(line);
+                                println!("{}", rendered);
+                            }
+                        }
                     } else {
                         eprintln!("Unknown doc: {}. Use 'kova govdocs list'.", doc);
                         std::process::exit(1);

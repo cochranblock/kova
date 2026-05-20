@@ -57,22 +57,24 @@ impl TokenReport {
 
 impl std::fmt::Display for TokenReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "tokenization: {:.1}% ({}/{})",
-            self.coverage(),
-            self.tokenized_functions + self.tokenized_types,
-            self.total())?;
-        writeln!(f, "  fn: {}/{} tokenized (highest: f{})",
+        let cov = self.coverage();
+        let cov_color = if cov >= 80.0 { "\x1b[32m" } else if cov >= 60.0 { "\x1b[33m" } else { "\x1b[31m" };
+        let tokenized = self.tokenized_functions + self.tokenized_types;
+        writeln!(f, "tokenization: {}{:.1}%\x1b[0m  \x1b[90m({}/{})\x1b[0m",
+            cov_color, cov, tokenized, self.total())?;
+        writeln!(f, "  \x1b[90mfn: {}/{} tokenized (highest: f{})\x1b[0m",
             self.tokenized_functions, self.total_functions, self.highest_f)?;
-        writeln!(f, "  ty: {}/{} tokenized (highest: T{})",
+        writeln!(f, "  \x1b[90mty: {}/{} tokenized (highest: T{})\x1b[0m",
             self.tokenized_types, self.total_types, self.highest_t)?;
         if !self.untokenized.is_empty() {
-            writeln!(f, "  untokenized ({}):", self.untokenized.len())?;
+            writeln!(f, "  \x1b[33muntokenized ({}):\x1b[0m", self.untokenized.len())?;
             for e in &self.untokenized {
                 let kind = match e.kind {
                     TokenKind::Function => "fn",
                     TokenKind::Type => "ty",
                 };
-                writeln!(f, "    {}:{}  {} {}", e.file.display(), e.line, kind, e.name)?;
+                writeln!(f, "    \x1b[90m{}:{}\x1b[0m  \x1b[33m{} {}\x1b[0m",
+                    e.file.display(), e.line, kind, e.name)?;
             }
         }
         Ok(())
@@ -297,6 +299,25 @@ mod tests {
         assert!(is_type_token("t91"));
         assert!(is_type_token("E0"));
         assert!(!is_type_token("Token"));
+    }
+
+    #[test]
+    fn is_fn_token_suffix_form() {
+        // fN_suffix is a valid token
+        assert!(is_fn_token("f42_something"));
+        assert!(is_fn_token("f1_x"));
+        // plain name after f is not a token
+        assert!(!is_fn_token("f_helper"));
+        assert!(!is_fn_token("fn_do_thing"));
+    }
+
+    #[test]
+    fn parse_token_num_extracts_digits() {
+        assert_eq!(parse_token_num("f294"), Some(294));
+        assert_eq!(parse_token_num("T91"), Some(91));
+        assert_eq!(parse_token_num("E0"), Some(0));
+        assert_eq!(parse_token_num("f"), None);
+        assert_eq!(parse_token_num(""), None);
     }
 
     #[test]

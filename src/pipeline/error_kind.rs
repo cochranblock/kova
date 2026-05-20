@@ -71,3 +71,72 @@ pub fn f296(stage: &str, stderr: &str) -> String {
         stage, kind, hint, stderr
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn f118_syntax_keywords() {
+        assert_eq!(f118("expected one of `{`, `;`, or `(`"), T95::Syntax);
+        assert_eq!(f118("unexpected end of file"), T95::Syntax);
+        assert_eq!(f118("expected `;`"), T95::Syntax);
+        assert_eq!(f118("missing semicolon"), T95::Syntax);
+        assert_eq!(f118("unclosed delimiter"), T95::Syntax);
+        assert_eq!(f118("expected expression, found `}`"), T95::Syntax);
+    }
+
+    #[test]
+    fn f118_borrow_checker_keywords() {
+        assert_eq!(f118("cannot borrow `x` as mutable"), T95::BorrowChecker);
+        assert_eq!(f118("borrowed value does not live long enough"), T95::BorrowChecker);
+        assert_eq!(f118("use of moved value: `v`"), T95::BorrowChecker);
+        assert_eq!(f118("value moved here"), T95::BorrowChecker);
+    }
+
+    #[test]
+    fn f118_lifetime_keywords() {
+        assert_eq!(f118("lifetime `'a` does not match"), T95::Lifetime);
+        assert_eq!(f118("reference outlives the data it points to"), T95::Lifetime);
+        assert_eq!(f118("does not live long enough"), T95::Lifetime);
+    }
+
+    #[test]
+    fn f118_type_keywords() {
+        assert_eq!(f118("mismatched types"), T95::Type);
+        assert_eq!(f118("cannot infer type for variable"), T95::Type);
+        assert_eq!(f118("expected type `u32`, found `i32`"), T95::Type);
+    }
+
+    #[test]
+    fn f118_other_fallback() {
+        assert_eq!(f118("error[E0599]: no method named `foo` found"), T95::Other);
+        assert_eq!(f118("unresolved import"), T95::Other);
+        assert_eq!(f118(""), T95::Other);
+    }
+
+    #[test]
+    fn f118_case_insensitive() {
+        assert_eq!(f118("EXPECTED ONE OF"), T95::Syntax);
+        assert_eq!(f118("CANNOT BORROW"), T95::BorrowChecker);
+        assert_eq!(f118("LIFETIME"), T95::Lifetime);
+        assert_eq!(f118("MISMATCHED TYPES"), T95::Type);
+    }
+
+    #[test]
+    fn f296_includes_stage_and_stderr() {
+        let out = f296("compile", "mismatched types: expected u32, found i32");
+        assert!(out.contains("compile error"));
+        assert!(out.contains("Type"));
+        assert!(out.contains("mismatched types: expected u32, found i32"));
+        assert!(out.contains("Fix the type mismatch."));
+    }
+
+    #[test]
+    fn f296_syntax_block_structure() {
+        let out = f296("check", "expected `;`");
+        assert!(out.starts_with("check error"));
+        assert!(out.contains("Syntax"));
+        assert!(out.contains("```"));
+    }
+}

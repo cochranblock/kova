@@ -175,10 +175,10 @@ pub fn f359() -> Vec<T205> {
 /// Print human-readable table.
 pub fn f360(hosts: &[T205]) {
     println!(
-        "{:<12} {:<8} {:<10} {:<14} GPU",
+        "\x1b[1m{:<12} {:<8} {:<10} {:<14} GPU\x1b[0m",
         "Host", "Cores", "RAM(GB)", "Disk(GB free)"
     );
-    println!("{}", "-".repeat(70));
+    println!("\x1b[90m{}\x1b[0m", "─".repeat(70));
     for h in hosts {
         let cores = h
             .cores
@@ -193,12 +193,13 @@ pub fn f360(hosts: &[T205]) {
             .map(|n| n.to_string())
             .unwrap_or_else(|| "—".to_string());
         let gpu = h.gpu.as_deref().unwrap_or("—");
-        let id = if h.unreachable {
-            format!("{} (unreachable)", h.id)
+        if h.unreachable {
+            println!("\x1b[31m{:<12}\x1b[0m \x1b[90m{:<8} {:<10} {:<14} {}\x1b[0m (unreachable)",
+                h.id, cores, ram, disk, gpu);
         } else {
-            h.id.clone()
-        };
-        println!("{:<12} {:<8} {:<10} {:<14} {}", id, cores, ram, disk, gpu);
+            println!("\x1b[1m{:<12}\x1b[0m {:<8} {:<10} {:<14} \x1b[36m{}\x1b[0m",
+                h.id, cores, ram, disk, gpu);
+        }
     }
 }
 
