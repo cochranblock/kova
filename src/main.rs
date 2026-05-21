@@ -154,6 +154,20 @@ enum Cmd {
     Demo(DemoArgs),
     /// Debug: print all loaded Cursor prompts (baked + external).
     Prompts,
+
+    // ── SYSTEM ─────────────────────────────────────────────────────────────────
+    /// Screenshot every user-facing interface. Outputs PNGs + index.html.
+    #[cfg(feature = "smoke")]
+    #[command(name = "smoke")]
+    Smoke(SmokeArgs),
+}
+
+#[cfg(feature = "smoke")]
+#[derive(clap::Args)]
+struct SmokeArgs {
+    /// Output directory for screenshots (default: ~/.kova/smoke).
+    #[arg(short, long)]
+    out: Option<std::path::PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -2674,6 +2688,30 @@ fn main() -> anyhow::Result<()> {
                 _ => unreachable!(),
             };
         }
+        #[cfg(feature = "smoke")]
+        Some(Cmd::Smoke(_)) => {
+            return match args.cmd.unwrap() {
+                #[cfg(feature = "smoke")]
+                Cmd::Smoke(smoke_args) => {
+                    let out_dir = smoke_args.out.unwrap_or_else(|| {
+                        kova::config::kova_dir().join("smoke")
+                    });
+                    let kova_bin = std::env::current_exe()
+                        .unwrap_or_else(|_| std::path::PathBuf::from("kova"));
+                    println!("smoke: capturing {} CLI + HTTP surfaces", 10 + 4);
+                    match kova::exopack::smoke::f435_smoke_run(&kova_bin, &out_dir) {
+                        Ok(report) => {
+                            let report: kova::exopack::smoke::T219 = report;
+                            report.print_summary();
+                            println!("\nindex: {}", out_dir.join("index.html").display());
+                            Ok(())
+                        }
+                        Err(e) => Err(anyhow::anyhow!("smoke: {e}")),
+                    }
+                }
+                _ => unreachable!(),
+            };
+        }
         Some(Cmd::Rag(_))
         | Some(Cmd::Traces(_))
         | Some(Cmd::Mcp(_))
@@ -2988,6 +3026,8 @@ async fn async_main(cmd: Option<Cmd>) -> anyhow::Result<()> {
         | Some(Cmd::Govdocs { .. })
         | Some(Cmd::Hive(_))
         | Some(Cmd::Bridge(_)) => unreachable!("handled before tokio"),
+        #[cfg(feature = "smoke")]
+        Some(Cmd::Smoke(_)) => unreachable!("handled before tokio"),
         None => {
             // Default: TUI (like Claude Code). Fallback: REPL, then GUI.
             #[cfg(feature = "tui")]

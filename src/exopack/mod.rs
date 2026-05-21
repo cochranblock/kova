@@ -70,3 +70,6 @@ pub mod router_training_tests;
 
 #[cfg(feature = "tele_tests")]
 pub mod tele_tests;
+
+#[cfg(feature = "smoke")]
+pub mod smoke;

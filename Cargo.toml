@@ -27,6 +27,7 @@ rag = ["dep:fastembed", "dep:ordered-float"]
 # ── exopack (absorbed from cochranblock/exopack v0.2.1, 2026-04-30) ────────────
 # Testing augmentation modules. Each feature activates one src/exopack/*.rs module.
 screenshot = ["dep:scraper", "dep:resvg", "dep:usvg", "dep:tiny-skia", "dep:ab_glyph", "dep:fontdb", "dep:image"]
+smoke = ["dep:resvg", "dep:usvg", "dep:tiny-skia", "dep:fontdb", "dep:image"]
 mock = ["dep:wiremock"]
 interface = []
 video = ["dep:xcap", "dep:image"]

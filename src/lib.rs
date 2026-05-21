@@ -81,7 +81,7 @@ pub mod browser;
     feature = "cc_features", feature = "training_mine_tests",
     feature = "tool_call_parser", feature = "router_spec",
     feature = "agent_loop_tests", feature = "router_training_tests",
-    feature = "tele_tests"
+    feature = "tele_tests", feature = "smoke"
 ))]
 pub mod exopack;
 
