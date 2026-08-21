@@ -77,6 +77,7 @@ tests = ["triple_sims", "interface", "baked_demo", "screenshot", "cc_features", 
 # carve: static corpus carver (syn + tar; gated to avoid bloating the main build)
 carve = ["dep:syn", "dep:tar"]
 [dependencies]
+posthog-rs = "0.8.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
