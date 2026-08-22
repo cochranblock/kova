@@ -1,0 +1,190 @@
+# Inventory of Source Files
+
+## Rust Files (.rs)
+
+- `android/src/lib.rs`
+  - Kova Android entry point. `android_main` (NativeActivity) initializes Android logging, points `HOME` at internal storage so kova's paths resolve, calls `kova::bootstrap()`, then launches the eframe/egui GUI at 2.5 pixels-per-point for high-DPI phones with the `f320` theme. A `MobileApp` wrapper drives the soft keyboard (show/hide based on egui's `wants_keyboard_input`) and delegates rendering to the core `kova::gui::KovaApp`.
+- `build.rs`
+  - Workspace build script that only prints a loud `cargo:warning` documenting a known future-compat landmine: xml5ever 0.16.2 (pinned transitively via kalosm 0.4.0 → readability 0.2.0) uses a trailing semicolon in macro expression position, which will become a hard error in future Rust. The warning records the fix path: bump readability once kalosm 0.5+ ships.
+- `edge/build.rs`
+  - Build script for the `edge` crate (ESP32 firmware). Calls `embuild::espidf::sysenv::output()` so the build links against the ESP-IDF toolchain via embuild instead of the regular `esp-idf-sys` flow.
+- `edge/src/main.rs`
+  - ESP32-WROOM-32 firmware (Phase 1 of the edge plan). Sets up I2C on GPIO 21/22 at 100 kHz, initializes a BME280 sensor, then loops every 2 seconds printing temperature, humidity, and pressure as CSV over serial. Phase 2 (noted in the header) is on-device inference.
+- `ios/src/lib.rs`
+  - Kova iOS entry point. Exposes `kova_ios_main`, a C-ABI symbol called from Swift/ObjC in the Xcode project (built as a static lib for aarch64-apple-ios). Initializes oslog, sets `HOME` to the app-sandbox Documents dir, calls `kova::bootstrap()`, and runs the eframe/egui app at 2.0 pixels-per-point with the `f320` theme. `run_and_return` must stay false — with it true, eframe returns after the first frame and the caller re-invokes `kova_ios_main`, causing infinite recursion/stack overflow on M1.
+- `patches/android-activity/build.rs`
+  - Build script for the vendored `android-activity` crate patch. When the `game-activity` feature is on, uses the `cc` crate to compile the C++ sources vendored under `game-activity-csrc/` into three static libs: `libgame_activity.a` (GameActivity + GameActivityEvents), `libgame_text_input.a` (GameTextInput), and `libnative_app_glue.a` (Android's native app glue C file), all linked against `c++_static` plus an explicit `c++abi` link for the static C++ runtime.
+- `patches/android-activity/src/config.rs`
+  - Defines `ConfigurationRef`, a cheaply-cloneable, thread-safe handle (`Arc<RwLock<Configuration>>`) over the NDK's `Configuration` struct. Lets any thread read the latest device configuration (screen size/dp, density, keyboard, navigation, orientation, SDK version, night mode, etc.) without deep-copying the large struct; `replace()` updates it in place on configuration-change events so pre-existing references see the new values.
+- `patches/android-activity/src/error.rs`
+  - Error types for the crate. Public `AppError` (main-thread-only violations, Java/JNI errors, input unavailable) is what the API surface exposes; internal `InternalAppError` wraps `jni` crate errors (`JniError`, `JvmError`, Java exceptions) so the backends can use `From<jni::errors::Error>` without leaking the `jni-rs` dependency into the public API. An `InternalAppError -> AppError` conversion strips JNI details at the API boundary.
+- `patches/android-activity/src/game_activity/ffi.rs`
+  - FFI module root for the GameActivity backend. Bindings are pre-generated (via bindgen) rather than generated at build time; this file conditionally `include!()`s the correct per-architecture bindings — `ffi_arm.rs`, `ffi_aarch64.rs`, `ffi_i686.rs`, or `ffi_x86_64.rs` — selected by `target_arch` (or the `test` feature for host testing). Carries the usual bindgen lint allowances.
+- `patches/android-activity/src/game_activity/ffi_aarch64.rs`
+  - Pre-generated bindgen FFI bindings for the aarch64 Android target (~7.7k lines, 2350 symbols). Declares the C APIs the GameActivity backend links against: JNI (`JavaVM*`), Android NDK (`AInputEvent`/`AKeyEvent`/`AMotionEvent`, `AInputQueue`, `AHardwareBuffer`, `AConfiguration`, looper), GameActivity C API (`GameActivity`, `GameActivityCallbacks`, motion/key event structs, soft input and window flags), GameTextInput, and the `android_app`/native-app-glue structs, plus the full Bionic libc surface (signal, time, sched, poll) that bindgen pulled in, with layout tests for each struct.
+- `patches/android-activity/src/game_activity/ffi_arm.rs`
+  - Pre-generated bindgen FFI bindings (rust-bindgen 0.66.1) for the 32-bit ARM target (`__WORDSIZE: 32`, NDK 25.2). Same shape as `ffi_aarch64.rs` — Bionic/NDK constants, JNI, Android NDK input/looper/hardware-buffer APIs, GameActivity and GameTextInput C APIs, and the `android_app` native-glue structs — with 32-bit-specific layout (e.g. `__WORDSIZE`, pointer size) baked in. Selected by `ffi.rs` when `target_arch` is `arm`/`armv7`.
+- `patches/android-activity/src/game_activity/ffi_i686.rs`
+  - Pre-generated bindgen FFI bindings (rust-bindgen 0.66.1) for the 32-bit x86 target (`__WORDSIZE: 32`, NDK 25.2). Same content as `ffi_aarch64.rs` — Bionic/NDK constants, JNI, NDK input APIs, GameActivity/GameTextInput C APIs, native-app-glue structs — with the 32-bit x86 ABI/layout. Selected by `ffi.rs` for `target_arch = x86` (mainly emulator/debug builds).
+- `patches/android-activity/src/game_activity/ffi_x86_64.rs`
+  - Pre-generated bindgen FFI bindings (rust-bindgen 0.66.1) for the 64-bit x86_64 target (`__WORDSIZE: 64`, NDK 25.2). Same content as `ffi_aarch64.rs` (Bionic/NDK constants, JNI, NDK input APIs, GameActivity/GameTextInput C APIs, native-app-glue structs) with the 64-bit x86_64 ABI/layout. Selected by `ffi.rs` for `target_arch = x86_64` (mainly emulator/debug builds).
+- `patches/android-activity/src/game_activity/input.rs`
+  - Safe Rust wrappers over GameActivity's double-buffered C input structs. Defines the `InputEvent` enum (`MotionEvent` / `KeyEvent` / `TextEvent`) plus `MotionEvent` (action, pointers via a `PointersIter` of `PointerImpl`, meta/button state, edge flags, timing) and `KeyEvent` (key code, scan code, repeat count, flags), each thinly wrapping the raw `GameActivityMotionEvent` / `GameActivityKeyEvent` C structs by reference. Modeled on android-ndk-rs's `event.rs`, with `Source`/`Class` enums defined from the Java docs since some sources aren't exposed via the AInputQueue API.
+- `patches/android-activity/src/game_activity/mod.rs`
+  - The GameActivity backend implementation. `AndroidAppInner` holds the JVM, `android_app` glue pointer, `ConfigurationRef`, `NativeWindow`, key-character maps, and the input receiver; `poll_events()` drains the ALooper + input queue and converts C key/motion events (via lending iterators over the double-buffered `InputBuffer`) into the crate's `PollEvent`s. Also implements soft-input show/hide, text input state bridging (with a C callback `map_input_state_to_text_event_callback`), `StateSaver`/`StateLoader` for the saved-state byte buffer, window flags, asset/data paths, and the C entry points — `android_main`, `GameActivity_onCreate`, `Java_com_google_androidgamesdk_GameActivity_initializeNativeCode`, and `_rust_glue_entry` — that the GameActivity C++ glue calls back into.
+- `patches/android-activity/src/input/sdk.rs`
+- `patches/android-activity/src/input.rs`
+- `patches/android-activity/src/jni_utils.rs`
+- `patches/android-activity/src/lib.rs`
+- `patches/android-activity/src/native_activity/glue.rs`
+- `patches/android-activity/src/native_activity/input.rs`
+- `patches/android-activity/src/native_activity/mod.rs`
+- `patches/android-activity/src/util.rs`
+- `src/academy.rs`
+- `src/agent_loop.rs`
+- `src/autopilot.rs`
+- `src/backlog.rs`
+- `src/bin/bench-classify.rs`
+- `src/bin/carve_static.rs`
+- `src/bin/kova-test.rs`
+- `src/bin/pack-starter.rs`
+- `src/bin/retrain-starters.rs`
+- `src/bin/train-intent.rs`
+- `src/bin/train-kova-intent.rs`
+- `src/bin/train-t2.rs`
+- `src/bridge.rs`
+- `src/browser.rs`
+- `src/c2.rs`
+- `src/cargo/mod.rs`
+- `src/cargo/sandbox.rs`
+- `src/cargo_cmd.rs`
+- `src/ci.rs`
+- `src/cluster.rs`
+- `src/codegen/fix_loop.rs`
+- `src/codegen/helpers.rs`
+- `src/codegen/mod.rs`
+- `src/codegen/strategies/mod.rs`
+- `src/codegen_moe/assembler.rs`
+- `src/codegen_moe/compiler_teacher.rs`
+- `src/codegen_moe/expert.rs`
+- `src/codegen_moe/extract.rs`
+- `src/codegen_moe/mesh.rs`
+- `src/codegen_moe/mod.rs`
+- `src/codegen_moe/router.rs`
+- `src/compute.rs`
+- `src/config.rs`
+- `src/context.rs`
+- `src/context_loader.rs`
+- `src/context_mgr.rs`
+- `src/cursor_prompts.rs`
+- `src/daemon.rs`
+- `src/elicitor.rs`
+- `src/error.rs`
+- `src/exopack/agent_loop_tests.rs`
+- `src/exopack/ats_fixtures.rs`
+- `src/exopack/baked_demo.rs`
+- `src/exopack/cc_features.rs`
+- `src/exopack/checkpoint.rs`
+- `src/exopack/compaction.rs`
+- `src/exopack/demo.rs`
+- `src/exopack/devtools.rs`
+- `src/exopack/dual_mode.rs`
+- `src/exopack/harvest.rs`
+- `src/exopack/interface.rs`
+- `src/exopack/mock.rs`
+- `src/exopack/mod.rs`
+- `src/exopack/perm_gate.rs`
+- `src/exopack/router_spec.rs`
+- `src/exopack/router_training_tests.rs`
+- `src/exopack/screenshot.rs`
+- `src/exopack/smoke.rs`
+- `src/exopack/standards_check.rs`
+- `src/exopack/tele_tests.rs`
+- `src/exopack/tool_call_parser.rs`
+- `src/exopack/training_mine_tests.rs`
+- `src/exopack/triple_sims.rs`
+- `src/exopack/video.rs`
+- `src/factory.rs`
+- `src/feedback.rs`
+- `src/gauntlet.rs`
+- `src/git_cmd.rs`
+- `src/gpu_sched.rs`
+- `src/hive/config.rs`
+- `src/hive/mod.rs`
+- `src/hive/sync.rs`
+- `src/hive/watcher.rs`
+- `src/inference/cluster.rs`
+- `src/inference/local.rs`
+- `src/inference/mock.rs`
+- `src/inference/mod.rs`
+- `src/inference/providers.rs`
+- `src/inspect.rs`
+- `src/intent.rs`
+- `src/job_queue.rs`
+- `src/kernel/commands.rs`
+- `src/kernel/mod.rs`
+- `src/kernel/stream.rs`
+- `src/lib.rs`
+- `src/main.rs`
+- `src/mcp.rs`
+- `src/micro/academy.rs`
+- `src/micro/bench.rs`
+- `src/micro/candle_train.rs`
+- `src/micro/kova_model.rs`
+- `src/micro/logmine.rs`
+- `src/micro/mod.rs`
+- `src/micro/moe_tournament.rs`
+- `src/micro/pipe.rs`
+- `src/micro/quantize.rs`
+- `src/micro/registry.rs`
+- `src/micro/router.rs`
+- `src/micro/runner.rs`
+- `src/micro/stats.rs`
+- `src/micro/template.rs`
+- `src/micro/tournament.rs`
+- `src/micro/train.rs`
+- `src/micro/train_harness.rs`
+- `src/micro/validate.rs`
+- `src/moe.rs`
+- `src/nanobyte.rs`
+- `src/node_cmd.rs`
+- `src/output.rs`
+- `src/pipeline/compilation.rs`
+- `src/pipeline/error_kind.rs`
+- `src/pipeline/fix_loop.rs`
+- `src/pipeline/mod.rs`
+- `src/plan.rs`
+- `src/providers.rs`
+- `src/rag.rs`
+- `src/recent_changes.rs`
+- `src/repl.rs`
+- `src/review.rs`
+- `src/router.rs`
+- `src/serve.rs`
+- `src/squeeze.rs`
+- `src/ssh_ca.rs`
+- `src/storage.rs`
+- `src/surface/mod.rs`
+- `src/surface/serve/mod.rs`
+- `src/swarm/mod.rs`
+- `src/swarm/priority.rs`
+- `src/swarm/t2.rs`
+- `src/swarm/tool_router.rs`
+- `src/swarm/train.rs`
+- `src/syntax.rs`
+- `src/test_utils.rs`
+- `src/theme.rs`
+- `src/tokenization.rs`
+- `src/tools.rs`
+- `src/trace.rs`
+- `src/training_data.rs`
+- `src/training_mine.rs`
+- `src/tui.rs`
+- `tests/cc_features_smoke.rs`
+- `tests/integration.rs`
+
+## Documentation
+- `docs/analysis/` - Analysis reports and technical documentation
+- `legal/` - Legal documents and compliance materials
+
+> Note: Files like BACKLOG.md, backlog.json, binary-sizes.log, and audit.toml have been removed as they are no longer needed for the restructured project.
