@@ -195,74 +195,143 @@
 - `src/hive/watcher.rs`
   - hive/watcher — file watcher (notify crate) for the hive module (absorbed from ironhive). `watch_and_sync` registers a ctrlc handler (Arc<AtomicBool>), starts a `RecommendedWatcher` on the workspace (RecursiveMode::Recursive) feeding an mpsc channel, and prints each node's online/offline state at startup. Main loop: `rx.recv_timeout(500 ms)` — notify events strip the workspace prefix, skip excluded paths (prefix match against the config's excludes), and collect relative paths into a pending `HashSet`; on channel timeout with pending changes and at least DEBOUNCE_MS (500 ms) elapsed since the last sync, it flushes — more than 20 changed paths triggers a full `sync::push_all_nodes` ("N changes — full sync"), otherwise the pending paths are grouped by top-level directory and each directory is pushed via `sync::push_path_all_nodes` ("synced dir → ok/total nodes"); a disconnected channel returns an error. Blocks until Ctrl+C.
 - `src/inference/cluster.rs`
+  - T193 inference — distributed model dispatch across IRONHIVE nodes. Routes tasks to the best available node based on role, model tier, and load.
 - `src/inference/local.rs`
+  - Local LLM inference. Candle + GGUF. Streams tokens. f76=chat_stream, f80=chat_complete. Replaces Kalosm — direct candle for auditability + shared engine with pixel-forge.
 - `src/inference/mock.rs`
+  - mock — Deterministic canned-response backend for end-to-end agent loop tests. Each call to f422 pops the next line from KOVA_INFERENCE_MOCK_FILE (a JSONL file where each line is `{"text": "<full response>"}` or a bare plain-text response with no JSON wrapping). A process-local AtomicUsize tracks position; each fresh `kova chat` subprocess starts at line 0. f422=mock_stream.
 - `src/inference/mod.rs`
+  - Inference — unified facade. InferenceRouter picks backend based on task + config. Submodules: local.rs     — Candle GGUF (direct, no wrapper — shared engine with pixel-forge) cluster.rs   — IRONHIVE distributed dispatch (was top-level cluster.rs) providers.rs — Multi-provider client (was top-level providers.rs) f382=dual_stream. Unified inference dispatcher. Reads KOVA_INFERENCE env: local  — Candle GGUF only (f76) remote — Anthropic API streaming (f381) auto   — local if model exists, else remote (default)
 - `src/inference/providers.rs`
+  - providers — Multi-provider LLM client. Local (Kalosm/candle), OpenAI-compatible, Anthropic. Pure Rust local inference is the default. No ollama dependency. f199=f199, f200=f200, f210=f333. f211=f334, f212=f335, f213=f336. f214=f337, f381=anthropic_stream. t129=T129, t130=T130, t131=T131, t134=T188.
 - `src/inspect.rs`
+  - kova c2 inspect — Gather CPU, RAM, disk, GPU from c2-core + workers.
 - `src/intent.rs`
+  - Intent layer. t0=Intent t1=IntentKind t2=Constraint. No I/O. WASM-safe.
 - `src/job_queue.rs`
+  - kova c2 queue — Distributed job queue across kova nodes. Inspired by mattbusel/tokio-prompt-orchestrator DAG pipeline pattern. Three-stage pipeline: Submit → Dispatch → Collect - Submit: enqueue a job (train, generate, quantize, build, any command) - Dispatch: pick best node (least-loaded or pinned), SSH execute - Collect: stream results back, handle failure with circuit breaker Job state: ~/.kova/queue/jobs/<id>.json Node health: ~/.kova/queue/health/<node>.json Usage: kova c2 queue submit "pixel-forge train --data data_v2_16 --epochs 300" kova c2 queue submit --node lf --tag train "cargo build --release" kova c2 queue status kova c2 queue drain kova c2 queue history
 - `src/kernel/commands.rs`
+  - T207 — every kernel capability as a variant. Surfaces build commands, kernel dispatches them.
 - `src/kernel/mod.rs`
+  - T208 — unified dispatch. All three surfaces (CLI, Serve, GUI) hold Arc<T208>. Every request goes through the kernel. No surface calls inference/cargo/tools directly.
 - `src/kernel/stream.rs`
+  - T206 — unified streaming adapter. Adapts between broadcast (GUI/serve multi-subscriber), mpsc (agent loop), and stdout (CLI).
 - `src/lib.rs`
+  - Kova — augment engine. Core lib for GUI + serve.
 - `src/main.rs`
+  - Kova — augment engine. GUI + serve.
 - `src/mcp.rs`
+  - MCP (Model Context Protocol) server. JSON-RPC 2.0 over stdio. Exposes kova tools to external AI clients (Claude Desktop, etc). f174=mcp_tools_list, f175=mcp_handle_request, f176=mcp_stdio_loop. t112=McpRequest, t113=McpResponse.
 - `src/micro/academy.rs`
+  - academy — Recursive training feedback loop. Tournament results → gap detection → challenge generation → curriculum update. The academy reads tournament data, identifies weak spots, and generates new challenges targeting those gaps. Each tournament run feeds the next. Flow: 1. Analyze tournament results per model, per category 2. Score challenge difficulty from pass rates 3. Detect skill gaps (categories where models fail most) 4. Generate new challenges targeting gaps 5. Retire easy challenges (100% pass rate = too simple) 6. Feed back into next tournament
 - `src/micro/bench.rs`
+  - bench — Held-out challenge benchmarks for micro-model templates. NOT a self-licking ice cream cone: inputs are novel, not baked into prompts. Verification uses structural checks, not string matching against training data.
 - `src/micro/candle_train.rs`
+  - candle_train — Train kova's own models from scratch. Pure Rust, candle. No pretrained weights. No Python. No HuggingFace dependency. Pixel forge pattern: define architecture, train on our data, deploy safetensors. Models: Spark (50K), Flame (500K), Blaze (2M). Training data: tournament SFT/DPO exports from ~/.kova/micro/training/ Output: ~/.kova/models/kova-{tier}/ as safetensors.
 - `src/micro/kova_model.rs`
+  - kova_model — From-scratch transformer models for kova tasks. Pure Rust, candle, no pretrained weights. Pixel forge pattern. Three tiers: Spark  — 50K params, classifier only (intent routing) Flame  — 500K params, classifier + short generation Blaze  — 2M params, full task specialist Trained from tournament SFT/DPO data. Deployed as safetensors.
 - `src/micro/logmine.rs`
+  - logmine — Extract training data from Claude Code conversation logs. Reads JSONL files from ~/.claude/projects/ and extracts: - (user_instruction, code_written) pairs from Edit/Write tool uses - (user_instruction, assistant_explanation) pairs from text responses - System prompt examples from conversation context Output: SFT-format JSONL for fine-tuning code models.
 - `src/micro/mod.rs`
+  - micro — Thousands of tiny AI-enabled units. Each kova function gets a purpose-built micro-model: a small binary with a baked system prompt, few-shot examples, and input/output schema. Shared model weights via mmap. Coordinated by a learned router. Architecture inspired by: - Mattbusel/tokio-prompt-orchestrator: bounded-channel pipeline, learned routing (epsilon-greedy bandit), semantic dedup, circuit breakers, self-tuning PID - Mattbusel/llm-stream et al: single-purpose micro-library pattern (26 C++ libs, each does ONE thing, zero deps, drop-in) - Mattbusel/llm_affector: focused async analysis functions (detect_hallucination, critique_code) — the micro-function model - Mattbusel/tokio-llm: provider-agnostic client with circuit breaker + budget - Mattbusel/LLM-Hallucination-Detection-Script: multi-method validation gates MIT-licensed concepts from github.com/Mattbusel adapted with attribution.
 - `src/micro/moe_tournament.rs`
+  - moe_tournament — MoE competitor in the Micro Olympics. Spark routes challenges to the best node, cascade on failure. Scores as a single "KovaMoE" competitor against individual models. Pipeline per challenge: 1. Spark classifier predicts category 2. Pick best node for that category (from historical tournament data) 3. Run challenge on picked node 4. If fail → cascade to next-best node 5. Score the final result
 - `src/micro/pipe.rs`
+  - pipe — Full micro-model pipeline: classify → route → run → validate. One command, end-to-end. The micro equivalent of `kova factory`.
 - `src/micro/quantize.rs`
+  - quantize — TurboQuant-inspired weight quantization for kova models. Techniques from vllm-turboquant adapted for post-training weight compression: - Fast Walsh-Hadamard Transform (FWHT): rotate weights to spread energy - Mixed-precision outlier/inlier split: more bits for high-norm rows - QJL residual recovery: 1-bit sign projections recover quantization error direction Target: compress Spark (50K params, ~200 KB FP32) to ~15 KB at 2.5 bits/weight.
 - `src/micro/registry.rs`
+  - registry — Central registry of all micro-model templates. Maps compression tokens (f79, f80, etc) to their T159. Inspired by Mattbusel/tokio-prompt-orchestrator's task registry pattern.
 - `src/micro/router.rs`
+  - router — Route incoming requests to the correct micro-model. Uses epsilon-greedy bandit for learned routing (Mattbusel/tokio-prompt-orchestrator). Falls back to keyword matching when no history exists.
 - `src/micro/runner.rs`
+  - runner — Execute a micro-model template against a cluster node. Includes circuit breaker (Mattbusel/tokio-llm) and budget enforcement.
 - `src/micro/stats.rs`
+  - stats — Persistent per-template run statistics. Tracks: run count, pass/fail, avg latency, total tokens. Stored as JSON in ~/.kova/micro/stats.json.
 - `src/micro/template.rs`
+  - template — Micro-model template definition. Each template defines a single-purpose AI unit: one function, one model, one job. Inspired by Mattbusel's llm-* single-header pattern: each lib does ONE thing.
 - `src/micro/tournament.rs`
+  - tournament — Olympic-style model competition across cluster nodes. Weight classes (wrestling): Atomweight   ≤1B   — sub-billion, the tiniest contenders Flyweight    1-3B   — fast, light, sprint events Bantamweight 3-7B  — balanced speed/quality Middleweight 7-15B — quality-focused Arenas (nodes as venues with weight restrictions): c2 (local)  — Flyweight/Bantamweight arena (≤7B only) n0-n3       — Open weight arenas Event types: Sprint     — classifier (f79), fastest correct wins Technical  — fix_compile (f81), precision matters Freestyle  — code_gen (f80), creativity + correctness Endurance  — test_write, long-form generation Doping     — anti-slop (P12), penalizes AI filler words Exhibition — non-coder models doing Rust (cross-weight)
 - `src/micro/train.rs`
+  - train — Training data export from tournament results. Generates DPO (Direct Preference Optimization) preference pairs from tournament match data. Same challenge, different model responses: chosen  = response that passed verification rejected = response that failed Output formats: dpo   — (prompt, chosen, rejected) triples for DPO/KTO/ORPO sft   — (prompt, response) pairs from passing responses only (supervised) chatml — ChatML format for MLX/unsloth fine-tuning The data is the moat. The algorithm is a config flag.
 - `src/micro/train_harness.rs`
+  - train_harness — Wraps mlx_lm.lora for kova micro training. Does NOT touch train.rs or tournament.rs. Uses exported data from ~/.kova/micro/training/ (dpo_chatml.jsonl, sft_chatml.jsonl). Prereqs: pip install "mlx-lm[train]" Data: kova micro export --format all (then tournament must have run)
 - `src/micro/validate.rs`
+  - validate — Multi-method output validation for micro-model responses. Inspired by Mattbusel/LLM-Hallucination-Detection-Script's multi-method approach: confidence patterns, factual density, coherence scoring, contradiction detection.
 - `src/moe.rs`
+  - moe — Mixture of Experts code generation. Fan-out to multiple IRONHIVE nodes, compile all variants in parallel, triple-sim validate, score, pick the winner. Pipeline: 1. Fan-out prompt to N expert nodes in parallel 2. Compile each variant locally (cargo check + clippy) 3. Run tests on survivors 4. Score survivors (compile speed, code size, review score) 5. Pick the winner 6. Optionally save to ~/.kova/experts/
 - `src/nanobyte.rs`
+  - nanobyte — packed model file format. mmap-loadable, BLAKE3-signed. Layout: `[HEADER 64B] [MANIFEST] [CLASS_NAMES] [WEIGHTS] [NSIG 36B]` - HEADER: magic "NANO", version, num_models, manifest offset/size, class_names_size, total weights. - MANIFEST: `num_models` × [`MANIFEST_ENTRY_SIZE`] (96B). Each entry stores per-model weight offsets and a (offset, size) pointer into the CLASS_NAMES region. - CLASS_NAMES: flat null-delimited UTF-8 strings; 4-byte padded. - WEIGHTS: contiguous f32 blob, indexed via per-model offsets. - NSIG trailer: b"NSIG" + 32-byte BLAKE3 of every byte before. Spec: `docs/KOVA_BLUEPRINT.md` §2.
 - `src/node_cmd.rs`
+  - Tokenized node commands. §13 compressed output for AI context. nN=node, cN=command, oN=output field. Like Rust macros: token in → execute → compress out.
 - `src/output.rs`
+  - Output helpers. Diff, apply. f84=format_diff f85=resolve_target_path
 - `src/pipeline/compilation.rs`
+  - f91–f93. Cargo check, clippy, test. Delegates to crate::cargo.
 - `src/pipeline/error_kind.rs`
+  - Categorize cargo check stderr for agentic fix loop. f118=f118, t95=T95.
 - `src/pipeline/fix_loop.rs`
+  - Fix loop: f118 errors, call Mechanic (Fixer) model.
 - `src/pipeline/mod.rs`
+  - f81=run_code_gen_pipeline. Modular: inference, compilation, fix_loop.
 - `src/plan.rs`
+  - Plan layer. Intent → action DAG. f14.
 - `src/providers.rs`
+  - Re-export from inference::providers for backward compat.
 - `src/rag.rs`
+  - RAG — Retrieval-Augmented Generation. redb-backed vector store + fastembed. Embeds code chunks locally, stores in redb, retrieves via cosine similarity. Research: vectorize-io (chunking strategy, RAG pipeline design), fastembed-rs.
 - `src/recent_changes.rs`
+  - f86=recent_changes_snapshot, f87=format_recent_changes. Tokenized output for LLM context. Stay on task with latest modified work.
 - `src/repl.rs`
+  - Interactive REPL. Kova's Claude Code replacement. f137=repl_run, f138=repl_stream_print, f139=repl_build_system_prompt.
 - `src/review.rs`
+  - Code review agent. Sends diffs to LLM for analysis. f185=review_diff, f186=review_staged, f187=review_branch, f188=format_review. T118=ReviewRequest, T119=ReviewResult, T120=ReviewIssue, T121=Severity.
 - `src/router.rs`
+  - Router model. Intent classification. f79=classify. Uses candle GGUF inference for local classification.
 - `src/serve.rs`
+  - HTTP API. kova serve. REST + WebSocket. OpenAPI spec at /openapi.json. f114=serve_run
 - `src/squeeze.rs`
+  - Squeeze: mine shell history, Claude Code sessions, and AI tool configs for unaliased command patterns. Token economy autopilot. f393 = main entry, f394 = parse history, f395 = parse jsonl, f396 = scan AI rules, f397 = parse aliases, f398 = format text, f399 = apply
 - `src/ssh_ca.rs`
+  - kova c2 ssh-ca — SSH host certificate authority. No host key churn when IPs change.
 - `src/storage.rs`
+  - Storage layer. redb + bincode + zstd. Shared single-file DB via global Arc.
 - `src/surface/mod.rs`
+  - Surface adapters — thin layers that dispatch to kernel.
 - `src/surface/serve/mod.rs`
+  - HTTP API. kova serve. REST + WebSocket. OpenAPI spec at /openapi.json. f114=serve_run
 - `src/swarm/mod.rs`
+  - swarm — Subatomic model training and inference. Tiny classifiers (<10K params) trained on CPU via candle. Architecture: character n-gram hash → embedding bag → linear → output.
 - `src/swarm/priority.rs`
+  - Priority queue for subatomic models backed by redb. Key format: `pq/{score_u32_big_endian_inverted}:{model_name}` Using inverted score in the key means lower byte values = higher priority, so redb's natural B-tree ascending order iterates hot models first. f430=bump, f431=decay_all, f432=top_n, f433=score_of, f434=reset.
 - `src/swarm/t2.rs`
+  - T2 molecular coordinator. Takes T1 classifier outputs as an 8-float feature vector and routes to code_responder (0) or prose_responder (1). Feature layout (T1_MODELS order × 2 values each = 8 features): [0..1] slop_detector:      class_idx/1, confidence [2..3] code_vs_english:    class_idx/1, confidence [4..5] lang_detector:      class_idx/4, confidence [6..7] intent_classifier:  class_idx/9, confidence f410=t2_features, f411=t2_route.
 - `src/swarm/tool_router.rs`
+  - tool_router — Tier-1 classifier mapping user prompts to kova MCP tool names. Architecture: trigram-hash featurizer → linear classifier (sub-100K params). Wraps the generic `swarm::train` infrastructure with kova-router-specific class ordering and a JSONL loader for mined training data (T217). Class indices are fixed by KOVA_ROUTER_TOOLS so a trained checkpoint stays compatible across runs. Adding a tool means appending to the end of the array — never reordering. f424=train_tool_router, f425=classify_tool, f426=load_mined_examples, f427=default_router_path.
 - `src/swarm/train.rs`
+  - Subatomic model trainer. Tiny classifiers via candle. Architecture per model: Input text → character trigram hashing → fixed-size feature vector → Linear(feature_dim, num_classes) → softmax → class prediction Total params = feature_dim * num_classes + num_classes (bias) For feature_dim=256, 2 classes: 514 params. For 5 classes: 1,285 params. f389=train_subatomic, f390=generate_slop_data, f391=generate_code_vs_english_data, f392=generate_lang_data, f394=featurize, f395=train_starter, f396=predict, t216=t216, t217=t217.
 - `src/syntax.rs`
+  - syntax — Syntax-aware code analysis. Extracts structure from Rust source files. Research: tree-sitter (AST patterns), syn (Rust-native parsing). Uses regex-based heuristics for fast extraction without heavy deps. f201=extract_symbols, f202=extract_functions, f203=extract_structs, f204=extract_impls. t132=T132, t133=T133.
 - `src/test_utils.rs`
+  - Test helpers. kova_test! for traceability, assert_matches for patterns.
 - `src/theme.rs`
+  - Kova theme. THEME.md palette + professional layout.
 - `src/tokenization.rs`
+  - tokenization — Validates compression protocol compliance across the codebase. Scans src/*.rs for pub fn/struct/enum, checks fN/TN naming, reports gaps. f294=validate_tokens, f295=scan_source, f296=token_report.
 - `src/tools.rs`
+  - Tool definitions and dispatch for agentic mode. t101=ToolDef, t102=ToolParam, t103=ToolCall, t104=ToolResult, t105=ToolRegistry. f140=parse_tool_calls, f141=dispatch_tool, f142-f146,f150,f155=individual tools. f383=checkpoint, f384=undo_edit.
 - `src/trace.rs`
+  - trace — Pipeline trace + LLM call observability. T93=LastTrace (in-memory pipeline trace). T109=LlmTrace: redb-backed per-call telemetry for every LLM invocation.
 - `src/training_data.rs`
+  - training_data — Export scored LLM interactions as training datasets (DPO/SFT). f181=f181, f182=f182, f183=f183, f184=f184 t116=T116, t117=T117
 - `src/training_mine.rs`
+  - training_mine — Extract labeled (prompt, tool_name, tool_input) training data from Claude Code transcripts (~/.claude/projects/*/*.jsonl). Strategy: a session is a JSONL log of `user`/`assistant`/`system`/etc. records. We pair each user *string* prompt (skipping tool_result wrappers) with the tool_use blocks in the immediately-following first assistant turn. Each tool_use becomes one T217 example; per-prompt deduplication is left to the caller of the trainer. f412=parse_session_file, f413=mine_dir, f414=write_router_jsonl, f415=map_claude_to_kova, f416=stats_summary. t217=T217 (ToolUseExample), t218=T218 (MineStats).
 - `src/tui.rs`
+  - Terminal UI. ratatui + crossterm. Replaces egui GUI and plain REPL. `kova` (no args) launches this. Chat + tool display + Visual QC.
 - `tests/cc_features_smoke.rs`
+  - Dev binding for the exopack test suites. Invokes the SAME scenarios kova-test runs via kova::f315 — no separate test logic, just a faster harness for the dev loop when you don't want to wait through clippy + triple_sims first. Run with: cargo test --features "cc_features training_mine_tests" \ --test cc_features_smoke -- --nocapture Canonical run: `cargo run --features tests --bin kova-test`.
 - `tests/integration.rs`
+  - Integration tests. f30 scope. No self-licking.
 
 ## Documentation
 - `docs/analysis/` - Analysis reports and technical documentation
